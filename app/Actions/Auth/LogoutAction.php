@@ -20,8 +20,8 @@ class LogoutAction
             $this->recordAuditLog->execute(
                 action: 'auth.logout',
                 actor: $user,
-                subject: $token->device,
-                changes: ['token_id' => $token->getKey()],
+                subject: $user,
+                changes: ['token_id' => $token->getKey(), 'token_name' => $token->name],
                 ip: $ip,
             );
 

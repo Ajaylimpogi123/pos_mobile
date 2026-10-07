@@ -1,19 +1,18 @@
 <?php
 
 use App\Models\AuditLog;
-use App\Models\Device;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
 
 beforeEach(function () {
     seedRoles();
-    [$this->branch, $this->device] = mainBranchWithDevice();
+    $this->branch = mainBranch();
 
     $this->cashier = User::factory()->forBranch($this->branch)->withRole('cashier')->create();
 });
 
 it('revokes the current token and returns 204 with no body', function () {
-    $token = tokenFor($this->cashier, $this->device);
+    $token = tokenFor($this->cashier);
 
     $response = $this->withToken($token)->postJson('/api/v1/auth/logout');
 
@@ -23,8 +22,10 @@ it('revokes the current token and returns 204 with no body', function () {
     expect(PersonalAccessToken::query()->count())->toBe(0);
 
     $log = AuditLog::query()->where('action', 'auth.logout')->sole();
-    expect($log->actor_id)->toBe($this->cashier->id);
+    expect($log->actor_id)->toBe($this->cashier->id)
+        ->and($log->subject_id)->toBe($this->cashier->id);
 
+    $this->app['auth']->forgetGuards();
     $this->withToken($token)
         ->getJson('/api/v1/auth/me')
         ->assertUnauthorized()
@@ -32,13 +33,14 @@ it('revokes the current token and returns 204 with no body', function () {
 });
 
 it('revokes only the current token', function () {
-    $otherDevice = Device::factory()->for($this->branch)->create();
-    $current = tokenFor($this->cashier, $this->device);
-    $other = tokenFor($this->cashier, $otherDevice);
+    $current = tokenFor($this->cashier);
+    $other = tokenFor($this->cashier);
 
     $this->withToken($current)->postJson('/api/v1/auth/logout')->assertNoContent();
 
+    $this->app['auth']->forgetGuards();
     $this->withToken($other)->getJson('/api/v1/auth/me')->assertOk();
+    expect(PersonalAccessToken::query()->count())->toBe(1);
 });
 
 it('returns 401 without a token', function () {
@@ -48,8 +50,9 @@ it('returns 401 without a token', function () {
 });
 
 it('returns 401 when logging out twice with the same token', function () {
-    $token = tokenFor($this->cashier, $this->device);
+    $token = tokenFor($this->cashier);
 
     $this->withToken($token)->postJson('/api/v1/auth/logout')->assertNoContent();
+    $this->app['auth']->forgetGuards();
     $this->withToken($token)->postJson('/api/v1/auth/logout')->assertUnauthorized();
 });

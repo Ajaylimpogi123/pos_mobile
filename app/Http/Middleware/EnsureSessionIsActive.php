@@ -10,9 +10,9 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Runs after auth:sanctum. Rejects (and revokes) a token whose user or
- * device has been deactivated or soft-deleted since login, or that is not
- * bound to a device at all.
+ * Runs after auth:sanctum. Rejects (and revokes) a token whose user has
+ * been deactivated or soft-deleted since login. Tokens are not bound to a
+ * device, so no device state is checked.
  */
 class EnsureSessionIsActive
 {
@@ -30,10 +30,7 @@ class EnsureSessionIsActive
             throw new AuthenticationException;
         }
 
-        // BelongsTo respects SoftDeletes, so a soft-deleted device resolves to null.
-        $device = $token->device;
-
-        if (! $user->is_active || $user->trashed() || $device === null || ! $device->is_active) {
+        if (! $user->is_active || $user->trashed()) {
             $token->delete();
 
             throw new AuthenticationException;

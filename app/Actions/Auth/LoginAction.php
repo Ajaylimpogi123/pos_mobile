@@ -3,106 +3,81 @@
 namespace App\Actions\Auth;
 
 use App\Actions\Audit\RecordAuditLog;
-use App\Models\Device;
 use App\Models\User;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 
 /**
- * Authenticates a staff member on a registered device and issues a
- * device-bound Sanctum token.
+ * Authenticates a staff member by email + password and issues a new
+ * Sanctum API token. Tokens are not bound to a device, and the user's
+ * other tokens (e.g. on another phone) are left alone.
  *
- * Checks run in the contract's order; the first failure wins (422).
+ * Checks run in the contract's order; the first failure wins:
+ * unknown email or wrong password → 401, deactivated user → 403.
  */
 class LoginAction
 {
-    public const MESSAGE_BAD_CREDENTIALS = 'These credentials do not match our records.';
+    public const MESSAGE_INVALID_CREDENTIALS = 'Invalid email or password.';
 
     public const MESSAGE_DEACTIVATED = 'This account has been deactivated.';
 
-    public const MESSAGE_DEVICE_NOT_REGISTERED = 'This device is not registered.';
-
-    public const MESSAGE_DEVICE_WRONG_BRANCH = 'This device is not registered to your branch.';
-
-    public function __construct(private readonly RecordAuditLog $recordAuditLog) {}
+    public function __construct(
+        private readonly RecordAuditLog $recordAuditLog,
+        private readonly IssueSessionToken $issueSessionToken,
+    ) {}
 
     /**
-     * @throws ValidationException
+     * @throws HttpResponseException 401 on bad credentials, 403 on a deactivated account
      */
-    public function execute(
-        string $email,
-        string $password,
-        string $deviceCode,
-        ?string $appVersion = null,
-        ?string $ip = null,
-    ): LoginResult {
+    public function execute(string $email, string $password, ?string $ip = null): LoginResult
+    {
+        // Soft-deleted users are excluded by the SoftDeletes scope, so they fail as "unknown".
         $user = User::query()->where('email', Str::lower($email))->first();
 
         if ($user === null) {
             // Spend comparable time to a real check so response timing does not reveal which emails exist.
             Hash::make($password);
 
-            throw ValidationException::withMessages(['email' => self::MESSAGE_BAD_CREDENTIALS]);
+            $this->fail(401, self::MESSAGE_INVALID_CREDENTIALS);
         }
 
         if (! Hash::check($password, $user->password)) {
-            throw ValidationException::withMessages(['email' => self::MESSAGE_BAD_CREDENTIALS]);
+            $this->fail(401, self::MESSAGE_INVALID_CREDENTIALS);
         }
 
         if (! $user->is_active) {
-            throw ValidationException::withMessages(['email' => self::MESSAGE_DEACTIVATED]);
+            $this->fail(403, self::MESSAGE_DEACTIVATED);
         }
 
-        $device = Device::query()
-            ->where('code', Str::upper($deviceCode))
-            ->where('is_active', true)
-            ->first();
-
-        if ($device === null) {
-            throw ValidationException::withMessages(['device_code' => self::MESSAGE_DEVICE_NOT_REGISTERED]);
-        }
-
-        if ((int) $device->branch_id !== (int) $user->branch_id) {
-            throw ValidationException::withMessages(['device_code' => self::MESSAGE_DEVICE_WRONG_BRANCH]);
-        }
-
-        return DB::transaction(function () use ($user, $device, $appVersion, $ip): LoginResult {
-            $now = now();
-
-            // One live session per user per device: revoke any older tokens on this device.
-            $user->tokens()->where('device_id', $device->getKey())->delete();
-
-            $token = $user->createDeviceToken(
-                $device,
-                $now->copy()->addHours((int) config('pos.auth_token_ttl_hours', 24)),
-            );
-
-            // A login is not a profile edit, so it must not bump users.updated_at (used for delta sync).
-            User::withoutTimestamps(fn () => $user->forceFill(['last_login_at' => $now])->save());
-
-            $device->forceFill(array_filter([
-                'last_seen_at' => $now,
-                'app_version' => $appVersion,
-            ], fn ($value) => $value !== null))->save();
+        return DB::transaction(function () use ($user, $ip): LoginResult {
+            $token = $this->issueSessionToken->execute($user);
 
             $this->recordAuditLog->execute(
                 action: 'auth.login',
                 actor: $user,
-                subject: $device,
+                subject: $user,
                 changes: [
                     'token_id' => $token->accessToken->getKey(),
-                    'device_code' => $device->code,
-                    'app_version' => $appVersion,
+                    'token_name' => $token->accessToken->name,
+                    'expires_at' => $token->accessToken->expires_at?->toIso8601ZuluString(),
                 ],
                 ip: $ip,
             );
 
-            $user->withAccessToken($token->accessToken);
-            $user->loadMissing(['role.permissions', 'branch']);
-
             return new LoginResult($user, $token);
         });
+    }
+
+    /**
+     * Abort with the contract's exact login error body: `{ "message": "..." }`, no `errors` key.
+     * Deliberately not an AuthenticationException, which would render "Unauthenticated.".
+     *
+     * @throws HttpResponseException
+     */
+    private function fail(int $status, string $message): never
+    {
+        throw new HttpResponseException(response()->json(['message' => $message], $status));
     }
 }

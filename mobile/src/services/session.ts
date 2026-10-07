@@ -3,25 +3,28 @@
  * in-memory session store together. Route files call these; they never touch
  * storage or the API directly.
  */
-import Constants from 'expo-constants';
-
 import { getErrorMessage, isApiError } from '@/services/api';
-import { getMe, login, logout } from '@/services/auth';
+import { getMe, login, logout, pinLogin } from '@/services/auth';
 import {
   clearSession,
+  deleteLegacyKeys,
   getStoredSession,
   getUser,
-  saveDeviceCode,
   saveSession,
   saveUser,
 } from '@/services/secureStorage';
-import type { AuthUser } from '@/services/types';
+import type { AuthUser, LoginResponse } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
 
 export type SignInInput = {
   email: string;
   password: string;
-  deviceCode: string;
+};
+
+export type PinSignInInput = {
+  userId: number;
+  /** 4–6 digits. Sent once, never stored. */
+  pin: string;
 };
 
 /** `true` when `expiresAt` is missing, unparsable, or not in the future. */
@@ -31,10 +34,6 @@ export function isExpired(expiresAt: string | null, now: number = Date.now()): b
   return Number.isNaN(expiry) || expiry <= now;
 }
 
-function getAppVersion(): string | null {
-  return Constants.expoConfig?.version ?? null;
-}
-
 async function clearLocalSession(): Promise<void> {
   await clearSession().catch(() => undefined);
   useSessionStore.getState().setSignedOut();
@@ -42,6 +41,7 @@ async function clearLocalSession(): Promise<void> {
 
 /**
  * Runs at app start (and on Retry):
+ * 0. Best-effort cleanup of storage keys older builds wrote (never blocks).
  * 1. No token, or past `expires_at` → signedOut.
  * 2. `GET /auth/me` succeeds → signedIn with the fresh user.
  * 3. `me` returns 401 → session cleared → signedOut.
@@ -52,6 +52,8 @@ async function clearLocalSession(): Promise<void> {
 export async function restoreSession(now: number = Date.now()): Promise<void> {
   const store = useSessionStore.getState();
   store.startRestoring();
+
+  await deleteLegacyKeys();
 
   const stored = await getStoredSession().catch(() => null);
   if (!stored || isExpired(stored.expiresAt, now)) {
@@ -80,17 +82,34 @@ export async function restoreSession(now: number = Date.now()): Promise<void> {
   }
 }
 
-/** POST /auth/login, persist the token + user + device code, then mark signed in. */
+/**
+ * POST /auth/login with `email` + `password` only, persist the token + user,
+ * then mark signed in. Errors (422 / 401 / 403 / 429 / network) propagate to
+ * the form; a 401 here never touches the session (the call is `auth: false`).
+ */
 export async function signIn(input: SignInInput): Promise<AuthUser> {
   const result = await login({
     email: input.email.trim(),
     password: input.password,
-    device_code: input.deviceCode.trim(),
-    app_version: getAppVersion(),
   });
+  return startSession(result);
+}
 
+/**
+ * PIN quick-switch (POST /auth/pin): the device's session becomes the target
+ * user's, exactly as a login does (token, expiry and user saved, then signed
+ * in). The server revokes the previous user's token; a late 401 for that old
+ * token is ignored by the API client. Errors (422 / 429 / network) propagate
+ * to the PIN screen, and the current session stays as it was.
+ */
+export async function signInWithPin(input: PinSignInInput): Promise<AuthUser> {
+  const result = await pinLogin({ user_id: input.userId, pin: input.pin });
+  return startSession(result);
+}
+
+/** Persists a login-shaped response and marks the user signed in. */
+async function startSession(result: LoginResponse): Promise<AuthUser> {
   await saveSession(result.token, result.expires_at, result.user);
-  await saveDeviceCode(result.user.device.code).catch(() => undefined);
   useSessionStore.getState().setSignedIn(result.user, result.expires_at);
   return result.user;
 }
@@ -111,4 +130,17 @@ export async function signOut(): Promise<void> {
 /** Pre-emptive expiry (contract: "the client may send the user to login after `expires_at`"). */
 export async function expireSession(): Promise<void> {
   await clearLocalSession();
+}
+
+/**
+ * The signed-in user edited their own name or email (e.g. on the staff
+ * screen): update the session store and the cached user, so home shows the
+ * new values straight away (and after an offline restart).
+ */
+export async function updateSessionProfile(changes: Pick<AuthUser, 'name' | 'email'>): Promise<void> {
+  const current = useSessionStore.getState().user;
+  if (!current) return;
+  const next: AuthUser = { ...current, name: changes.name, email: changes.email };
+  useSessionStore.getState().setUser(next);
+  await saveUser(next).catch(() => undefined);
 }

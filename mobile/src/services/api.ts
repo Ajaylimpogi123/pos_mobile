@@ -5,16 +5,24 @@
  *
  * Behaviour (docs/api-contract.md → Global Conventions):
  * - Base URL from EXPO_PUBLIC_API_URL (server origin, no trailing slash). Fails loud when missing.
- * - `Accept: application/json` on every request; `Content-Type: application/json` when there is a body.
+ * - `Accept: application/json` on every request; `Content-Type: application/json` when there is a JSON body.
+ * - A `FormData` body is sent as-is as `multipart/form-data` (Global Conventions → File uploads): no
+ *   `Content-Type` header is set, so fetch adds the multipart boundary itself, and it is never JSON.stringified.
  * - `Authorization: Bearer <token>` from expo-secure-store on authenticated requests.
- * - 401 → clear the stored session and state, then `router.replace('/login')` (loop-guarded).
+ * - 401 on an authenticated request → clear the stored session and state, then
+ *   `router.replace('/login')` (loop-guarded). A 401 from an `auth: false` call (login's
+ *   "Invalid email or password.") is thrown as a plain `ApiError` and never touches the session.
  * - 422 → throws `ApiValidationError` carrying `message` and `errors` (field → string[]).
  * - Any other failure → throws `ApiError` with the server's `message`, or a friendly fallback.
+ * - Server reachability (Offline Sales hardening): any HTTP response marks the
+ *   server reachable, and a network error or timeout marks it unreachable
+ *   (`@/stores/connectivity`). `probeServer()` checks it with `GET /up`.
  */
 import { router } from 'expo-router';
 
 import { clearSession, getToken } from '@/services/secureStorage';
 import type { ApiErrorBody, ValidationErrorBody } from '@/services/types';
+import { useConnectivityStore } from '@/stores/connectivity';
 import { useSessionStore } from '@/stores/session';
 
 // ---------------------------------------------------------------------------
@@ -49,6 +57,8 @@ export const NETWORK_ERROR_MESSAGE =
   "Can't reach the server. Check the tablet's Wi-Fi connection and try again.";
 export const TIMEOUT_ERROR_MESSAGE = 'The server took too long to respond. Please try again.';
 export const SESSION_EXPIRED_MESSAGE = 'Your session has ended. Please log in again.';
+/** Fallback only: login's 401 normally carries the server's own message. */
+export const LOGIN_FAILED_MESSAGE = 'Login failed. Check your email and password.';
 
 /** Any failed request: an HTTP error status, a network failure, or a timeout. */
 export class ApiError extends Error {
@@ -96,7 +106,9 @@ export function getErrorMessage(error: unknown): string {
   return 'Something went wrong. Please try again.';
 }
 
-function fallbackMessage(status: number): string {
+function fallbackMessage(status: number, auth: boolean): string {
+  // Unauthenticated calls (login) get 401 for bad credentials, not for an expired session.
+  if (status === 401 && !auth) return LOGIN_FAILED_MESSAGE;
   if (status === 401) return SESSION_EXPIRED_MESSAGE;
   if (status === 403) return 'You do not have permission to do that.';
   if (status === 404) return 'Not found.';
@@ -157,7 +169,10 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export type RequestOptions = {
   method?: HttpMethod;
-  /** JSON body. Sent with `Content-Type: application/json`. */
+  /**
+   * Request body. A `FormData` is sent as multipart (fetch sets the boundary
+   * `Content-Type`); anything else is JSON-encoded with `Content-Type: application/json`.
+   */
   body?: unknown;
   /** Attach the Bearer token (default `true`). Endpoints marked "Auth: no" pass `false`. */
   auth?: boolean;
@@ -165,6 +180,30 @@ export type RequestOptions = {
   headers?: Record<string, string>;
   timeoutMs?: number;
 };
+
+/** True for a multipart body. Guarded: `FormData` exists in React Native and Node, but not every test env. */
+function isFormData(body: unknown): body is FormData {
+  return typeof FormData !== 'undefined' && body instanceof FormData;
+}
+
+type QueryValue = string | number | boolean | null | undefined;
+
+/**
+ * Builds `?a=1&b=x` from a params object, skipping `undefined`, `null` and
+ * empty strings. Booleans are sent as `1` / `0`, which Laravel's `boolean`
+ * rule accepts (it rejects the strings "true" / "false").
+ */
+export function buildQuery(params: Record<string, QueryValue>): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+    let text: string;
+    if (typeof value === 'boolean') text = value ? '1' : '0';
+    else text = String(value);
+    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(text)}`);
+  }
+  return parts.length > 0 ? `?${parts.join('&')}` : '';
+}
 
 function parseJson(text: string): unknown {
   if (text === '') return undefined;
@@ -191,15 +230,55 @@ function readErrors(body: unknown): Record<string, string[]> {
   return {};
 }
 
+/** A successful answer: the raw body text, and a response header reader. */
+type RawResponse = {
+  text: string;
+  header: (name: string) => string | null;
+};
+
 /**
  * Sends a request to `API_BASE_URL + path` and returns the parsed JSON body
  * (or `undefined` for 204 / empty bodies).
  */
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { text } = await execute(path, options);
+  return parseJson(text) as T;
+}
+
+/**
+ * Like `apiRequest`, for the one endpoint that doesn't answer with JSON
+ * (Shifts & Reporting: `GET /reports/sales/export` is `text/csv`). The same
+ * headers, 401 handling and typed errors apply (its errors are still JSON).
+ * Returns the body as text and the value of `Content-Disposition` (`null`
+ * when the response has none).
+ */
+export async function apiRequestText(
+  path: string,
+  options: Omit<RequestOptions, 'method' | 'body'> = {},
+): Promise<{ text: string; contentDisposition: string | null }> {
+  const { text, header } = await execute(path, { ...options, method: 'GET' });
+  return { text, contentDisposition: header('Content-Disposition') };
+}
+
+/** Reads a response header; `null` when missing (or when a test double has no `headers`). */
+function headerReader(response: Response): (name: string) => string | null {
+  return (name) => {
+    try {
+      return response.headers?.get?.(name) ?? null;
+    } catch {
+      return null;
+    }
+  };
+}
+
+/** The request itself: headers, token, timeout, reachability, and every error rule. Returns the body text of a 2xx. */
+async function execute(path: string, options: RequestOptions): Promise<RawResponse> {
   const { method = 'GET', body, auth = true, headers: extraHeaders, timeoutMs = REQUEST_TIMEOUT_MS } = options;
 
   const headers: Record<string, string> = { Accept: 'application/json', ...extraHeaders };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  const multipart = isFormData(body);
+  // Multipart: leave Content-Type unset so fetch writes `multipart/form-data; boundary=…`.
+  if (body !== undefined && !multipart) headers['Content-Type'] = 'application/json';
 
   let tokenUsed: string | null = null;
   if (auth) {
@@ -219,15 +298,18 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     response = await fetch(`${API_BASE_URL}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : multipart ? body : JSON.stringify(body),
       signal: controller.signal,
     });
   } catch {
+    useConnectivityStore.getState().setServerReachable(false);
     if (timedOut) throw new ApiError(TIMEOUT_ERROR_MESSAGE, { status: null, kind: 'timeout' });
     throw new ApiError(NETWORK_ERROR_MESSAGE, { status: null, kind: 'network' });
   } finally {
     clearTimeout(timer);
   }
+  // Any HTTP answer, whatever its status, means the server can be reached.
+  useConnectivityStore.getState().setServerReachable(true);
 
   let text = '';
   try {
@@ -235,11 +317,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   } catch {
     // Body could not be read; fall through with an empty body.
   }
+  if (response.ok) return { text, header: headerReader(response) };
+
   const parsed = parseJson(text);
-
-  if (response.ok) return parsed as T;
-
-  const message = readMessage(parsed) ?? fallbackMessage(response.status);
+  const message = readMessage(parsed) ?? fallbackMessage(response.status, auth);
 
   if (response.status === 401 && auth) {
     await handleUnauthorized(tokenUsed);
@@ -265,3 +346,25 @@ export const api = {
   delete: <T>(path: string, options?: Omit<RequestOptions, 'method' | 'body'>) =>
     apiRequest<T>(path, { ...options, method: 'DELETE' }),
 };
+
+// ---------------------------------------------------------------------------
+// Server reachability probe (Offline Sales hardening)
+// ---------------------------------------------------------------------------
+
+/** Laravel's health route (no auth). */
+export const HEALTH_PATH = '/up';
+export const PROBE_TIMEOUT_MS = 3_000;
+
+/**
+ * `GET /up` with a 3 s timeout, without the token: `true` when the server
+ * answers with any HTTP status (the request itself updates the connectivity
+ * store), `false` on a network error or timeout. Never rejects.
+ */
+export async function probeServer(): Promise<boolean> {
+  try {
+    await apiRequest<unknown>(HEALTH_PATH, { auth: false, timeoutMs: PROBE_TIMEOUT_MS });
+    return true;
+  } catch (error) {
+    return isApiError(error) && error.kind === 'http';
+  }
+}

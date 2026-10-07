@@ -1,16 +1,18 @@
 {
   "expo": {
     "name": "POS Mobile",
-    "slug": "pos-mobile",
+    "slug": "mobile-pos",
     "version": "1.0.0",
-    "orientation": "landscape",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "posmobile",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "supportsTablet": true,
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.posmobile.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -33,11 +35,28 @@
           "imageWidth": 76
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow POS Mobile to use your photos for menu item and category pictures.",
+          "cameraPermission": "Allow POS Mobile to use the camera to take pictures of menu items and categories.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-sqlite",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "72d10ccd-c1a8-4463-a8f4-fbcf95964749"
+      }
+    },
+    "owner": "cypherlee"
   }
 }

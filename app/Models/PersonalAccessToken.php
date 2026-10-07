@@ -6,7 +6,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Laravel\Sanctum\PersonalAccessToken as SanctumPersonalAccessToken;
 
 /**
- * A Sanctum token bound to the registered device it was issued on.
+ * Sanctum token model with a nullable `device_id`. Since Auth revision 2, login does
+ * not bind tokens to a device. Since Phase 5, POST /api/v1/devices/register binds the
+ * calling token to the app's device (App\Actions\Devices\RegisterDeviceAction); online
+ * sales record it and offline sync requires it.
+ *
+ * @property int|null $device_id
  */
 class PersonalAccessToken extends SanctumPersonalAccessToken
 {

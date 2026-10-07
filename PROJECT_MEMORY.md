@@ -1,6 +1,6 @@
 # POS Rebuild — PROJECT MEMORY
 
-**Status:** Design complete, no implementation started.
+**Status:** v1 feature-complete: Phases 0–7, Inventory and the SC/PWD discount implemented and verified by tests (2026-09-24/28), with a UI refresh. Ingredients, Recipes & Purchasing done (contract v1.17.2, Rounds A and B, 2026-09-29). Sage Emerald redesign done 2026-09-30 (mobile only: tokens in `theme.ts`, Plus Jakarta Sans, exact status colours, `ui/DataTable` + `ui/ListRow`). Next: Phase 8 (drafted in contract v1.20, without backups). On-device checks deferred until a physical tablet is available.
 **Provenance:** Derived from a full audit of the legacy Laravel 11 + Inertia/React POS at `c:\xampp\htdocs\pos`. The legacy system is the **reference for business requirements only** — its frontend, schema conventions, and most of its technical patterns are deliberately *not* carried over (see Appendix A.3).
 **Target stack:** Laravel (REST API) + MySQL · React Native + Expo + Expo Router.
 **How to use:** This is the source of truth for the new project. Copy it into the new repo root and update it whenever a decision changes.
@@ -48,7 +48,7 @@ A restaurant / food-service operation in the Philippines (₱, cash + GCash). St
 - **Fast.** Add-to-cart and checkout must feel instant, offline or online.
 - **Auditable.** Every financial mutation records who, what, when.
 - **Scalable reads.** No endpoint may return an unbounded table.
-- **Tablet-first.** Designed for a 10" Android tablet in landscape, usable one-handed at a counter.
+- **Tablet-first, fully adaptive.** The 10" Android tablet is the primary device, but every screen auto-adjusts to phones and to both orientations: the app follows device rotation and never locks it *(decided 2026-09-24)*.
 
 ### 1.5 Explicitly out of scope for v1
 Ingredient/recipe stock depletion, unit conversions, suppliers, purchase requests/orders/receiving, table & seat management, delivery integrations, customer loyalty, multi-currency.
@@ -64,9 +64,9 @@ Ingredient/recipe stock depletion, unit conversions, suppliers, purchase request
 | Categories, products, pricing | ✅ | | |
 | Customers (optional on a sale) | ✅ | | |
 | Cart (local), checkout, split payments | ✅ | | |
-| Discounts (incl. SC/PWD types) | ✅ | | |
+| Discounts (incl. SC/PWD: cashier-applied, items or headcount share, optional VAT exemption; done 2026-09-28) | ✅ | | |
 | VAT breakdown / BIR-shaped receipt | ✅ | | |
-| Product-level stock + movement ledger | ✅ | | |
+| Product-level stock + movement ledger, reorder levels, low/out alerts, inventory report *(done 2026-09-27)* | ✅ | | |
 | Void / refund with authorization | ✅ | | |
 | Shifts, X-read, Z-read, cash variance | ✅ | | |
 | Receipt + kitchen printing (direct TCP) | ✅ | | |
@@ -98,7 +98,7 @@ Ingredient/recipe stock depletion, unit conversions, suppliers, purchase request
 7. **The sale is complete at step 5.** Printing and syncing are consequences, never preconditions.
 
 ### 3.2 Kitchen ticket
-Tickets print only the delta between what the order now contains and what was already sent to that printer. Each printed line is recorded locally as `sent_qty` per order line per printer. Re-firing a ticket prints only new items; an explicit "Reprint full ticket" action exists for lost paper. Routing is per category → printer (food → kitchen, drinks → bar); unmapped categories fall back to the default kitchen printer.
+*(2026-09-26: v1 is **pay-first**, so each order prints once per station and Reprint prints the full ticket; the deltas below apply only if open tabs are ever added.)* Tickets print only the delta between what the order now contains and what was already sent to that printer. Each printed line is recorded locally as `sent_qty` per order line per printer. Re-firing a ticket prints only new items; an explicit "Reprint full ticket" action exists for lost paper. Routing is per category → printer (food → kitchen, drinks → bar); unmapped categories fall back to the default kitchen printer.
 
 ### 3.3 Void
 Manager-authorized, reason required, allowed only within a configurable window (default: same shift). Creates reversing stock movements and a `voided` order state. **Never deletes the order.** Prints a void slip.
@@ -112,8 +112,15 @@ Cashier enters counted cash. System computes expected = opening float + cash sal
 ### 3.6 Offline day-in-the-life
 Internet drops mid-service. Cashier keeps selling: cart, checkout, receipt, and kitchen ticket all work (printer is on the same LAN, which is unaffected). Each sale queues. A persistent banner shows "Offline — N sales pending". Internet returns; the worker drains the queue oldest-first; the banner clears. Any sale the server adjusts (e.g. a price changed mid-outage) is flagged for manager review rather than silently rewritten.
 
-### 3.7 Purchasing (v2, corrected from legacy)
-PR raised → **approved by someone other than the requester** → manually converted to one PO **per supplier** → PO approved → goods received against it (each receipt is its own immutable record) → stock and weighted-average cost updated **in the ingredient's own stocking unit**.
+### 3.7 Purchasing (brought forward from v2; user decisions 2026-09-28; contract "Ingredients, Recipes & Purchasing")
+1. A PR is raised. Each item has an ingredient or an own-stock product, **its own supplier**, and a qty + unit.
+2. An Owner/Admin approves or declines **each item**; a decline needs a reason.
+3. When every item is decided, **one PO per PR** is created automatically from the approved items. Each line keeps its supplier.
+4. The PO is approved, or declined with a reason. An approved PO is read-only.
+5. Goods are received per line. Each receipt is its own immutable record, and over-receipt is allowed and flagged.
+6. Stock and weighted-average cost are updated **in the ingredient's base unit**.
+
+**Only the Owner may approve their own PR or PO** (`purchase.approve_own`, logged).
 
 ---
 
@@ -129,7 +136,7 @@ PR raised → **approved by someone other than the requester** → manually conv
 - Order-level and line-level discounts are both supported; each carries an explicit **type**: `none`, `promo`, `senior_citizen`, `pwd`, `employee`, `manual`.
 - A discount may never exceed the discountable base. Enforced server-side.
 - Each role has a `max_discount_percent`. Exceeding it requires a manager PIN override, which is recorded on the order (`authorized_by`).
-- SC/PWD discounts follow Philippine rules (VAT-exempt + 20% on eligible items) and require an ID reference — **confirm exact treatment with the client's accountant before implementing.**
+- SC/PWD discounts follow Philippine rules: 20% off, plus VAT exemption when the cashier ticks it for the sale (unticked by default), recorded with each ID number and no manager approval. *(2026-09-28: built per the user's choices; still worth confirming the treatment with the accountant. See api-contract.md "Senior Citizen / PWD Discount".)*
 
 ### 4.3 Payments
 - An order has **one or more** payments (split tender). `sum(payments.amount) >= order.total`.
@@ -153,9 +160,16 @@ PR raised → **approved by someone other than the requester** → manually conv
 - **Offline checkout** decrements the local cache optimistically and warns, but **never blocks the sale**. On sync the server applies the movement even if it drives stock negative, and flags an oversell for reporting. The sale physically happened; the books must reflect it.
 - Stock status (`in_stock` / `low_stock` / `out_of_stock`) is **derived** from qty vs reorder threshold. It is never a stored, hand-written string.
 
-### 4.6 Recipes & units (v2)
-- A recipe line stores quantity per one unit of product **in the ingredient's stocking unit**.
-- Unit conversion is a **server-side, enforced** concern. Conversions are stored per ingredient (`1 from_unit = factor × stocking_unit`) and applied at every point quantities cross units — recipes *and* goods receipt.
+### 4.6 Recipes & units (brought forward 2026-09-28)
+- **Base unit:** every ingredient has one base unit (`g`, `mL` or `pc`). Stock, cost, recipes and the ledger use only that unit.
+- **Unit catalog:** a fixed server-side catalog with exact factors converts same-dimension units automatically.
+- **Ingredient units:** each ingredient can add its own units, each with a single factor to its base unit (`sack = 25000 g`, `cup = 120 g`). There are no chains and no inverse pairs, and a unit can't redefine a same-dimension catalog code.
+- A recipe line stores quantity per one unit of product **in the base unit** (plus the entered qty and unit).
+- **Product stock modes:** `own` (sold as-is, own stock), `recipe` (made to order, deducts components; no stock of its own), `none`. A recipe component is an ingredient or an `own` product. No nesting.
+- **Depletion:** it happens server-side in the sale transaction, and it never blocks.
+  - A **void returns** the components at their snapshot cost (`order_item_components`). An ingredient's average cost is re-weighted like a receipt, so value reconciles.
+  - A **refund** reports them as wasted; no stock comes back. The waste is recorded in `refund_item_components` and counted on the refund's day.
+- Unit conversion is a **server-side, enforced** concern, done with exact decimal math and applied at every point quantities cross units: recipes *and* goods receipt.
 - A quantity in a unit with no known conversion is **rejected**, never silently stored as-is.
 - Changing an ingredient's stocking unit requires an explicit migration path; it may not silently invalidate existing recipes and stock.
 
@@ -164,11 +178,11 @@ PR raised → **approved by someone other than the requester** → manually conv
 - Every transition requires permission, a reason, and is written to `audit_logs`.
 - Reversing stock movements are mandatory and part of the same transaction.
 
-### 4.8 Purchasing (v2, corrected)
-- **Separation of duties**: the requester may not approve their own PR or PO.
-- One PO **per supplier** (legacy forced one PO per PR with a null supplier — wrong).
+### 4.8 Purchasing (corrected; user decisions 2026-09-28)
+- **Only the Owner approves** (2026-09-30): `purchase.approve` and `purchase.approve_own` are owner-only. Managers request and receive; the Owner decides PR items and approves POs, including their own (audited as `self_approved`).
+- **One PO per PR, each line carrying its own supplier** (user decision; the legacy PO had a `null` supplier). A partly declined PR still yields a PO for its approved items.
 - Receiving is **append-only**: each receipt is its own record with quantity, unit, unit cost, and receiver. `quantity_received` on the PO line is a derived sum, never an overwritten field.
-- Over-receipt is blocked; **under-receipt and corrections are supported** via a negative/corrective receipt, which properly reverses stock.
+- **Over-receipt is allowed and flagged** (`over_received`). **Corrections** are negative receipt lines with a reason, which properly reverse stock; the received total can't go below 0.
 - Weighted average cost on receipt (preserved from legacy, which was correct):
   `newCost = ((oldQty × oldCost) + (receivedQty × unitCost)) / (oldQty + receivedQty)`
   with `newQty == 0` leaving cost unchanged, and quantities **converted to the stocking unit first**.
@@ -237,7 +251,7 @@ PR raised → **approved by someone other than the requester** → manually conv
 **Printing**
 - `printers` — branch_id, name, role (`cashier|kitchen|bar`), connection (`network|bluetooth`), host, port, is_enabled
 - `print_routes` — branch_id, category_id, printer_id
-- `order_item_prints` — order_item_id, printer_id, `sent_qty` *(drives kitchen-ticket deltas; replaces legacy `ct_printed_qty`)*
+- `order_item_prints` — order_item_id, printer_id, `sent_qty` *(drives kitchen-ticket deltas; replaces legacy `ct_printed_qty`)* *(deferred: not needed while sales are pay-first.)*
 
 **Platform**
 - `audit_logs` — actor_id, action, subject_type, subject_id, changes (json), ip, created_at
@@ -294,7 +308,8 @@ POST   /api/v1/auth/pin                   fast cashier switch on a registered de
 POST   /api/v1/auth/logout
 GET    /api/v1/auth/me                    identity + role + branch + permissions[]
 
-GET    /api/v1/sync/changes?since=<cursor>   delta pull: catalogue, users, printers, settings, tombstones
+GET    /api/v1/sync/catalogue?cursor=<c>     Phase 2: delta pull of categories + products, tombstones (see api-contract.md)
+GET    /api/v1/sync/changes?since=<cursor>   Phase 5: delta pull of users, printers, settings, tombstones
 POST   /api/v1/sync/orders                   batch ingest (array), per-item result
 
 GET    /api/v1/categories
@@ -328,7 +343,7 @@ CRUD   /api/v1/admin/{products|categories|users|printers|settings}
 - All list endpoints support `updated_since` for delta sync and return tombstones for deletions.
 
 ### 6.5 Auth & RBAC
-- **Sanctum personal access tokens**, bound to a registered `device`, with expiry and per-device revocation. Stored client-side in `expo-secure-store`.
+- **Sanctum personal access tokens** with expiry, stored client-side in `expo-secure-store`. **Login is email + password only** (tokens named `mobile-app`). Staff never type a device code *(changed 2026-09-24; tokens were originally device-bound)*. Device identity, needed for offline `order_no` (§8.5), will be established silently by the app (a per-install id registered with the server) in the offline phase. The `devices` table is kept for that.
 - **PIN quick-switch**: one device, many cashiers. A short PIN re-authenticates an already-provisioned user within a device session without a full login.
 - **Permissions are data**, not hardcoded ids (legacy compared `role_id === 2` in React). `/auth/me` returns a `permissions[]` array; the client uses it **only** to hide UI. Authority is always server-side.
 - Every mutating endpoint calls `authorize()`. Suggested permission slugs: `sale.create`, `sale.void`, `sale.refund`, `discount.apply`, `discount.override`, `shift.open`, `shift.close`, `product.manage`, `user.manage`, `report.view`, `report.zread`, `purchase.approve` (v2), `inventory.adjust`.
@@ -349,7 +364,7 @@ Rate-limit auth endpoints. Strong password policy (legacy used the 8-character d
 ## 7. React Native Architecture
 
 ### 7.1 Stack
-Expo (SDK latest) · **Expo Dev Client / EAS Build — NOT Expo Go** (native TCP + SQLite modules) · TypeScript strict · Expo Router · TanStack Query · Zustand · `expo-sqlite` + Drizzle ORM · `expo-secure-store` · `react-native-tcp-socket` · `esc-pos-encoder`.
+Expo (SDK latest) · **Expo Dev Client / EAS Build — NOT Expo Go** (native TCP + SQLite modules) · TypeScript strict · Expo Router · TanStack Query · Zustand · `expo-sqlite` + Drizzle ORM · `expo-secure-store` · a local Expo Module `modules/pos-printer` (TCP) · an in-house ESC/POS builder *(2026-09-26: replaced `react-native-tcp-socket`, which lacks New Architecture support, and the deprecated `esc-pos-encoder`)*.
 
 ### 7.2 Structure
 ```
@@ -442,9 +457,9 @@ This is possible *because* the client is now a native app. The legacy system was
 
 ### 9.3 How it works
 1. Sale completes locally → a print job is built from local data.
-2. `esc-pos-encoder` renders the ESC/POS byte stream (58/80mm aware).
-3. `react-native-tcp-socket` connects to `printer.host:9100`, writes, waits for drain, closes.
-4. Outcome recorded locally per job; kitchen-ticket deltas update `order_item_prints.sent_qty` **only for the printer that actually succeeded**.
+2. An in-house ESC/POS builder (`src/printing/escpos`, CP437) renders the byte stream (58 mm = 32, 80 mm = 48 columns).
+3. The local Expo Module `modules/pos-printer` (Kotlin) connects to `printer.host:port`, writes, drains, closes.
+4. The outcome is recorded locally per job in the persistent `print_jobs` queue (pay-first: no `sent_qty` deltas).
 
 ### 9.4 Configuration & routing
 Printers are configured server-side (`printers` table) and synced to the device, with a local override for a printer's IP so a device can be repointed without a server round-trip. `print_routes` maps category → printer (food → kitchen, drinks → bar); unmapped categories fall back to the branch default. A **"Test print"** action per printer is a first-class feature — the legacy system's single hardest problem was not knowing which printer IP was actually correct.
@@ -453,7 +468,7 @@ Printers are configured server-side (`printers` table) and synced to the device,
 - Local print queue with retry (3 attempts, exponential backoff) and a 5-second connect timeout.
 - **A print failure never blocks or reverses a sale.** It raises a clear, actionable banner: "Kitchen ticket failed — printer offline. [Retry] [Reprint]".
 - Every order is reprintable from order history, indefinitely.
-- Printer reachability is checked on shift open and surfaced before service begins, not at the first sale.
+- Printer reachability is probed when the Sell screen opens (at most once a minute) until shifts arrive in Phase 6.
 
 ### 9.6 Deferred
 Bluetooth transport (for printers out of WiFi range, ~10m limit) and a server-side bridge (for printing triggered by a device not on the store LAN, e.g. online orders) are both **v3**, and the printing layer is abstracted behind a `PrintTransport` interface so either can be added without touching receipt-building code.
@@ -465,13 +480,15 @@ Bluetooth transport (for printers out of WiFi range, ~10m limit) and a server-si
 | Phase | Deliverable | Exit criteria |
 |---|---|---|
 | **0. Foundations** | Repos, CI, Docker/local env, schema migrations, seeders, Sanctum auth, roles/permissions, policies, OpenAPI, **isolated test DB** | A cashier and an admin can log in; a policy denies a forbidden action; `pest` and `jest` green in CI |
-| **1. Catalogue & admin API** | Categories, products, customers, users, printers, settings; cursor pagination; image upload to object storage | Admin CRUD fully usable via API with authorization enforced and paginated responses |
-| **2. RN shell** | Expo Router app, dev-client build, login + PIN, secure token storage, SQLite + Drizzle, delta pull of catalogue | App installs on the tablet, logs in, browses the real menu offline after one sync |
-| **3. Core sale (online)** | Local cart, checkout, split payments, discounts, VAT, `CompleteSaleAction`, stock movements, idempotency | A sale completes, totals are server-computed, stock moves, a replayed request creates no duplicate |
-| **4. Printing** | ESC/POS builders, TCP transport, routing, kitchen deltas, retry, test print, reprint | Receipt and kitchen ticket print reliably from the tablet; a dead printer never loses a sale |
+| **1. Catalogue & admin API** | Split *(2026-09-24)*: **1a** categories, products and images, plus app menu-management screens; **1b** users and customers; **1c** app shell with a permission-filtered **sidebar of all modules** (planned modules marked "Soon") and a **dashboard** of real operational KPIs, charts and insights (`sales` stays reserved/`null` until orders exist). Printers and settings moved to Phase 4, where they are first needed. Cursor pagination; images on the local disk in dev, S3-compatible storage in prod (Cloudflare R2 suggested). | Admin CRUD fully usable via API with authorization enforced and paginated responses |
+| **2. RN shell** | Expo Router app, dev-client build (EAS `development` profile), login, secure token storage, SQLite + Drizzle, delta pull of catalogue via `GET /sync/catalogue`, read-only offline **Sell** menu screen. *(2026-09-24: PIN moved to Phase 3.)* | App installs on the tablet, logs in, browses the real menu offline after one sync |
+| **3. Core sale (online)** | **PIN quick-switch** (moved from Phase 2; sales make cashier attribution matter), local cart, checkout, split payments, discounts, VAT, `CompleteSaleAction`, stock movements, idempotency. *(2026-09-25: no shift required yet; SC/PWD deferred; adds a minimal stock adjustment, order history, today's dashboard sales, and line discounts. See api-contract.md "Core Sale (Phase 3)".)* | A sale completes, totals are server-computed, stock moves, a replayed request creates no duplicate |
+| **4. Printing** | Printers and settings admin (moved from Phase 1), ESC/POS builders, TCP transport, routing, kitchen deltas, retry, test print, reprint | Receipt and kitchen ticket print reliably from the tablet; a dead printer never loses a sale |
 | **5. Offline-first** | Outbox, sync worker, delta pull, offline numbering, advisory stock, sync UX, review queue | **Airplane-mode acceptance test**: 20 sales offline, all print, all reconcile on reconnect, zero duplicates, zero losses |
-| **6. Shifts & reporting** | Open/close, cash variance, X/Z read, dashboard + sales reports (SQL-aggregated) | A shift closes with a correct variance; dashboard responds <500ms on a year of seeded data |
-| **7. Voids & refunds** | Void, full/partial refund, authorization, reversing movements, audit log | Stock and revenue reconcile exactly after a void and a partial refund |
+| **6. Shifts & reporting** | Open/close, cash variance, X/Z read, dashboard + sales reports (SQL-aggregated). From this phase a sale requires an open shift (`orders.shift_ulid`; earlier orders have none). *(2026-09-27, done: one shift per tablet, offline-capable through the outbox; cash in/out; X/Z-read computed and printed on the tablet; Shifts and Reports screens; CSV export. Report speed comes from report columns copied onto `order_items`/`payments` (`branch_id`, `business_date`) and `orders.items_qty`. Phase 7 reversals must keep them consistent.)* | A shift closes with a correct variance; dashboard responds <500ms on a year of seeded data |
+| **7. Voids & refunds** | Void, full/partial refund, authorization, reversing movements, audit log. *(2026-09-27, done: void only while the sale's shift is open, on the tablet that sold it; refunds full or per line with no time limit; manager PIN approval; money back by the method paid; VOID kitchen ticket, void and refund slips; online only. Refunds live in `refunds`/`refund_items`/`refund_payments` (not negative `payments` rows) and count on their own business day and shift.)* | Stock and revenue reconcile exactly after a void and a partial refund |
+| **7b. Inventory (v1 completion)** *(added 2026-09-27)* | Stock list with derived In stock / Low / Out status and a per-product reorder level; movement history with running balance; stock in / count / wastage; dashboard stock alerts; Low/Out badges on Sell tiles; inventory report + CSV (contract "Inventory (v1 completion)") | Report reconciles opening + received − sold + returned − wasted + adjusted = closing; report <500ms on a year of movements |
+| **7c. Ingredients, Recipes & Purchasing** *(brought forward from v2, 2026-09-28)* | **Round A (done 2026-09-29):** unit catalog + per-ingredient units, ingredient stock with weighted-average cost, suppliers, PR (per-item decisions) → one PO per PR → append-only receiving, purchasing report, insights. **Round B (done 2026-09-29):** product stock modes (`track_stock` now generated from `stock_mode`), recipes with cost and margin, depletion on sale online and offline (never blocks), void returns, refund wastage, Sell `Check stock` badges | Unit math exact (examples G–J); ledger and value invariants hold; purchasing and sales reports <500ms on the real MySQL |
 | **8. Hardening & pilot** | Load/soak test, crash reporting, backup/restore, device provisioning, staff training | Runs a full real service day with no data loss |
 | **v2** | Ingredients, recipes, enforced unit conversion, suppliers, PR → PO → goods receipt, weighted-average costing | Ingredient stock depletes on sale; a receipt updates cost correctly in the stocking unit |
 | **v3** | Multi-branch activation, Bluetooth printing, server-side print bridge, loyalty | — |
@@ -494,7 +511,7 @@ Bluetooth transport (for printers out of WiFi range, ~10m limit) and a server-si
 | 6 | Events push / reference pulls | Removes essentially all sync conflicts by construction | Bidirectional sync with LWW or CRDTs — unjustified complexity |
 | 7 | Offline sales are never rejected for stock | The money already changed hands | Rejecting at sync — books contradict the drawer |
 | 8 | Direct TCP printing from the tablet | Native app removes the browser limitation that forced a PC bridge | Print-agent bridge (built for legacy; a maintenance burden and a single point of failure) |
-| 9 | Sanctum PATs + device binding + PIN switch | Mobile-appropriate; matches one-tablet-many-cashiers reality | Session cookies (unusable in RN) |
+| 9 | Sanctum PATs (email + password login; device identity registered silently, not typed) + PIN switch | Mobile-appropriate; matches one-tablet-many-cashiers reality | Session cookies (unusable in RN) |
 | 10 | Permissions as data, enforced by policies | Legacy hardcoded `role_id === 2` in React with zero server checks | Role-name string checks |
 | 11 | Branch id derived from the token, never from input | Legacy accepted `branch_id` from the request body | Trusting client-supplied scope |
 | 12 | Denormalised snapshots on order lines | Master-data edits must never rewrite financial history | Joining to live products (legacy) |

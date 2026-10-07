@@ -2,8 +2,10 @@ import { router } from 'expo-router';
 
 import {
   api,
+  buildQuery,
   ApiError,
   ApiValidationError,
+  LOGIN_FAILED_MESSAGE,
   NETWORK_ERROR_MESSAGE,
   TIMEOUT_ERROR_MESSAGE,
 } from '@/services/api';
@@ -83,7 +85,7 @@ describe('api client', () => {
     expect(validation.message).toBe(body.message);
     expect(validation.errors).toEqual(body.errors);
     expect(validation.firstError('email')).toBe('The email field is required.');
-    expect(validation.firstError('device_code')).toBeNull();
+    expect(validation.firstError('name')).toBeNull();
   });
 
   it('on 401 clears the stored token and session, and redirects to login once for parallel requests', async () => {
@@ -109,15 +111,30 @@ describe('api client', () => {
     expect(router.replace).toHaveBeenCalledWith('/login');
   });
 
-  it('does not treat a 401 from an unauthenticated endpoint as a session expiry', async () => {
+  it("does not treat login's 401 (auth: false) as a session expiry, and keeps the server message", async () => {
+    await saveSession(TOKEN, '2026-09-25T01:30:00Z', cashierUser);
     useSessionStore.getState().setSignedIn(cashierUser, '2026-09-25T01:30:00Z');
-    fetchMock.mockResolvedValueOnce(mockResponse(401, { message: 'Unauthenticated.' }));
+    fetchMock.mockResolvedValueOnce(mockResponse(401, { message: 'Invalid email or password.' }));
 
-    await expect(api.post('/api/v1/auth/login', {}, { auth: false })).rejects.toBeInstanceOf(ApiError);
+    const error = (await api
+      .post('/api/v1/auth/login', { email: 'a@b.c', password: 'x' }, { auth: false })
+      .catch((e: unknown) => e)) as ApiError;
     await flushTimers();
 
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.status).toBe(401);
+    expect(error.message).toBe('Invalid email or password.');
     expect(useSessionStore.getState().status).toBe('signedIn');
+    expect(await secureStoreMock().getItemAsync('pos.auth.token')).toBe(TOKEN);
     expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('uses a login-specific fallback when an unauthenticated 401 has no message', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse(401));
+
+    const error = (await api.post('/api/v1/auth/login', {}, { auth: false }).catch((e: unknown) => e)) as ApiError;
+
+    expect(error.message).toBe(LOGIN_FAILED_MESSAGE);
   });
 
   it('throws a friendly network error when the server is unreachable', async () => {
@@ -183,5 +200,51 @@ describe('api base URL', () => {
       const { API_BASE_URL } = require('@/services/api') as typeof import('@/services/api');
       expect(API_BASE_URL).toBe(BASE);
     });
+  });
+});
+
+describe('api client: multipart (FormData) bodies', () => {
+  type Part = { fieldName: string; uri?: string; name?: string; type?: string };
+
+  it('sends FormData as-is: no Content-Type (fetch adds the boundary), not stringified, Accept + Bearer kept', async () => {
+    await saveSession(TOKEN, '2026-09-25T01:30:00Z', cashierUser);
+    fetchMock.mockResolvedValueOnce(mockResponse(200, { data: { id: 7 } }));
+    const form = new FormData();
+    form.append('image', { uri: 'file:///cache/p.jpg', name: 'product-7.jpg', type: 'image/jpeg' } as unknown as Blob);
+
+    const result = await api.post<{ data: { id: number } }>('/api/v1/admin/products/7/image', form);
+
+    const { url, init, headers } = lastRequest();
+    expect(url).toBe(`${BASE}/api/v1/admin/products/7/image`);
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe(form);
+    expect(headers['Content-Type']).toBeUndefined();
+    expect(headers.Accept).toBe('application/json');
+    expect(headers.Authorization).toBe(`Bearer ${TOKEN}`);
+    expect((init.body as unknown as { getParts: () => Part[] }).getParts()).toEqual([
+      expect.objectContaining({ fieldName: 'image', uri: 'file:///cache/p.jpg', name: 'product-7.jpg', type: 'image/jpeg' }),
+    ]);
+    expect(result.data.id).toBe(7);
+  });
+
+  it('still maps a 422 on an upload to ApiValidationError with the image message', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse(422, { message: 'The image field must be an image.', errors: { image: ['The image field must be an image.'] } }),
+    );
+
+    const error = await api.post('/api/v1/admin/products/7/image', new FormData()).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiValidationError);
+    expect((error as ApiValidationError).firstError('image')).toBe('The image field must be an image.');
+  });
+});
+
+describe('buildQuery', () => {
+  it('skips empty values, encodes text and sends booleans as 1/0', () => {
+    expect(buildQuery({ per_page: 25, cursor: undefined, search: 'egg & rice', is_available: false, category_id: null, x: '' })).toBe(
+      '?per_page=25&search=egg%20%26%20rice&is_available=0',
+    );
+    expect(buildQuery({ is_active: true })).toBe('?is_active=1');
+    expect(buildQuery({})).toBe('');
   });
 });

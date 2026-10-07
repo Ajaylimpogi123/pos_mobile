@@ -8,5 +8,5 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Expired device tokens no longer authenticate; remove them from the table daily.
+// Expired API tokens no longer authenticate; remove them from the table daily.
 Schedule::command('sanctum:prune-expired --hours=24')->daily();

@@ -2,42 +2,30 @@
 
 namespace App\Http\Requests\Admin;
 
-use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\CursorListRequest;
+use App\Models\User;
 
-class ListUsersRequest extends FormRequest
+/**
+ * GET /api/v1/admin/users (permission `user.manage`).
+ */
+class ListUsersRequest extends CursorListRequest
 {
-    public const DEFAULT_PER_PAGE = 25;
+    protected array $booleanFilters = ['is_active'];
 
     /**
-     * Authorization is enforced in the controller via UserPolicy@viewAny.
+     * Checked before validation, so a caller without the permission always gets 403.
      */
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->can('viewAny', User::class) ?? false;
     }
 
-    /**
-     * @return array<string, ValidationRule|array<mixed>|string>
-     */
-    public function rules(): array
+    protected function filterRules(): array
     {
         return [
-            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
-            'cursor' => ['sometimes', 'string'],
             'search' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'role_id' => ['sometimes', 'integer'],
+            'is_active' => ['sometimes', 'boolean'],
         ];
-    }
-
-    public function perPage(): int
-    {
-        return (int) $this->validated('per_page', self::DEFAULT_PER_PAGE);
-    }
-
-    public function search(): ?string
-    {
-        $search = trim((string) $this->validated('search', ''));
-
-        return $search === '' ? null : $search;
     }
 }

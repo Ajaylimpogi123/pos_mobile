@@ -12,7 +12,6 @@ export const cashierUser: AuthUser = {
   last_login_at: '2026-09-24T01:30:00Z',
   role: { id: 3, slug: 'cashier', name: 'Cashier', max_discount_percent: 10, is_admin: false },
   branch: { id: 1, code: 'MAIN', name: 'Main Branch', timezone: 'Asia/Manila', day_start_time: '04:00' },
-  device: { id: 1, code: 'TAB01', name: 'Counter Tablet 1' },
   permissions: ['discount.apply', 'sale.create', 'shift.close', 'shift.open'],
 };
 
@@ -48,3 +47,15 @@ export function installFetchMock(): jest.Mock {
 export function flushTimers(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
+
+export { DEFAULT_WINDOW, resetWindowSize, setWindowSize } from './window';
+
+/** The six reference sizes (width × height) every screen is checked at. */
+export const REFERENCE_SIZES = {
+  phonePortraitSmall: { width: 360, height: 640 },
+  phoneLandscapeSmall: { width: 640, height: 360 },
+  phonePortrait: { width: 430, height: 932 },
+  phoneLandscape: { width: 932, height: 430 },
+  tabletPortrait: { width: 800, height: 1280 },
+  tabletLandscape: { width: 1280, height: 800 },
+} as const;

@@ -5,7 +5,7 @@ use App\Models\User;
 
 beforeEach(function () {
     seedRoles();
-    [$this->branch, $this->device] = mainBranchWithDevice();
+    $this->branch = mainBranch();
 
     $this->manager = User::factory()->forBranch($this->branch)->withRole('manager')->create(['name' => 'Marco Manager']);
 });
@@ -16,12 +16,12 @@ it('lists users for a manager in the exact cursor pagination shape', function ()
         'email' => 'cashier@pos.test',
     ]);
 
-    $response = $this->withToken(tokenFor($this->manager, $this->device))->getJson('/api/v1/admin/users');
+    $response = $this->withToken(tokenFor($this->manager))->getJson('/api/v1/admin/users');
 
     $response->assertOk()
         ->assertJsonStructure([
             'data' => [[
-                'id', 'name', 'email', 'is_active', 'last_login_at',
+                'id', 'name', 'email', 'is_active', 'has_pin', 'can_manage', 'last_login_at',
                 'role' => ['id', 'slug', 'name'],
                 'created_at', 'updated_at',
             ]],
@@ -39,6 +39,8 @@ it('lists users for a manager in the exact cursor pagination shape', function ()
             'name' => 'Carla Cashier',
             'email' => 'cashier@pos.test',
             'is_active' => true,
+            'has_pin' => false,
+            'can_manage' => true,
             'last_login_at' => null,
             'role' => ['id' => $cashier->role_id, 'slug' => 'cashier', 'name' => 'Cashier'],
             'created_at' => $cashier->created_at->toIso8601ZuluString(),
@@ -46,13 +48,14 @@ it('lists users for a manager in the exact cursor pagination shape', function ()
         ]);
 
     expect(array_keys($response->json()))->toBe(['data', 'links', 'meta'])
-        ->and(array_keys($response->json('meta')))->toBe(['path', 'per_page', 'next_cursor', 'prev_cursor']);
+        ->and(array_keys($response->json('meta')))->toBe(['path', 'per_page', 'next_cursor', 'prev_cursor'])
+        ->and(array_keys($response->json('data.0')))->toBe(staffUserKeys());
 });
 
 it('allows an owner', function () {
     $owner = User::factory()->forBranch($this->branch)->withRole('owner')->create();
 
-    $this->withToken(tokenFor($owner, $this->device))
+    $this->withToken(tokenFor($owner))
         ->getJson('/api/v1/admin/users')
         ->assertOk()
         ->assertJsonCount(2, 'data');
@@ -61,7 +64,7 @@ it('allows an owner', function () {
 it('forbids a cashier', function () {
     $cashier = User::factory()->forBranch($this->branch)->withRole('cashier')->create();
 
-    $this->withToken(tokenFor($cashier, $this->device))
+    $this->withToken(tokenFor($cashier))
         ->getJson('/api/v1/admin/users')
         ->assertForbidden()
         ->assertExactJson(['message' => 'This action is unauthorized.']);
@@ -80,7 +83,7 @@ it('only lists users of the caller\'s branch, excludes soft-deleted and includes
     $deleted = User::factory()->forBranch($this->branch)->withRole('cashier')->create(['name' => 'Dora Deleted']);
     $deleted->delete();
 
-    $response = $this->withToken(tokenFor($this->manager, $this->device))
+    $response = $this->withToken(tokenFor($this->manager))
         ->getJson('/api/v1/admin/users')
         ->assertOk();
 
@@ -98,7 +101,7 @@ it('orders by name then id and paginates with a cursor', function () {
     $amy1 = User::factory()->forBranch($this->branch)->withRole('cashier')->create(['name' => 'Amy']);
     $amy2 = User::factory()->forBranch($this->branch)->withRole('cashier')->create(['name' => 'Amy']);
 
-    $token = tokenFor($this->manager, $this->device);
+    $token = tokenFor($this->manager);
 
     $page1 = $this->withToken($token)->getJson('/api/v1/admin/users?per_page=2')->assertOk();
     $page1->assertJsonPath('meta.per_page', 2)->assertJsonPath('meta.prev_cursor', null);
@@ -122,7 +125,7 @@ it('searches name or email case-insensitively', function () {
     ]);
     User::factory()->forBranch(Branch::factory()->create())->withRole('cashier')->create(['name' => 'Carla Elsewhere']);
 
-    $token = tokenFor($this->manager, $this->device);
+    $token = tokenFor($this->manager);
 
     $byName = $this->withToken($token)->getJson('/api/v1/admin/users?search=CARLA')->assertOk();
     expect(collect($byName->json('data'))->pluck('id')->all())->toBe([$carla->id]);
@@ -136,14 +139,14 @@ it('searches name or email case-insensitively', function () {
 
 describe('validation (422)', function () {
     it('rejects per_page above 100', function () {
-        $this->withToken(tokenFor($this->manager, $this->device))
+        $this->withToken(tokenFor($this->manager))
             ->getJson('/api/v1/admin/users?per_page=101')
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['per_page' => 'The per page field must not be greater than 100.']);
     });
 
     it('rejects per_page below 1 and non-integers', function () {
-        $token = tokenFor($this->manager, $this->device);
+        $token = tokenFor($this->manager);
 
         $this->withToken($token)->getJson('/api/v1/admin/users?per_page=0')
             ->assertUnprocessable()
@@ -155,14 +158,14 @@ describe('validation (422)', function () {
     });
 
     it('accepts per_page of exactly 100', function () {
-        $this->withToken(tokenFor($this->manager, $this->device))
+        $this->withToken(tokenFor($this->manager))
             ->getJson('/api/v1/admin/users?per_page=100')
             ->assertOk()
             ->assertJsonPath('meta.per_page', 100);
     });
 
     it('rejects a search longer than 100 characters', function () {
-        $this->withToken(tokenFor($this->manager, $this->device))
+        $this->withToken(tokenFor($this->manager))
             ->getJson('/api/v1/admin/users?search='.str_repeat('a', 101))
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['search' => 'The search field must not be greater than 100 characters.']);

@@ -1,11 +1,14 @@
 <?php
 
+use App\Http\Middleware\EnsureIdempotentRequest;
 use App\Http\Middleware\EnsureSessionIsActive;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\SubstituteBindings;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -19,7 +22,16 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'session.active' => EnsureSessionIsActive::class,
+            'idempotent' => EnsureIdempotentRequest::class,
         ]);
+
+        // Check the session right after authentication and before route model binding,
+        // so a deactivated user gets 401 (not 404) even for an unknown id.
+        $middleware->prependToPriorityList(SubstituteBindings::class, EnsureSessionIsActive::class);
+
+        // The idempotency replay check runs after the session check and before route model
+        // binding and validation, so a replay returns the stored response unchanged.
+        $middleware->prependToPriorityList(SubstituteBindings::class, EnsureIdempotentRequest::class);
 
         // There is no web login page. API guests get a JSON 401 (never a redirect),
         // even when the client omits the Accept header.
@@ -49,5 +61,15 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($request->is('api/*')) {
                 return response()->json(['message' => 'Too Many Attempts.'], 429, $e->getHeaders());
             }
+        });
+
+        // Any 500 on api/* gets the contract body, in every environment. The exception is
+        // still reported to the log; the response never carries its message or trace.
+        $exceptions->respond(function (Response $response, Throwable $e, Request $request) {
+            if ($request->is('api/*') && $response->getStatusCode() === 500) {
+                return response()->json(['message' => 'Server Error.'], 500);
+            }
+
+            return $response;
         });
     })->create();

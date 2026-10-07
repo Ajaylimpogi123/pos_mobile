@@ -38,7 +38,7 @@ return [
     */
 
     // Token-only API: no session guard is consulted, so every request must
-    // carry a device-bound bearer token (see EnsureSessionIsActive).
+    // carry a bearer token (see EnsureSessionIsActive).
     'guard' => [],
 
     /*

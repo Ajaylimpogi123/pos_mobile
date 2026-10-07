@@ -7,11 +7,13 @@ use Database\Factories\UserFactory;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 use Laravel\Sanctum\NewAccessToken;
 
@@ -24,6 +26,11 @@ class User extends Authenticatable
 
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, SoftDeletes;
+
+    /**
+     * The name given to every token issued by POST /api/v1/auth/login.
+     */
+    public const API_TOKEN_NAME = 'mobile-app';
 
     /**
      * Memoised permission slugs for this instance (sorted, unique).
@@ -40,11 +47,25 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
+            'branch_id' => 'integer',
+            'role_id' => 'integer',
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
             'last_login_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Emails are stored lowercased and trimmed (on create and on update).
+     *
+     * @return Attribute<string|null, string|null>
+     */
+    protected function email(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value) => $value === null ? null : Str::lower(trim($value)),
+        );
     }
 
     /**
@@ -91,23 +112,45 @@ class User extends Authenticatable
     }
 
     /**
-     * Issue a new Sanctum token bound to the given device, in a single insert.
+     * The role hierarchy ("you can't grant what you don't have"): this user may
+     * view, edit, reset, deactivate or delete the target only if the target's role
+     * grants no permission this user lacks. Always true for the user's own record
+     * (the self-protection rules are enforced separately).
      */
-    public function createDeviceToken(Device $device, DateTimeInterface $expiresAt, array $abilities = ['*']): NewAccessToken
+    public function canManage(User $target): bool
     {
-        $plainTextToken = $this->generateTokenString();
+        $role = $target->role;
 
-        /** @var PersonalAccessToken $token */
-        $token = $this->tokens()->create([
-            'name' => $device->code,
-            'token' => hash('sha256', $plainTextToken),
-            'abilities' => $abilities,
-            'expires_at' => $expiresAt,
-            'device_id' => $device->getKey(),
-        ]);
+        return $role !== null && $role->isGrantableBy($this);
+    }
 
-        $token->setRelation('device', $device);
+    /**
+     * Whether a quick-switch PIN is set.
+     */
+    public function hasPin(): bool
+    {
+        return $this->pin_hash !== null;
+    }
 
-        return new NewAccessToken($token, $token->getKey().'|'.$plainTextToken);
+    /**
+     * Revoke the user's API tokens, optionally keeping one (e.g. the caller's current
+     * token). Returns the number of tokens revoked.
+     */
+    public function revokeApiTokens(?int $exceptTokenId = null): int
+    {
+        return $this->tokens()
+            ->when($exceptTokenId !== null, fn ($query) => $query->whereKeyNot($exceptTokenId))
+            ->delete();
+    }
+
+    /**
+     * Issue a new Sanctum API token for the mobile app (not bound to a device;
+     * `device_id` stays null). Other tokens the user holds are left alone.
+     *
+     * @param  list<string>  $abilities
+     */
+    public function createApiToken(DateTimeInterface $expiresAt, array $abilities = ['*']): NewAccessToken
+    {
+        return $this->createToken(self::API_TOKEN_NAME, $abilities, $expiresAt);
     }
 }

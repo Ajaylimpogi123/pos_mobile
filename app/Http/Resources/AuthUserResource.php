@@ -2,14 +2,12 @@
 
 namespace App\Http\Resources;
 
-use App\Models\PersonalAccessToken;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * The contract's `AuthUser` object. `device` is the device the current
- * access token is bound to.
+ * The contract's `AuthUser` object.
  *
  * @mixin User
  */
@@ -22,9 +20,6 @@ class AuthUserResource extends JsonResource
     {
         /** @var User $user */
         $user = $this->resource;
-
-        $token = $user->currentAccessToken();
-        $device = $token instanceof PersonalAccessToken ? $token->device : null;
 
         return [
             'id' => $user->id,
@@ -45,11 +40,6 @@ class AuthUserResource extends JsonResource
                 'name' => $user->branch->name,
                 'timezone' => $user->branch->timezone,
                 'day_start_time' => $user->branch->dayStartHourMinute(),
-            ],
-            'device' => $device === null ? null : [
-                'id' => $device->id,
-                'code' => $device->code,
-                'name' => $device->name,
             ],
             'permissions' => $user->permissionSlugs(),
         ];

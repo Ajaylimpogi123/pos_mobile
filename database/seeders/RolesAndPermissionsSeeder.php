@@ -7,7 +7,11 @@ use App\Models\Role;
 use Illuminate\Database\Seeder;
 
 /**
- * Roles and permissions: identical in every environment. Idempotent.
+ * Roles and permissions: identical in every environment. Idempotent: re-running it on
+ * an existing database adds new permissions (e.g. `customer.manage`, `settings.manage`, `order.review`,
+ * and the purchasing slugs `purchase.*` / `supplier.manage`) and re-syncs
+ * each role's grants, which also revokes grants a role no longer has (e.g. the
+ * Manager's `purchase.approve`, owner-only since contract v1.20.2).
  */
 class RolesAndPermissionsSeeder extends Seeder
 {
@@ -16,19 +20,34 @@ class RolesAndPermissionsSeeder extends Seeder
      */
     public const PERMISSIONS = [
         'branch.all' => 'Act across all branches (owner override of branch scoping)',
+        'customer.manage' => 'Delete customer records',
         'discount.apply' => 'Apply a discount within the role limit',
         'discount.override' => 'Authorize a discount above another user\'s limit',
         'inventory.adjust' => 'Adjust stock levels',
+        'order.review' => 'Review flagged offline sales',
         'product.manage' => 'Create and edit products and categories',
+        'purchase.approve' => 'Decide purchase request items; approve or decline purchase orders',
+        'purchase.approve_own' => 'Decide or approve a purchase request or order you created',
+        'purchase.receive' => 'Record goods receipts',
+        'purchase.request' => 'Create or edit purchase requests',
         'report.view' => 'View reports',
         'report.zread' => 'Run the Z-read (end-of-day) report',
         'sale.create' => 'Ring up sales',
         'sale.refund' => 'Refund a completed sale',
         'sale.void' => 'Void a completed sale',
+        'settings.manage' => 'Manage printers and receipt settings',
         'shift.close' => 'Close a cash shift',
         'shift.open' => 'Open a cash shift',
+        'supplier.manage' => 'Manage suppliers',
         'user.manage' => 'Manage staff accounts',
     ];
+
+    /**
+     * Owner-only permissions: the Manager role gets every other one (Ingredients, Recipes &
+     * Purchasing, contract v1.20.2: only the Owner decides PR items and approves or declines
+     * POs, including the Owner's own PRs and POs).
+     */
+    public const OWNER_ONLY = ['branch.all', 'purchase.approve', 'purchase.approve_own'];
 
     public function run(): void
     {
@@ -51,7 +70,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 'name' => 'Manager',
                 'is_admin' => true,
                 'max_discount_percent' => 100,
-                'permissions' => array_values(array_diff(array_keys(self::PERMISSIONS), ['branch.all'])),
+                'permissions' => array_values(array_diff(array_keys(self::PERMISSIONS), self::OWNER_ONLY)),
             ],
             'cashier' => [
                 'name' => 'Cashier',
