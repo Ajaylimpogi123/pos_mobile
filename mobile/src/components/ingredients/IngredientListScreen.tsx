@@ -1,15 +1,20 @@
 import { router } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { useMemo } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { IngredientCard } from '@/components/ingredients/IngredientCard';
-import { CardGrid, type GridEmptyProps } from '@/components/shared/CardGrid';
+import { CardGrid, type GridEmptyProps, type GridTable } from '@/components/shared/CardGrid';
 import { ListFilters } from '@/components/shared/ListFilters';
 import { ListHeader } from '@/components/shared/ListHeader';
+import { ListToolbar } from '@/components/shared/ListToolbar';
+import { Chip } from '@/components/ui/Chip';
+import { CellText } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Screen } from '@/components/ui/Screen';
 import type { SegmentOption } from '@/components/ui/SegmentedControl';
 import { ingredientRoute, ROUTES } from '@/constants/routes';
+import { spacing } from '@/constants/theme';
 import { INGREDIENTS_OFFLINE_MESSAGE, useIngredientListScreen, type IngredientSegment } from '@/hooks/ingredients/useIngredients';
 import type { Ingredient } from '@/services/types';
 
@@ -31,13 +36,55 @@ function openNew() {
   router.push(ROUTES.newIngredient);
 }
 
+function rowTestID(ingredient: Ingredient): string {
+  return `ingredient-card-${ingredient.id}`;
+}
+
+/** The table (tablets in landscape): name (and Inactive), base unit and its own units. */
+function useIngredientTable(): GridTable<Ingredient> {
+  return useMemo(
+    () => ({
+      columns: [
+        {
+          key: 'name',
+          header: 'Ingredient',
+          flex: 1.6,
+          render: (ingredient) => (
+            <View style={styles.nameCell}>
+              <CellText variant="strong">{ingredient.name}</CellText>
+              {ingredient.is_active ? null : <Chip label="Inactive" testID={`${rowTestID(ingredient)}-inactive`} />}
+            </View>
+          ),
+        },
+        { key: 'base', header: 'Base unit', flex: 0.8, render: (ingredient) => <CellText>{ingredient.base_unit}</CellText> },
+        {
+          key: 'units',
+          header: 'Own units',
+          flex: 1.4,
+          render: (ingredient) => (
+            <CellText variant={ingredient.units.length === 0 ? 'muted' : 'default'}>
+              {ingredient.units.length === 0 ? 'No own units' : ingredient.units.map((unit) => unit.name).join(', ')}
+            </CellText>
+          ),
+        },
+      ],
+      onRowPress: openIngredient,
+      rowAccessibilityLabel: (ingredient) => `${ingredient.name}, base unit ${ingredient.base_unit}${ingredient.is_active ? '' : ', inactive'}`,
+      rowAccessibilityHint: 'Opens the ingredient',
+      rowTestID,
+    }),
+    [],
+  );
+}
+
 /**
- * Ingredients (Catalogue, `product.manage`): the card grid with a pill search
- * and an `All · Active · Inactive` filter; "+" creates one; tapping a card
- * edits it. Every list state; offline: `Ingredients need a connection.`
+ * Ingredients (Catalogue, `product.manage`): on the band (with the Add pill),
+ * the search and the `All · Active · Inactive` filter in a white card, then the
+ * table in landscape and the cards in portrait (MASTER §6); tapping one edits it. Every list state; offline: `Ingredients need a connection.`
  */
 export function IngredientListScreen() {
   const screen = useIngredientListScreen();
+  const table = useIngredientTable();
 
   const empty: GridEmptyProps = screen.filtersActive
     ? {
@@ -57,8 +104,9 @@ export function IngredientListScreen() {
 
   return (
     <Screen edges={[]} testID="ingredient-list-screen">
-      <ListHeader title="Ingredients" newLabel="New ingredient" onNew={screen.online ? openNew : undefined} testIDPrefix="ingredients" />
+      <ListHeader band title="Ingredients" newLabel="New ingredient" onNew={screen.online ? openNew : undefined} testIDPrefix="ingredients" />
       <SafeAreaView edges={['left', 'right']} style={styles.body}>
+        <ListToolbar testID="ingredients-toolbar">
         <ListFilters<IngredientSegment>
           search={screen.search}
           onSearchChange={screen.setSearch}
@@ -73,6 +121,7 @@ export function IngredientListScreen() {
             testID: 'ingredients-segment',
           }}
         />
+        </ListToolbar>
         {screen.online ? (
           <CardGrid
             items={screen.list.items}
@@ -82,6 +131,7 @@ export function IngredientListScreen() {
             )}
             {...screen.list.grid}
             empty={empty}
+            table={table}
             testID="ingredients-grid"
           />
         ) : (
@@ -100,5 +150,11 @@ export function IngredientListScreen() {
 const styles = StyleSheet.create({
   body: {
     flex: 1,
+  },
+  nameCell: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
 });

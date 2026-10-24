@@ -16,7 +16,7 @@ import {
   refundLineAmount,
   validateRefundSplit,
   withReversalDefaults,
-} from '@/sale/refunds';
+} from '@pos/core/sale/refunds';
 import { classifyReversalError } from '@/sale/reversalErrors';
 import {
   giveBackLines,
@@ -27,7 +27,7 @@ import {
   reversalGate,
   voidGiveBack,
   type ReversalGateInput,
-} from '@/sale/reversals';
+} from '@pos/core/sale/reversals';
 import type { PrintableOrder } from '@/services/types';
 import { makeOrder, makePartlyRefundedOrder, makeRefund, TEST_SHIFT_ULID } from '@/test-utils/sale';
 

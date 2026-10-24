@@ -14,7 +14,7 @@ import InventoryItemRoute from '@/app/(app)/(admin)/inventory/[productId]';
 import { inventoryKeys } from '@/hooks/inventory/queryKeys';
 import { useSessionStore } from '@/stores/session';
 import { requestStockSync } from '@/sync/stockSync';
-import { mockResponse, secureStoreMock } from '@/test-utils';
+import { mockResponse, REFERENCE_SIZES, resetWindowSize, secureStoreMock, setWindowSize } from '@/test-utils';
 import {
   createTestQueryClient,
   deferred,
@@ -536,5 +536,27 @@ describe('permissions', () => {
     routeFetch(baseRoutes());
     await renderWithQuery(<InventoryItemRoute />);
     expect(await screen.findByTestId('record-error')).toHaveTextContent(/Not found/);
+  });
+});
+
+describe('layout (MASTER §6)', () => {
+  afterEach(() => {
+    resetWindowSize();
+  });
+
+  it('tablet landscape: stat cards, the history as a table with "Showing n"; portrait: the same rows as cards', async () => {
+    routeFetch(baseRoutes());
+    await renderDetail();
+
+    // On hand takes the orange stock accent (Low); the reorder card keeps its **Edit**.
+    expect(screen.getByTestId('inventory-summary-reorder-level')).toHaveTextContent('10');
+    expect(screen.getByTestId('inventory-reorder-edit')).toBeOnTheScreen();
+    expect(screen.getByTestId('inventory-history-header')).toBeOnTheScreen();
+    expect(screen.getByTestId('inventory-history-more-count')).toHaveTextContent('Showing 2');
+
+    await act(async () => setWindowSize(REFERENCE_SIZES.tabletPortrait.width, REFERENCE_SIZES.tabletPortrait.height));
+    expect(screen.queryByTestId('inventory-history-header')).toBeNull();
+    expect(screen.getByTestId(`movement-${receipt.ulid}-qty`)).toHaveTextContent('+24');
+    expect(screen.getByTestId('inventory-summary-qty')).toHaveTextContent('9');
   });
 });

@@ -12,10 +12,10 @@ import { colors, spacing, typography } from '@/constants/theme';
 import type { VoidOrderState } from '@/hooks/orders/useVoidOrder';
 import { useResponsive } from '@/hooks/useResponsive';
 import { orderNumberLabel } from '@/sale/localOrder';
-import { REVERSAL_REASON_MAX } from '@/sale/refunds';
-import { OTHER_REASON, VOID_REASONS } from '@/sale/reversals';
+import { REVERSAL_REASON_MAX } from '@pos/core/sale/refunds';
+import { OTHER_REASON, VOID_REASONS } from '@pos/core/sale/reversals';
 import type { PrintableOrder } from '@/services/types';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 
 type VoidDialogProps = {
   order: PrintableOrder;
@@ -140,9 +140,10 @@ export function VoidDialog({ order, voiding }: VoidDialogProps) {
               testID="void-cancel"
             />
             <Button
-              title={voiding.awaiting ? 'Retry' : 'Void sale'}
+              title={voiding.awaiting ? 'Retry' : 'Void order'}
               leftIcon={voiding.awaiting ? 'refresh' : 'close-circle-outline'}
-              variant="danger"
+              // MASTER §3: a destructive confirmation names the action and uses the filled destructive colour.
+              variant="destructive"
               onPress={voiding.confirm}
               loading={voiding.submitting}
               disabled={!voiding.canConfirm}

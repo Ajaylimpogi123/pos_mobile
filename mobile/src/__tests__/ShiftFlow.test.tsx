@@ -5,7 +5,7 @@
  * outbox sends them at once; the X-read and the Z-read print on the receipt
  * printer; closing goes back to "Open a shift".
  */
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 
 import SellRoute from '@/app/(app)/(pos)/sell/index';
 import { catalogueRepository } from '@/db/catalogueRepository';
@@ -20,6 +20,7 @@ import { usePrintingStore } from '@/stores/printing';
 import { useSessionStore } from '@/stores/session';
 import { useShiftStore } from '@/stores/shift';
 import { useSyncStore } from '@/stores/sync';
+import { useToastStore } from '@/stores/toast';
 import { resetShiftActionsForTests } from '@/shifts/shiftActions';
 import { cashierUser, mockResponse, secureStoreMock } from '@/test-utils';
 import { jsonBody, renderWithQuery, routeFetch, type FetchCall } from '@/test-utils/catalog';
@@ -213,15 +214,15 @@ describe('the shift menu', () => {
     await fireEvent.changeText(screen.getByTestId('cash-amount'), '500');
     await fireEvent.changeText(screen.getByTestId('cash-reason'), 'Change fund');
     await fireEvent.press(screen.getByTestId('cash-dialog-confirm'));
-    expect(await screen.findByTestId('shift-flash')).toBeOnTheScreen();
-    expect(within(screen.getByTestId('shift-flash')).getByText('Cash in of ₱500.00 recorded.')).toBeOnTheScreen();
+    // MASTER §6: a save success is a toast.
+    await waitFor(() => expect(useToastStore.getState().toast?.message).toBe('Cash in of ₱500.00 recorded.'));
 
     await openMenu();
     await fireEvent.press(screen.getByTestId('shift-menu-cash_out'));
     await fireEvent.changeText(await screen.findByTestId('cash-amount'), '120.50');
     await fireEvent.changeText(screen.getByTestId('cash-reason'), 'Ice');
     await fireEvent.press(screen.getByTestId('cash-dialog-confirm'));
-    expect(await screen.findByText('Cash out of ₱120.50 recorded.')).toBeOnTheScreen();
+    await waitFor(() => expect(useToastStore.getState().toast?.message).toBe('Cash out of ₱120.50 recorded.'));
 
     const movements = await shiftRepository.listCashMovements((await shiftRepository.currentShift(1))!.ulid);
     expect(movements.map((movement) => [movement.type, movement.amountCents, movement.reason])).toEqual([

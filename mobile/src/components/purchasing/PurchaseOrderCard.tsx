@@ -7,7 +7,7 @@ import { Chip } from '@/components/ui/Chip';
 import { colors, numeric, radius, sizes, spacing, typography } from '@/constants/theme';
 import type { PurchaseOrder } from '@/services/types';
 import { formatBusinessDate } from '@/utils/dates';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 
 type PurchaseOrderCardProps = {
   po: PurchaseOrder;

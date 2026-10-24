@@ -67,6 +67,8 @@ describe('show', function () {
             'auto_print_receipt' => true,
             'receipt_copies' => 1,
             'print_kitchen_tickets' => true,
+            'dine_in_enabled' => false,
+            'service_charge_bps' => 0,
             'updated_at' => null,
         ]]);
     });
@@ -98,6 +100,8 @@ describe('update', function () {
             'auto_print_receipt' => true,
             'receipt_copies' => 1,
             'print_kitchen_tickets' => true,
+            'dine_in_enabled' => false,
+            'service_charge_bps' => 0,
             'updated_at' => '2026-09-25T03:00:00Z',
         ]]);
 
@@ -136,6 +140,8 @@ describe('update', function () {
             'auto_print_receipt' => false,
             'receipt_copies' => 2,
             'print_kitchen_tickets' => false,
+            'dine_in_enabled' => false,
+            'service_charge_bps' => 0,
             'updated_at' => '2026-09-25T04:00:00Z',
         ]]);
 
@@ -211,6 +217,8 @@ describe('branch isolation', function () {
             'auto_print_receipt' => true,
             'receipt_copies' => 1,
             'print_kitchen_tickets' => true,
+            'dine_in_enabled' => false,
+            'service_charge_bps' => 0,
             'updated_at' => null,
         ]]);
 

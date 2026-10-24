@@ -61,7 +61,10 @@ export function createStockSyncRunner(getDeps: () => StockSyncDeps) {
     if (inFlight) return inFlight;
     inFlight = runStockSync(getDeps())
       .then((result) => {
-        if (result.outcome === 'synced') useOfflineStore.getState().markStockChanged();
+        if (result.outcome === 'synced') {
+          useOfflineStore.getState().markStockChanged();
+          useOfflineStore.getState().setLastStockSyncAt(result.serverTime);
+        }
         return result;
       })
       .finally(() => {

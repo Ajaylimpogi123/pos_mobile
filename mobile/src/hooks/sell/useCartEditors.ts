@@ -3,11 +3,11 @@ import { useCallback, useRef, useState } from 'react';
 
 import { ROUTES } from '@/constants/routes';
 import type { MenuProduct } from '@/db/menuQueries';
-import { discountDraftFrom, resolveDiscountDraft, type DiscountDraft } from '@/sale/discountRules';
+import { discountDraftFrom, resolveDiscountDraft, type DiscountDraft } from '@pos/core/sale/discountRules';
 import { useScPwdEditor } from '@/hooks/sell/useScPwdEditor';
-import { priceCart } from '@/sale/order';
-import { lineDiscountAllowed } from '@/sale/scPwd';
-import { CART_LIMITS, cartProductFrom, useCartStore, type CartCustomer, type CartLine } from '@/stores/cart';
+import { priceCart } from '@pos/core/sale/order';
+import { lineDiscountAllowed } from '@pos/core/sale/scPwd';
+import { CART_LIMITS, cartProductFrom, useCartStoreApi, type CartCustomer, type CartLine } from '@/stores/cart';
 
 /** The line editor's draft: applied to the cart only on Save. */
 export type LineDraft = {
@@ -31,6 +31,9 @@ export type OrderDiscountDraft = {
   error: string | null;
 };
 
+/** The product a tap last added (its cart line highlights); `token` changes on every add. */
+export type LineHighlight = { productId: number | null; token: number };
+
 const ADD_NOTICES = {
   maxLines: `A sale can have up to ${CART_LIMITS.maxLines} lines.`,
   maxQty: `Up to ${CART_LIMITS.maxQty} of one item per line.`,
@@ -40,6 +43,8 @@ const ADD_NOTICES = {
 /** Senior Citizen / PWD Discount: why a line's discount fields are hidden. */
 export const SC_PWD_LINE_LOCK = 'SC/PWD item: no other discount.';
 export const SHARED_MEAL_LOCK = 'Shared meal with SC/PWD: no other discount.';
+/** Dine-in: a round sent to the kitchen carries no discounts; they are given when the bill is paid. */
+export const ROUND_LINE_LOCK = 'Discounts are given when the bill is paid.';
 
 /** "12" → 12 when it is a whole number from 1 to 999, else `null`. */
 export function parseQty(text: string): number | null {
@@ -56,13 +61,17 @@ export function parseQty(text: string): number | null {
  * layout switch, so an open editor and its typed values survive rotation.
  * The cart itself lives in `useCartStore`.
  */
-export function useCartEditors() {
+export function useCartEditors(options: { lineDiscounts?: boolean } = {}) {
+  const useCartStore = useCartStoreApi();
+  const lineDiscounts = options.lineDiscounts !== false;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [lineDraft, setLineDraft] = useState<LineDraft | null>(null);
   const [orderDraft, setOrderDraft] = useState<OrderDiscountDraft | null>(null);
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // sell.md: the cart line a tap just added to highlights for 600 ms (the token changes on every add).
+  const [highlight, setHighlight] = useState<LineHighlight>({ productId: null, token: 0 });
   const scPwd = useScPwdEditor();
 
   // Checkout sent the cashier back to the cart (e.g. a stock 422): open the sheet once the Sell
@@ -77,16 +86,21 @@ export function useCartEditors() {
     }, [showCartRequest]),
   );
 
-  function addProduct(product: MenuProduct) {
+  /** Adds one; true when the cart took it (the card then says "Added" and the line highlights). */
+  function addProduct(product: MenuProduct): boolean {
     const result = useCartStore.getState().addProduct(cartProductFrom(product));
     if (result === 'maxLines' || result === 'maxQty' || result === 'locked') setNotice(ADD_NOTICES[result]);
     else setNotice(null);
+    const added = result === 'added' || result === 'incremented';
+    if (added) setHighlight((previous) => ({ productId: product.id, token: previous.token + 1 }));
+    return added;
   }
 
   function editLine(line: CartLine) {
     const cartScPwd = useCartStore.getState().scPwd;
     let discountLock: string | null = null;
-    if (!lineDiscountAllowed(cartScPwd, line.scPwd)) {
+    if (!lineDiscounts) discountLock = ROUND_LINE_LOCK;
+    else if (!lineDiscountAllowed(cartScPwd, line.scPwd)) {
       discountLock = cartScPwd?.mode === 'headcount' ? SHARED_MEAL_LOCK : SC_PWD_LINE_LOCK;
     }
     setLineDraft({
@@ -180,6 +194,7 @@ export function useCartEditors() {
     openSheet: () => setSheetOpen(true),
     closeSheet: () => setSheetOpen(false),
     notice,
+    highlight,
     dismissNotice: () => setNotice(null),
     addProduct,
     lineDraft,

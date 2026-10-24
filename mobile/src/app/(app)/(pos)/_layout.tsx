@@ -11,6 +11,7 @@ import { hasAnyPermission, hasPermission, PERMISSIONS } from '@/utils/permission
  * - `orders/…`: `sale.create` or `report.view`
  * - `customers/…`: every signed-in user (its own layout gates `new`)
  * - `sync-queue`: `sale.create` (Offline Sales: the sales saved on this tablet)
+ * - `tabs/…`: `sale.create` (Dine-in Tables & Tabs: an open tab and its Pay screen)
  * Gated with `Stack.Protected`; UI hints only: the server enforces every permission.
  */
 export default function PosLayout() {
@@ -26,6 +27,7 @@ export default function PosLayout() {
       <Stack.Protected guard={canSell}>
         <Stack.Screen name="sell/checkout" />
         <Stack.Screen name="sync-queue" />
+        <Stack.Screen name="tabs" />
       </Stack.Protected>
       <Stack.Protected guard={canViewOrders}>
         <Stack.Screen name="orders" />

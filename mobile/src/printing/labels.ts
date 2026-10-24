@@ -25,6 +25,13 @@ export function jobLabel(job: Pick<PrintJobView, 'kind' | 'printerRole' | 'queue
     label = `VOID ${station} ticket #${job.queueNo}`;
   } else if (job.kind === 'refund_slip') {
     label = `Refund slip #${job.queueNo}`;
+  } else if (job.kind === 'tab_round') {
+    // Dine-in Tables & Tabs: `queueNo` is the round number.
+    label = `${station === 'bar' ? 'Bar' : 'Kitchen'} ticket, round ${job.queueNo}`;
+  } else if (job.kind === 'tab_void') {
+    label = `VOID ${station} ticket (table bill)`;
+  } else if (job.kind === 'bill') {
+    label = 'Bill';
   } else {
     label = `${station === 'bar' ? 'Bar' : 'Kitchen'} ticket #${job.queueNo}`;
   }

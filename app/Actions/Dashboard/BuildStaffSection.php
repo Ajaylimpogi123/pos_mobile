@@ -26,9 +26,9 @@ class BuildStaffSection
             ->toBase()
             ->where('users.branch_id', $branchId)
             ->selectRaw('COUNT(*) AS total')
-            ->selectRaw('SUM(users.is_active = 1) AS active')
-            ->selectRaw('SUM(users.is_active = 1 AND users.pin_hash IS NULL) AS without_pin')
-            ->selectRaw('SUM(users.is_active = 1 AND users.last_login_at IS NULL) AS never_logged_in')
+            ->selectRaw('SUM(is_active = 1) AS active')
+            ->selectRaw('SUM(is_active = 1 AND pin_hash IS NULL) AS without_pin')
+            ->selectRaw('SUM(is_active = 1 AND last_login_at IS NULL) AS never_logged_in')
             ->first();
 
         $total = (int) $totals->total;

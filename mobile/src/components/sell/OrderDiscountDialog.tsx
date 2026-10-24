@@ -6,7 +6,7 @@ import { DialogFrame } from '@/components/ui/DialogFrame';
 import { colors, spacing, typography } from '@/constants/theme';
 import type { CartEditors } from '@/hooks/sell/useCartEditors';
 import { useResponsive } from '@/hooks/useResponsive';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 
 type OrderDiscountDialogProps = {
   editors: CartEditors;

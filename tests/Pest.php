@@ -7,6 +7,7 @@ use App\Models\Ingredient;
 use App\Models\Permission;
 use App\Models\Product;
 use App\Models\Role;
+use App\Models\Setting;
 use App\Models\StockLevel;
 use App\Models\StockMovement;
 use App\Models\Supplier;
@@ -17,6 +18,7 @@ use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Foundation\Testing\DatabaseTruncation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -47,6 +49,14 @@ pest()->extend(TestCase::class)
 pest()->extend(TestCase::class)
     ->use(DatabaseMigrations::class)
     ->in('Performance');
+
+// The service-day soak (Hardening & Pilot → G; group `soak`, excluded from the default run)
+// commits its data like the benchmarks, on pos_mobile_test only (migrated fresh first), and
+// truncates the tables afterwards instead of rolling the migrations back: some down() methods
+// can't run over the ingredient and revaluation rows a service day writes.
+pest()->extend(TestCase::class)
+    ->use(DatabaseTruncation::class)
+    ->in('Soak');
 
 /*
 |--------------------------------------------------------------------------
@@ -400,7 +410,8 @@ function sell(User $user, array $lines, array $overrides = []): array
 function orderKeys(): array
 {
     return [
-        'ulid', 'invoice_no', 'order_no', 'queue_no', 'table_no', 'business_date', 'status', 'placed_at',
+        'ulid', 'invoice_no', 'order_no', 'queue_no', 'table_no', 'tab_ulid', 'service_charge_cents', 'split_count',
+        'business_date', 'status', 'placed_at',
         'cashier', 'authorized_by', 'customer', 'notes', 'subtotal_cents', 'line_discounts_cents',
         'order_discount', 'sc_pwd', 'discount_cents', 'total_cents', 'vatable_sales_cents',
         'vat_amount_cents', 'vat_exempt_sales_cents', 'tendered_cents', 'change_cents',
@@ -438,7 +449,8 @@ function unreversedOrderFields(): array
 function orderSummaryKeys(): array
 {
     return [
-        'ulid', 'invoice_no', 'order_no', 'queue_no', 'table_no', 'business_date', 'status', 'placed_at',
+        'ulid', 'invoice_no', 'order_no', 'queue_no', 'table_no', 'tab_ulid', 'service_charge_cents', 'split_count',
+        'business_date', 'status', 'placed_at',
         'cashier', 'customer', 'items_count', 'total_cents', 'payment_methods',
         'source', 'needs_review', 'review_reasons', 'reviewed_at', 'reviewed_by', 'synced_at',
         'shift_ulid', 'refunded_cents', 'has_sc_pwd',
@@ -524,7 +536,7 @@ function branchSettingsKeys(): array
 {
     return [
         'receipt_header_lines', 'receipt_footer_lines', 'auto_print_receipt', 'receipt_copies',
-        'print_kitchen_tickets', 'updated_at',
+        'print_kitchen_tickets', 'dine_in_enabled', 'service_charge_bps', 'updated_at',
     ];
 }
 
@@ -706,7 +718,7 @@ function shiftReportKeys(): array
     return [
         'orders_count', 'items_sold', 'gross_sales_cents', 'discounts_cents', 'net_sales_cents',
         'vatable_sales_cents', 'vat_amount_cents', 'vat_exempt_sales_cents',
-        'sc_pwd_orders_count', 'sc_pwd_vat_relief_cents', 'sc_pwd_discount_cents', 'by_payment_method',
+        'sc_pwd_orders_count', 'sc_pwd_vat_relief_cents', 'sc_pwd_discount_cents', 'service_charge_cents', 'by_payment_method',
         'voids_count', 'voids_cents', 'refunds_count', 'refunds_cents', 'refunds_by_method', 'net_after_refunds_cents',
         'cash_in_cents', 'cash_out_cents', 'expected_cash_cents', 'variance_cents', 'by_cashier',
         'needs_review_count',
@@ -734,11 +746,13 @@ function noShiftReversals(int $netSalesCents): array
  * The SC/PWD figures of a `ShiftReport`, sales report `totals` or dashboard `sales` without
  * SC/PWD sales (they follow the VAT figures).
  *
- * @return array{sc_pwd_orders_count: int, sc_pwd_vat_relief_cents: int, sc_pwd_discount_cents: int}
+ * Since Dine-in Tables & Tabs, the `service_charge_cents` figure (0) follows them.
+ *
+ * @return array{sc_pwd_orders_count: int, sc_pwd_vat_relief_cents: int, sc_pwd_discount_cents: int, service_charge_cents: int}
  */
 function noScPwdFigures(): array
 {
-    return ['sc_pwd_orders_count' => 0, 'sc_pwd_vat_relief_cents' => 0, 'sc_pwd_discount_cents' => 0];
+    return ['sc_pwd_orders_count' => 0, 'sc_pwd_vat_relief_cents' => 0, 'sc_pwd_discount_cents' => 0, 'service_charge_cents' => 0];
 }
 
 /**
@@ -874,7 +888,9 @@ function expectReconciled(): void
 
     foreach (DB::table('orders')->get() as $order) {
         $refunds = (int) DB::table('refunds')->where('order_id', $order->id)->sum('amount_cents');
-        $lines = (int) DB::table('order_items')->where('order_id', $order->id)->sum('refunded_cents');
+        // Dine-in: the refund that leaves nothing refundable also returned the service charge.
+        $lines = (int) DB::table('order_items')->where('order_id', $order->id)->sum('refunded_cents')
+            + ($order->status === 'refunded' ? (int) $order->service_charge_cents : 0);
 
         expect((int) $order->refunded_cents)->toBe($refunds)
             ->and($lines)->toBe($refunds)
@@ -1122,4 +1138,115 @@ function postReceipt(User $user, string $poUlid, array $lines, ?string $ulid = n
     $body = ['ulid' => $ulid ?? newUlid(), 'remarks' => $remarks, 'lines' => $lines];
 
     return test()->withToken(tokenFor($user))->postJson("/api/v1/purchase-orders/{$poUlid}/receipts", $body, ['Idempotency-Key' => $body['ulid']]);
+}
+
+/**
+ * Refreshes the optimizer statistics of the given tables (the performance tests, on committed
+ * data). The names are bare; the grammar adds the connection's table prefix.
+ */
+function analyzeTables(string ...$tables): void
+{
+    $grammar = DB::getQueryGrammar();
+
+    DB::statement('ANALYZE TABLE '.implode(', ', array_map(fn (string $table) => $grammar->wrapTable($table), $tables)));
+}
+
+/*
+|--------------------------------------------------------------------------
+| Dine-in Tables & Tabs
+|--------------------------------------------------------------------------
+*/
+
+/**
+ * Save the branch's dine-in settings (`dine_in_enabled`, `service_charge_bps`), as the admin
+ * settings endpoint stores them.
+ */
+function setDineIn(Branch $branch, bool $enabled = true, int $serviceChargeBps = 0): void
+{
+    foreach (['dine_in_enabled' => $enabled, 'service_charge_bps' => $serviceChargeBps] as $key => $value) {
+        $setting = Setting::query()->firstOrNew(['branch_id' => $branch->id, 'key' => $key]);
+        $setting->value = $value;
+        $setting->save();
+    }
+}
+
+/**
+ * A request to a tab endpoint as the user, with an `Idempotency-Key` (the body's `ulid`, else a
+ * new one) unless given.
+ */
+function tabRequest(User $user, string $method, string $uri, array $body = [], ?string $key = null): TestResponse
+{
+    return test()->withToken(tokenFor($user))->json($method, $uri, $body, ['Idempotency-Key' => $key ?? ($body['ulid'] ?? newUlid())]);
+}
+
+/**
+ * Open a tab at the table through the API and return its `Tab` JSON.
+ *
+ * @return array<string, mixed>
+ */
+function openTabAt(User $user, int $tableId, array $overrides = []): array
+{
+    return tabRequest($user, 'POST', '/api/v1/tabs', ['ulid' => newUlid(), 'table_id' => $tableId, ...$overrides])
+        ->assertCreated()
+        ->json('data');
+}
+
+/**
+ * Send a round (`[Product, qty]` pairs) through the API and return the response JSON.
+ *
+ * @param  list<array{0: Product, 1: int, 2?: string|null}>  $lines
+ * @return array<string, mixed>
+ */
+function sendRound(User $user, string $tabUlid, array $lines): array
+{
+    return tabRequest($user, 'POST', "/api/v1/tabs/{$tabUlid}/rounds", [
+        'ulid' => newUlid(),
+        'items' => array_map(fn (array $line) => ['product_id' => $line[0]->id, 'qty' => $line[1], 'notes' => $line[2] ?? null], $lines),
+    ])->assertOk()->json();
+}
+
+/**
+ * A settle body paying `$total` in one cash payment (override anything).
+ *
+ * @return array<string, mixed>
+ */
+function settleBody(int $total, array $overrides = []): array
+{
+    return array_replace([
+        'ulid' => newUlid(),
+        'shift_ulid' => testShiftUlid(),
+        'customer_id' => null,
+        'notes' => null,
+        'discount' => null,
+        'sc_pwd' => null,
+        'payments' => $total > 0 ? [['method' => 'cash', 'amount_cents' => $total, 'reference_no' => null]] : [],
+        'client_total_cents' => $total,
+        'discount_authorization' => null,
+    ], $overrides);
+}
+
+/**
+ * The contract's `Tab` keys, in order.
+ *
+ * @return list<string>
+ */
+function tabKeys(): array
+{
+    return [
+        'ulid', 'status', 'table', 'guests', 'customer', 'notes', 'opened_at', 'opened_by', 'closed_at',
+        'merged_into_ulid', 'rounds_count', 'items', 'orders', 'remaining_cents', 'updated_at',
+    ];
+}
+
+/**
+ * The contract's `Tab.items[]` keys, in order.
+ *
+ * @return list<string>
+ */
+function tabItemKeys(): array
+{
+    return [
+        'id', 'round_no', 'product_id', 'product_name', 'category_id', 'unit_price_cents', 'is_vatable',
+        'qty', 'settled_qty', 'cancelled_qty', 'remaining_qty', 'notes', 'added_at', 'added_by',
+    ];
 }

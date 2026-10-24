@@ -57,6 +57,9 @@ class PullStockAction
      */
     private function recipes(int $branchId): array
     {
+        // Qualified columns inside the raw aggregate go through the grammar (table prefix).
+        $col = fn (string $column): string => DB::getQueryGrammar()->wrap($column);
+
         return DB::table('products')
             ->where('products.stock_mode', Product::STOCK_RECIPE)
             ->whereNull('products.deleted_at')
@@ -76,8 +79,8 @@ class PullStockAction
             ->groupBy('products.id')
             ->orderBy('products.id')
             ->select('products.id as product_id')
-            ->selectRaw('MAX(CASE WHEN (recipe_lines.ingredient_id IS NOT NULL OR components.id IS NOT NULL)'
-                .' AND COALESCE(ingredient_levels.qty, product_levels.qty, 0) <= 0 THEN 1 ELSE 0 END) AS has_out')
+            ->selectRaw("MAX(CASE WHEN ({$col('recipe_lines.ingredient_id')} IS NOT NULL OR {$col('components.id')} IS NOT NULL)"
+                ." AND COALESCE({$col('ingredient_levels.qty')}, {$col('product_levels.qty')}, 0) <= 0 THEN 1 ELSE 0 END) AS has_out")
             ->get()
             ->map(fn (object $row) => [
                 'product_id' => (int) $row->product_id,

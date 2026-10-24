@@ -17,6 +17,9 @@
  * - Server reachability (Offline Sales hardening): any HTTP response marks the
  *   server reachable, and a network error or timeout marks it unreachable
  *   (`@/stores/connectivity`). `probeServer()` checks it with `GET /up`.
+ * - Hardening & Pilot §F: an unexpected 5xx is passed to the reporter registered
+ *   with `setServerErrorReporter` (the app's error capture), with the method, the
+ *   path without its query string, the status and the message. Never the body.
  */
 import { router } from 'expo-router';
 
@@ -57,6 +60,8 @@ export const NETWORK_ERROR_MESSAGE =
   "Can't reach the server. Check the tablet's Wi-Fi connection and try again.";
 export const TIMEOUT_ERROR_MESSAGE = 'The server took too long to respond. Please try again.';
 export const SESSION_EXPIRED_MESSAGE = 'Your session has ended. Please log in again.';
+/** Hardening & Pilot §C: the 401 of a token bound to a retired device. */
+export const RETIRED_TABLET_MESSAGE = 'This tablet has been retired.';
 /** Fallback only: login's 401 normally carries the server's own message. */
 export const LOGIN_FAILED_MESSAGE = 'Login failed. Check your email and password.';
 
@@ -159,6 +164,27 @@ function handleUnauthorized(tokenUsed: string | null): Promise<void> {
   });
 
   return unauthorizedInFlight;
+}
+
+// ---------------------------------------------------------------------------
+// 5xx reporting (Hardening & Pilot §F)
+// ---------------------------------------------------------------------------
+
+export type ServerErrorReport = { method: HttpMethod; path: string; status: number; message: string };
+
+let serverErrorReporter: ((report: ServerErrorReport) => void) | null = null;
+
+/** Registers (or clears) the reporter of unexpected 5xx answers. It must never throw. */
+export function setServerErrorReporter(reporter: ((report: ServerErrorReport) => void) | null): void {
+  serverErrorReporter = reporter;
+}
+
+function reportServerError(report: ServerErrorReport): void {
+  try {
+    serverErrorReporter?.(report);
+  } catch {
+    // Reporting never changes the request's outcome.
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -323,12 +349,18 @@ async function execute(path: string, options: RequestOptions): Promise<RawRespon
   const message = readMessage(parsed) ?? fallbackMessage(response.status, auth);
 
   if (response.status === 401 && auth) {
+    // Phase 8 §C: a retired tablet's token. Signed out like any 401; login then says why.
+    if (readMessage(parsed) === RETIRED_TABLET_MESSAGE) useSessionStore.getState().setLoginNotice(RETIRED_TABLET_MESSAGE);
     await handleUnauthorized(tokenUsed);
     throw new ApiError(SESSION_EXPIRED_MESSAGE, { status: 401, kind: 'http' });
   }
 
   if (response.status === 422) {
     throw new ApiValidationError(message, readErrors(parsed));
+  }
+
+  if (response.status >= 500) {
+    reportServerError({ method, path: path.split('?')[0], status: response.status, message });
   }
 
   throw new ApiError(message, { status: response.status, kind: 'http' });

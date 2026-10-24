@@ -17,6 +17,7 @@ const KEYS = {
   receiptPrinterId: 'pos.print.receipt_printer_id',
   installId: 'pos.device.install_id',
   registeredDevice: 'pos.device.registered',
+  dismissedUpdateVersion: 'pos.app.dismissed_update_version',
 } as const;
 
 /**
@@ -155,6 +156,27 @@ export async function saveReceiptPrinterId(id: number | null): Promise<void> {
   }
 }
 
+/**
+ * Hardening & Pilot §D: the `latest_version` whose "Update available" banner
+ * was dismissed (shown once per version). `null` when never set. Never throws.
+ */
+export async function getDismissedUpdateVersion(): Promise<string | null> {
+  try {
+    return (await SecureStore.getItemAsync(KEYS.dismissedUpdateVersion)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort save of the dismissed update version. Never throws. */
+export async function saveDismissedUpdateVersion(version: string): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(KEYS.dismissedUpdateVersion, version.slice(0, 20));
+  } catch {
+    // The banner shows again next launch.
+  }
+}
+
 // --- Device identity (Offline Sales, Phase 5) ------------------------------
 
 /**
@@ -185,6 +207,11 @@ export type CachedDevice = {
   code: string;
   apiOrigin: string;
   branchId: number;
+  /**
+   * The name the **server** answered with (Q-044: registration keeps an existing
+   * device's name, so it may differ from the name the tablet sent). Absent in caches from older builds.
+   */
+  name?: string;
 };
 
 function isCachedDevice(value: unknown): value is CachedDevice {

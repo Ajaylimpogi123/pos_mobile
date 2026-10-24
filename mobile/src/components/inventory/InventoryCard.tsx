@@ -7,8 +7,8 @@ import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { colors, pressedScale, radius, sizes, spacing, typography } from '@/constants/theme';
 import type { InventoryItem } from '@/services/types';
-import { formatPeso } from '@/utils/money';
-import { formatCount } from '@/utils/numbers';
+import { formatPeso } from '@pos/core/money';
+import { formatCount } from '@pos/core/numbers';
 
 type InventoryCardProps = {
   item: InventoryItem;

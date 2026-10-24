@@ -2,6 +2,9 @@
 
 namespace App\Actions\Dashboard;
 
+use Carbon\CarbonInterface;
+use Illuminate\Support\Carbon;
+
 /**
  * The dashboard `insights`: the contract's rules (seven from Phase 1c, plus
  * `orders_need_review` from Phase 5, which needs the `sales` section, and `stock_out` /
@@ -25,11 +28,30 @@ class BuildInsights
      *                                                       null without `inventory.adjust` or `report.view`
      * @param  array{requests_pending?: int, orders_pending?: int, orders_to_receive?: int}  $purchasing
      *                                                                                                    The purchasing queues the caller may act on
+     * @param  list<array{code: string, outbox_pending: int, last_seen_at: CarbonInterface|null}>|null  $unsyncedDevices
+     *                                                                                                                    Hardening & Pilot → C; null without `system.manage`
      * @return list<array{key: string, severity: string, title: string, message: string, count: int, action: string|null}>
      */
-    public function execute(?array $catalog, ?array $staff, ?int $ordersNeedingReview = null, ?array $stock = null, ?array $ingredients = null, array $purchasing = []): array
+    public function execute(?array $catalog, ?array $staff, ?int $ordersNeedingReview = null, ?array $stock = null, ?array $ingredients = null, array $purchasing = [], ?array $unsyncedDevices = null, ?CarbonInterface $now = null): array
     {
         $insights = [];
+
+        // Hardening & Pilot → C: active tablets whose last heartbeat (over 30 min ago) reported
+        // unsynced sales; only for `system.manage` holders. One insight; `count` is the number
+        // of devices. Wording for several devices confirmed (Q-044).
+        if ($unsyncedDevices !== null && $unsyncedDevices !== []) {
+            $now ??= Carbon::now();
+            $first = $unsyncedDevices[0];
+            $one = count($unsyncedDevices) === 1;
+
+            $insights[] = $this->insight(
+                'device_unsynced', 'warning', 'settings.devices', count($unsyncedDevices),
+                fn (int $n) => $one
+                    ? sprintf('%s has %s (last seen %s)', $first['code'], $this->count($first['outbox_pending'], 'unsynced sale', 'unsynced sales'), $this->ago($first['last_seen_at'], $now))
+                    : $this->count($n, 'tablet has', 'tablets have').' unsynced sales',
+                'Bring these tablets online so their sales sync before anything is lost.',
+            );
+        }
 
         // Ingredients, Recipes & Purchasing: the ingredient alerts (with `inventory.adjust` or
         // `report.view`) and the purchasing queues (`purchase.approve` / `purchase.receive`).
@@ -171,6 +193,24 @@ class BuildInsights
     private function count(int $n, string $singular, string $plural): string
     {
         return $n.' '.($n === 1 ? $singular : $plural);
+    }
+
+    /**
+     * How long ago, rounded down: "5 min ago", "2 h ago", "3 d ago" ("never" without a time).
+     */
+    private function ago(?CarbonInterface $at, CarbonInterface $now): string
+    {
+        if ($at === null) {
+            return 'never';
+        }
+
+        $minutes = max(0, (int) floor($at->diffInMinutes($now, true)));
+
+        return match (true) {
+            $minutes < 60 => "{$minutes} min ago",
+            $minutes < 1440 => intdiv($minutes, 60).' h ago',
+            default => intdiv($minutes, 1440).' d ago',
+        };
     }
 
     /**

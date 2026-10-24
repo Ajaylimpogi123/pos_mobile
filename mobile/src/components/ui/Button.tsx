@@ -16,28 +16,30 @@ import {
   iconSizes,
   pressedScale,
   radius,
-  shadows,
   sizes,
   spacing,
   typography,
 } from '@/constants/theme';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 /**
- * - `primary`: solid emerald, white text.
- * - `secondary`: white with a hairline border, dark text.
- * - `tonal`: soft green fill, dark-emerald text.
- * - `ghost`: no fill, emerald text.
- * - `danger`: white with a soft red outline, red text.
- * - `strong`: solid deep emerald (primaryDark), white text (e.g. Export CSV).
+ * Variants (MASTER §3 and §6):
+ * - `primary`: the green pill ("+ Add", Checkout, Save), white 15–16 / 600 text.
+ * - `secondary`: the outline button: white, 1 px `border`, radius 8, 14 / 500.
+ * - `tonal`: the same outline button (MASTER §6 retires the tonal look).
+ * - `ghost`: a quiet text button: green text, no fill.
+ * - `danger`: a destructive outline button (red text and outline).
+ * - `destructive`: a filled destructive button (a confirmed "Void order").
+ * - `strong`: the dark neutral button ("New sale", Export CSV), radius 8.
  */
-export type ButtonVariant = 'primary' | 'secondary' | 'tonal' | 'ghost' | 'danger' | 'strong';
+export type ButtonVariant = 'primary' | 'secondary' | 'tonal' | 'ghost' | 'danger' | 'destructive' | 'strong';
 export type ButtonSize = 'md' | 'lg' | 'xl';
 
 type ButtonProps = {
   title: string;
   onPress: () => void;
   variant?: ButtonVariant;
-  /** `md` is 48 high (controls), `lg` is 56 (Sign in), `xl` is 60 (Charge, Complete sale, New sale). */
+  /** `md`: 48 (pill) or 44 (outline, dark, quiet). `lg` and `xl`: the 52 dp CTA (Sign in, Checkout, Complete sale). */
   size?: ButtonSize;
   leftIcon?: IconName;
   /** An icon after the label (e.g. the → on Sign in). */
@@ -53,33 +55,35 @@ type ButtonProps = {
 
 type Palette = { background: string; pressed: string; text: string; border: string };
 
+const outline: Palette = { background: colors.surface, pressed: colors.accent, text: colors.text, border: colors.border };
+
 const palettes: Record<ButtonVariant, Palette> = {
-  primary: { background: colors.primary, pressed: colors.primaryPressed, text: colors.onPrimary, border: colors.primary },
-  secondary: { background: colors.surface, pressed: colors.surfaceMuted, text: colors.text, border: colors.border },
-  tonal: {
-    background: colors.primarySoft,
-    pressed: colors.primarySoftPressed,
-    text: colors.primaryDark,
-    border: colors.primarySoft,
-  },
-  ghost: { background: colors.transparent, pressed: colors.primarySoft, text: colors.primary, border: colors.transparent },
+  primary: { background: colors.green, pressed: colors.greenHover, text: colors.onPrimary, border: colors.green },
+  secondary: outline,
+  tonal: outline,
+  ghost: { background: colors.transparent, pressed: colors.accent, text: colors.green, border: colors.transparent },
   danger: { background: colors.surface, pressed: colors.dangerSoft, text: colors.danger, border: colors.dangerBorder },
-  strong: {
-    background: colors.primaryDark,
-    pressed: colors.primaryDarkPressed,
+  destructive: {
+    background: colors.destructiveFill,
+    pressed: colors.destructiveFillPressed,
     text: colors.onPrimary,
-    border: colors.primaryDark,
+    border: colors.destructiveFill,
   },
+  strong: { background: colors.dark, pressed: colors.darkPressed, text: colors.onDark, border: colors.dark },
 };
 
-/** Disabled (not loading): a flat grey-green fill with muted text, like the Foundations board. */
-const disabledPalette: Palette = { background: colors.border, pressed: colors.border, text: colors.textMuted, border: colors.border };
+/** Disabled (not loading): #E5E7EB with #4B5563 text (MASTER §3); put the reason in the label. */
+const disabledPalette: Palette = { background: colors.disabled, pressed: colors.disabled, text: colors.onDisabled, border: colors.disabled };
 const disabledGhost: Palette = { ...disabledPalette, background: colors.transparent, border: colors.transparent };
 
+/** Pill-shaped variants (fully round); the others use the 8 px radius. */
+const PILL: ReadonlySet<ButtonVariant> = new Set(['primary', 'destructive']);
+
 /**
- * Button: 48 dp controls, a 56 dp large and a 60 dp extra-large CTA (radius 12 / 14), optional
- * left and right icons, loading, pressed (immediate: colour + a subtle
- * shrink) and disabled states. The large primary CTA gets a soft green glow.
+ * Button: 48 dp primary pills, 44 dp outline / dark / quiet buttons, and a
+ * 52 dp large CTA (Sign in, Checkout). Optional left and right icons,
+ * loading, pressed (immediate: colour + a 0.98 shrink, dropped under
+ * reduce-motion) and disabled states. No glow (MASTER §1.6).
  */
 export const Button = memo(function Button({
   title,
@@ -100,7 +104,8 @@ export const Button = memo(function Button({
   let palette = palettes[variant];
   if (greyedOut) palette = variant === 'ghost' ? disabledGhost : disabledPalette;
   const large = size !== 'md';
-  const glow = large && variant === 'primary' && !greyedOut;
+  const pill = PILL.has(variant);
+  const reduceMotion = useReducedMotion();
 
   return (
     <Pressable
@@ -113,11 +118,10 @@ export const Button = memo(function Button({
       testID={testID}
       style={({ pressed }) => [
         styles.base,
-        large ? styles.large : styles.medium,
-        size === 'xl' && styles.xl,
+        pill ? styles.pill : styles.square,
+        large && styles.large,
         { backgroundColor: pressed ? palette.pressed : palette.background, borderColor: palette.border },
-        glow && shadows.primary,
-        pressed && styles.pressed,
+        pressed && !reduceMotion && styles.pressed,
         style,
       ]}
     >
@@ -126,7 +130,7 @@ export const Button = memo(function Button({
       ) : (
         <View style={styles.content}>
           {leftIcon ? <Icon name={leftIcon} size={iconSizes.md} color={palette.text} /> : null}
-          <Text style={[large ? styles.labelLarge : styles.label, { color: palette.text }]} numberOfLines={1}>
+          <Text style={[large ? styles.labelLarge : pill ? styles.label : styles.labelOutline, { color: palette.text }]} numberOfLines={1}>
             {title}
           </Text>
           {rightIcon ? <Icon name={rightIcon} size={iconSizes.md} color={palette.text} /> : null}
@@ -144,15 +148,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  medium: {
+  pill: {
     minHeight: hitTarget.primary,
+    borderRadius: radius.pill,
+  },
+  square: {
+    minHeight: hitTarget.min,
     borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
   },
   large: {
-    minHeight: hitTarget.large,
-    borderRadius: radius.cta,
-  },
-  xl: {
     minHeight: sizes.cta,
   },
   content: {
@@ -163,6 +168,10 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.button,
+    flexShrink: 1,
+  },
+  labelOutline: {
+    ...typography.control,
     flexShrink: 1,
   },
   labelLarge: {

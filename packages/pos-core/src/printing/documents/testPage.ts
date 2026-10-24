@@ -4,7 +4,7 @@
  * column count), the sample text `Niño Peña é ₱` (to check the code page:
  * ñ and é print as themselves, ₱ as P), and the time.
  */
-import type { PaperWidthMm, PrinterRole } from '@/services/types';
+import type { PaperWidthMm, PrinterRole } from '../../contract/types';
 
 import { EscPosBuilder } from '../escpos/builder';
 import { columnsFor } from '../escpos/layout';

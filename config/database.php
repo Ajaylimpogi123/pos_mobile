@@ -55,8 +55,10 @@ return [
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
-            'prefix' => '',
-            'prefix_indexes' => true,
+            // Every table is `tbl_`-prefixed (PROJECT_MEMORY §5.1); code uses the bare names.
+            // Index and foreign key names stay unprefixed: MySQL caps identifiers at 64 characters.
+            'prefix' => 'tbl_',
+            'prefix_indexes' => false,
             'strict' => true,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([

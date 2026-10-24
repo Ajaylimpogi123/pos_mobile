@@ -1,4 +1,4 @@
-import { formatCount, formatPercentBps, formatPercentBpsOrDash, NO_VALUE } from '@/utils/numbers';
+import { formatCount, formatPercentBps, formatPercentBpsOrDash, NO_VALUE } from '@pos/core/numbers';
 
 describe('formatPercentBps', () => {
   it.each([

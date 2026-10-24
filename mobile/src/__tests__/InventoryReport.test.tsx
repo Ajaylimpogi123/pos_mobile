@@ -17,7 +17,7 @@ import { makeCategory, managerUser, page, renderWithQuery, routeFetch, type Fetc
 import { writtenFiles } from '@/test-utils/fileSystem';
 import { makeInventoryReport, makeInventoryReportRow } from '@/test-utils/inventory';
 import { makeSalesReport } from '@/test-utils/shifts';
-import { businessDateAt } from '@/utils/businessDay';
+import { businessDateAt } from '@pos/core/businessDay';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 jest.mock('expo-file-system', () => require('@/test-utils/fileSystem').fileSystemMock);

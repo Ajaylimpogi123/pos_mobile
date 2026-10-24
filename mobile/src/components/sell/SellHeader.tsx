@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrinterStatusPill } from '@/components/printing/PrinterStatusPill';
@@ -7,8 +7,9 @@ import { SyncStatusPill } from '@/components/sell/SyncStatusPill';
 import { SEARCH_MAX_LENGTH } from '@/components/shared/ListFilters';
 import { ShiftPill } from '@/components/shifts/ShiftPill';
 import { MenuButton } from '@/components/shell/MenuButton';
+import { HeaderBand } from '@/components/ui/HeaderBand';
 import { IconButton } from '@/components/ui/IconButton';
-import { Input } from '@/components/ui/Input';
+import { SearchGroup } from '@/components/ui/SearchGroup';
 import { ROUTES } from '@/constants/routes';
 import { colors, hitTarget, layout, sizes, spacing, typography } from '@/constants/theme';
 import type { LocalShift } from '@/db/shiftRepository';
@@ -34,155 +35,113 @@ type SellHeaderProps = {
   search?: SellSearch | null;
 };
 
-/** Vertical room around the 36-high chips so their 44 touch areas stay inside the scroll view. */
-const STATUS_PAD_Y = (hitTarget.min - sizes.statusChipHeight) / 2;
+/** Vertical room around the header status badges so their 48 touch areas stay inside the scroll view. */
+const STATUS_PAD_Y = (hitTarget.primary - sizes.statusChipHeight) / 2;
 
 /**
- * The Sell screen's top bar (POS board): it sits on the page background, with a
- * white search field (hairline border).
- * - Tablets and landscape: one row: [☰] the 48 dp search, then the status
- *   chips (shift, sync, printers) with labels and a "Sync now" icon button.
- * - Phones in portrait: ☰, "Sell" and icon-only chips (the label stays the
- *   accessibility label); the search sits on a second line.
- * - Before the menu is synced there is no search: the title shows instead.
- * The search keeps its tree position in every layout (only the container's
- * direction changes), so rotating keeps the typed text and the focus. The
- * chips scroll sideways inside the bar rather than wrapping.
- * Offline Sales (Phase 5): the sync chip is the unified status; with
+ * The Sell screen's header (sell.md, MASTER §2.2 / §2.3):
+ * - the 48 dp header row (56 on phones): [☰] "POS", then the status badges
+ *   (shift, sync, printers; icon-only on phones in portrait, the label stays
+ *   the accessibility label) and a "Sync now" icon button. The badges scroll
+ *   sideways inside the row rather than wrapping.
+ * - once there is a menu to search: the decorative green band with the white
+ *   "Search" label and the search group (input + **Search** button). Search
+ *   still filters as you type; the button and the keyboard key just close the
+ *   keyboard. The category tiles and the product grid drawn after the header
+ *   overlap the band.
+ * The search keeps its tree position in every layout, so rotating keeps the
+ * typed text and the focus.
+ * Offline Sales (Phase 5): the sync badge is the unified status; with
  * `sale.create`, tapping it opens the Sync queue. Shifts (Phase 6): the shift
- * chip opens the shift menu.
+ * badge opens the shift menu.
  */
 export function SellHeader({ sync, onSyncNow, shift = null, onOpenShiftMenu, search = null }: SellHeaderProps) {
-  const { statusChipLabels, screenPaddingX, topBarHeight, isTablet, isCompactHeight } = useResponsive();
+  const { statusChipLabels, screenPaddingX, topBarHeight } = useResponsive();
   const canSell = useSessionStore((state) => hasPermission(state.user, PERMISSIONS.saleCreate));
-  const wide = statusChipLabels;
   const iconOnly = !statusChipLabels;
-  const showTitle = !wide || search === null;
-
-  const status = (
-    <View style={styles.statusGroup}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.statusScroll}
-        contentContainerStyle={styles.status}
-        testID="sell-status"
-      >
-        {shift && onOpenShiftMenu ? <ShiftPill shift={shift} onPress={onOpenShiftMenu} iconOnly={iconOnly} /> : null}
-        <SyncStatusPill sync={sync} onPress={canSell ? () => router.push(ROUTES.syncQueue) : undefined} iconOnly={iconOnly} />
-        <PrinterStatusPill iconOnly={iconOnly} />
-      </ScrollView>
-      <IconButton
-        icon="sync"
-        variant="soft"
-        accessibilityLabel="Sync now"
-        accessibilityHint="Downloads the latest menu and sends the sales saved on this device"
-        onPress={onSyncNow}
-        disabled={sync.syncing}
-        testID="sell-sync-now"
-      />
-    </View>
-  );
-
-  let searchAccessory = null;
-  if (search?.searching) {
-    searchAccessory = <ActivityIndicator color={colors.primaryBright} style={styles.accessory} />;
-  } else if (search && search.value !== '') {
-    searchAccessory = (
-      <IconButton
-        icon="close-circle"
-        variant="ghost"
-        accessibilityLabel="Clear search"
-        onPress={() => search.onChange('')}
-        testID="sell-search-clear"
-      />
-    );
-  }
 
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.bar} testID="sell-header">
-      <View
-        style={[
-          styles.inner,
-          wide ? styles.innerRow : styles.innerColumn,
-          { minHeight: topBarHeight, paddingHorizontal: screenPaddingX },
-        ]}
-        testID="sell-header-bar"
-      >
-        <View style={[styles.lead, wide && search === null && styles.leadFill, { minHeight: topBarHeight }]}>
+    <View testID="sell-header">
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.bar}>
+        <View style={[styles.row, { minHeight: topBarHeight, paddingHorizontal: screenPaddingX }]} testID="sell-header-bar">
           <MenuButton testID="sell-open-navigation" />
-          {showTitle ? (
-            <Text
-              style={[styles.title, isTablet && !isCompactHeight ? typography.barTitleLarge : typography.barTitle]}
-              numberOfLines={1}
-              accessibilityRole="header"
-              testID="sell-header-title"
+          <Text style={[styles.title, typography.barTitle]} numberOfLines={1} accessibilityRole="header" testID="sell-header-title">
+            POS
+          </Text>
+          <View style={styles.statusGroup}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.statusScroll}
+              contentContainerStyle={styles.status}
+              testID="sell-status"
             >
-              Sell
-            </Text>
-          ) : null}
-          {wide ? null : status}
-        </View>
-        {search ? (
-          <View style={wide ? styles.searchWide : styles.searchStacked}>
-            <Input
-              label="Search"
-              variant="searchSurface"
-              value={search.value}
-              onChangeText={search.onChange}
-              placeholder="Search menu or SKU"
-              leftIcon="search"
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-              maxLength={SEARCH_MAX_LENGTH}
-              rightAccessory={searchAccessory}
-              testID="sell-search"
+              {shift && onOpenShiftMenu ? <ShiftPill shift={shift} onPress={onOpenShiftMenu} iconOnly={iconOnly} /> : null}
+              <SyncStatusPill sync={sync} onPress={canSell ? () => router.push(ROUTES.syncQueue) : undefined} iconOnly={iconOnly} />
+              <PrinterStatusPill iconOnly={iconOnly} />
+            </ScrollView>
+            <IconButton
+              icon="sync"
+              variant="soft"
+              accessibilityLabel="Sync now"
+              accessibilityHint="Downloads the latest menu and sends the sales saved on this device"
+              onPress={onSyncNow}
+              disabled={sync.syncing}
+              testID="sell-sync-now"
             />
           </View>
-        ) : null}
-        {wide ? status : null}
-      </View>
-    </SafeAreaView>
+        </View>
+      </SafeAreaView>
+      {search ? (
+        <SafeAreaView edges={['left', 'right']}>
+          <View style={[styles.band, { paddingHorizontal: screenPaddingX }]} testID="sell-band">
+            <HeaderBand style={styles.bandShape} testID="sell-band-gradient" />
+            <View style={styles.search}>
+              <SearchGroup
+                label="Search"
+                onBand
+                value={search.value}
+                onChangeText={search.onChange}
+                onSubmit={Keyboard.dismiss}
+                onClear={() => search.onChange('')}
+                busy={search.searching}
+                placeholder="Search menu or SKU"
+                maxLength={SEARCH_MAX_LENGTH}
+                testID="sell-search-group"
+                inputTestID="sell-search"
+              />
+            </View>
+          </View>
+        </SafeAreaView>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   bar: {
     backgroundColor: colors.background,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  inner: {
+  row: {
     width: '100%',
     alignSelf: 'center',
     maxWidth: layout.contentMaxWidth,
-  },
-  innerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  innerColumn: {
-    flexDirection: 'column',
-    paddingBottom: spacing.md,
-  },
-  lead: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
-  leadFill: {
-    flex: 1,
-  },
   title: {
-    flex: 1,
+    flexShrink: 0,
     minWidth: layout.barTitleMinWidth,
     color: colors.text,
   },
   statusGroup: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    flexShrink: 1,
+    justifyContent: 'flex-end',
     gap: spacing.xs,
   },
   statusScroll: {
@@ -192,19 +151,22 @@ const styles = StyleSheet.create({
   status: {
     flexDirection: 'row',
     alignItems: 'center',
-    // 8 between 36-high chips: their 44 touch areas meet but never overlap.
     gap: spacing.sm,
     paddingVertical: STATUS_PAD_Y,
     paddingHorizontal: STATUS_PAD_Y,
   },
-  searchWide: {
-    flex: 1,
-    minWidth: layout.searchMaxWidth / 2,
+  band: {
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
   },
-  searchStacked: {
+  /** Inset so the band's 6 px corners show. */
+  bandShape: {
+    left: spacing.sm,
+    right: spacing.sm,
+    top: spacing.sm,
+  },
+  search: {
     width: '100%',
-  },
-  accessory: {
-    marginHorizontal: spacing.md,
+    maxWidth: layout.searchMaxWidth,
   },
 });

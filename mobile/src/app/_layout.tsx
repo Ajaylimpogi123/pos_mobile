@@ -1,20 +1,26 @@
-import { PlusJakartaSans_400Regular } from '@expo-google-fonts/plus-jakarta-sans/400Regular';
-import { PlusJakartaSans_500Medium } from '@expo-google-fonts/plus-jakarta-sans/500Medium';
-import { PlusJakartaSans_600SemiBold } from '@expo-google-fonts/plus-jakarta-sans/600SemiBold';
-import { PlusJakartaSans_700Bold } from '@expo-google-fonts/plus-jakarta-sans/700Bold';
-import { PlusJakartaSans_800ExtraBold } from '@expo-google-fonts/plus-jakarta-sans/800ExtraBold';
+import { Figtree_400Regular } from '@expo-google-fonts/figtree/400Regular';
+import { Figtree_500Medium } from '@expo-google-fonts/figtree/500Medium';
+import { Figtree_600SemiBold } from '@expo-google-fonts/figtree/600SemiBold';
+import { Figtree_700Bold } from '@expo-google-fonts/figtree/700Bold';
+import { Figtree_800ExtraBold } from '@expo-google-fonts/figtree/800ExtraBold';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 
+import { UpdateRequiredScreen } from '@/components/device/UpdateRequiredScreen';
+import { AppErrorBoundary } from '@/components/errors/AppErrorBoundary';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
+import { ToastProvider } from '@/components/ui/Toast';
 import { colors, fontFamilies } from '@/constants/theme';
+import { installGlobalErrorHandlers } from '@/errors/globalHandlers';
+import { useVersionGate } from '@/hooks/device/useVersionGate';
 import { useCatalogueSyncTriggers } from '@/hooks/useCatalogueSyncTriggers';
 import { useDatabaseBootstrap } from '@/hooks/useDatabaseBootstrap';
+import { useDeviceHealthTriggers } from '@/hooks/useDeviceHealthTriggers';
 import { useOfflineSalesTriggers } from '@/hooks/useOfflineSalesTriggers';
 import { usePrintingBootstrap } from '@/hooks/usePrintingBootstrap';
 import { useSessionBootstrap } from '@/hooks/useSessionBootstrap';
@@ -43,23 +49,32 @@ import { useSessionStore } from '@/stores/session';
  * - Offline Sales (Phase 5): device registration, the outbox worker (also on
  *   reconnect) and the stock cache are triggered here. Logout keeps the outbox.
  *
- * - Fonts (Plus Jakarta Sans, 5 weights) load from the bundle while the
+ * - Fonts (Figtree, 5 weights; MASTER.md §1.5) load from the bundle while the
  *   native splash stays up. The bootstraps above start at the same time (the
  *   gate renders nothing until the fonts are ready, so no text ever flashes
  *   in the system font). When the fonts load, or fail, the splash hides; on
  *   a failure the app continues with the system font and never blocks.
  *
+ * - Toasts (MASTER §3): one host at the top, above every route (`ToastProvider`).
+ *
+ * - Hardening & Pilot (Phase 8): the global JS error handler and unhandled
+ *   rejections are installed at module load; a root error boundary shows
+ *   "Something went wrong" with Restart app; the heartbeat, version check and
+ *   error-queue triggers run here; below `min_version` the blocking
+ *   "Update required" screen replaces the routes while every sync keeps running.
+ *
  * The app follows device rotation (`"orientation": "default"` in app.json);
  * nothing here locks it.
  */
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+installGlobalErrorHandlers();
 
 const FONTS = {
-  [fontFamilies.regular]: PlusJakartaSans_400Regular,
-  [fontFamilies.medium]: PlusJakartaSans_500Medium,
-  [fontFamilies.semibold]: PlusJakartaSans_600SemiBold,
-  [fontFamilies.bold]: PlusJakartaSans_700Bold,
-  [fontFamilies.heavy]: PlusJakartaSans_800ExtraBold,
+  [fontFamilies.regular]: Figtree_400Regular,
+  [fontFamilies.medium]: Figtree_500Medium,
+  [fontFamilies.semibold]: Figtree_600SemiBold,
+  [fontFamilies.bold]: Figtree_700Bold,
+  [fontFamilies.heavy]: Figtree_800ExtraBold,
 };
 
 export default function RootLayout() {
@@ -72,9 +87,13 @@ export default function RootLayout() {
   }, [fontsReady]);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthGate fontsReady={fontsReady} />
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <AuthGate fontsReady={fontsReady} />
+        </ToastProvider>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   );
 }
 
@@ -83,6 +102,8 @@ function AuthGate({ fontsReady }: { fontsReady: boolean }) {
   useCatalogueSyncTriggers();
   usePrintingBootstrap();
   useOfflineSalesTriggers();
+  useDeviceHealthTriggers();
+  const gate = useVersionGate();
 
   const status = useSessionStore((state) => state.status);
   const restoreError = useSessionStore((state) => state.restoreError);
@@ -108,6 +129,17 @@ function AuthGate({ fontsReady }: { fontsReady: boolean }) {
           <LoadingState message="Restoring session…" testID="restore-loading" />
         )}
       </Screen>
+    );
+  }
+
+  if (gate.status === 'update_required' && gate.info) {
+    return (
+      <UpdateRequiredScreen
+        current={gate.current}
+        minVersion={gate.info.min_version}
+        updateUrl={gate.info.update_url}
+        salesToSend={gate.salesToSend}
+      />
     );
   }
 

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -17,24 +18,27 @@ import { Chip } from '@/components/ui/Chip';
 import { TopBar } from '@/components/ui/TopBar';
 import { IconButton } from '@/components/ui/IconButton';
 import { Screen } from '@/components/ui/Screen';
-import { showVatBreakdown } from '@/constants/features';
-import { ROUTES } from '@/constants/routes';
+import { showVatBreakdown } from '@pos/core/features';
+import { ROUTES, type OrderRouteAction } from '@/constants/routes';
 import { colors, layout, numeric, radius, sizes, spacing, typography } from '@/constants/theme';
 import type { LocalOrderBadge } from '@/hooks/orders/useLocalOrders';
 import { useOrderReview } from '@/hooks/orders/useOrderReview';
 import { useReprint } from '@/hooks/orders/useReprint';
 import { useReversalGate } from '@/hooks/orders/useReversalGate';
 import { useVoidOrder } from '@/hooks/orders/useVoidOrder';
+import { useServiceChargeBps } from '@/hooks/tables/useDineIn';
+import { receiptServiceChargeBps } from '@/printing/render';
+import { serviceChargeLabel } from '@pos/core/printing/documents/receipt';
 import { useResponsive } from '@/hooks/useResponsive';
-import { describeDiscount } from '@/sale/discountRules';
+import { describeDiscount } from '@pos/core/sale/discountRules';
 import { orderNumberLabel, ticketNumberLabel } from '@/sale/localOrder';
-import { paymentMethodLabel } from '@/sale/payments';
-import { VAT_RATE_BPS } from '@/sale/pricing';
-import { orderStatusLabel } from '@/sale/reversals';
+import { paymentMethodLabel } from '@pos/core/sale/payments';
+import { VAT_RATE_BPS } from '@pos/core/sale/pricing';
+import { orderStatusLabel } from '@pos/core/sale/reversals';
 import type { OrderItem, OrderPayment, OrderStatus, PrintableOrder } from '@/services/types';
 import { formatBusinessDate, formatClockTime, formatShortDate } from '@/utils/dates';
-import { formatPeso } from '@/utils/money';
-import { formatPercentBps } from '@/utils/numbers';
+import { formatPeso } from '@pos/core/money';
+import { formatPercentBps } from '@pos/core/numbers';
 import { goBackOr } from '@/utils/navigation';
 
 type OrderDetailScreenProps = {
@@ -42,6 +46,8 @@ type OrderDetailScreenProps = {
   order: PrintableOrder;
   /** Offline Sales: a local sale that hasn't synced (read from the local JSON). */
   local?: { badge: LocalOrderBadge; lastError: string | null } | null;
+  /** From the Orders row menu: open the Reprint chooser or the void dialog once (the void only when the gate allows it now). */
+  initialAction?: OrderRouteAction | null;
 };
 
 const LOCAL_BADGES: Record<LocalOrderBadge, { label: string; variant: 'pending' | 'cancelled'; icon: 'cloud-upload-outline' | 'alert-circle-outline' }> = {
@@ -53,11 +59,11 @@ const LOCAL_BADGES: Record<LocalOrderBadge, { label: string; variant: 'pending' 
 export const LOCAL_PENDING_MESSAGE = 'Saved on this tablet while offline. It syncs by itself; the invoice number comes then.';
 
 /** Voids & Refunds (Phase 7): each status's chip. */
-const STATUS_LOOKS: Record<OrderStatus, { variant: 'completed' | 'cancelled' | 'pending'; icon: 'checkmark-circle-outline' | 'close-circle-outline' | 'return-down-back-outline' }> = {
+const STATUS_LOOKS: Record<OrderStatus, { variant: 'completed' | 'cancelled' | 'processing'; icon: 'checkmark-circle-outline' | 'close-circle-outline' | 'return-down-back-outline' }> = {
   completed: { variant: 'completed', icon: 'checkmark-circle-outline' },
   voided: { variant: 'cancelled', icon: 'close-circle-outline' },
-  refunded: { variant: 'pending', icon: 'return-down-back-outline' },
-  partially_refunded: { variant: 'pending', icon: 'return-down-back-outline' },
+  refunded: { variant: 'processing', icon: 'return-down-back-outline' },
+  partially_refunded: { variant: 'processing', icon: 'return-down-back-outline' },
 };
 
 function ItemRow({ item, first }: { item: OrderItem; first: boolean }) {
@@ -79,7 +85,7 @@ function ItemRow({ item, first }: { item: OrderItem; first: boolean }) {
         {item.sku ? ` · ${item.sku}` : ''}
         {item.is_vatable || !showVatBreakdown() ? '' : ' · VAT-exempt'}
       </Text>
-      {item.sc_pwd ? <Chip label="SC/PWD" variant="info" icon="id-card-outline" testID={`${testID}-sc-pwd`} /> : null}
+      {item.sc_pwd ? <Chip label="SC/PWD" icon="id-card-outline" testID={`${testID}-sc-pwd`} /> : null}
       {item.discount && item.line_discount_cents > 0 ? (
         <Text style={styles.itemMeta} testID={`${testID}-discount`}>
           {describeDiscount(item.discount)} · −{formatPeso(item.line_discount_cents)}
@@ -134,12 +140,28 @@ function PaymentRow({ payment, index }: { payment: OrderPayment; index: number }
  * the void block, each refund, the per-line refunded quantity, and Reprint →
  * Void slip / Refund slip.
  */
-export function OrderDetailScreen({ order, local = null }: OrderDetailScreenProps) {
+export function OrderDetailScreen({ order, local = null, initialAction = null }: OrderDetailScreenProps) {
   const { isTwoPane, screenPaddingX, screenPaddingY, gutter } = useResponsive();
   const reprint = useReprint(order);
   const review = useOrderReview(order);
   const voiding = useVoidOrder(order);
   const gate = useReversalGate(order, local !== null);
+  // The Orders row menu asked for an action: run it once, when it can run (the gate waits for the shift).
+  const pendingAction = useRef(initialAction);
+  const voidReady = gate.void?.enabled === true;
+  const { request: requestReprint } = reprint;
+  const { request: requestVoid } = voiding;
+  useEffect(() => {
+    if (pendingAction.current === 'reprint') {
+      pendingAction.current = null;
+      requestReprint();
+    } else if (pendingAction.current === 'void' && voidReady) {
+      pendingAction.current = null;
+      requestVoid();
+    }
+  }, [voidReady, requestReprint, requestVoid]);
+  // Dine-in: the `Service charge (10%)` label (the rate only when it gives this order's charge back exactly).
+  const serviceChargeBps = useServiceChargeBps();
   const statusLook = STATUS_LOOKS[order.status] ?? STATUS_LOOKS.completed;
   const number = ticketNumberLabel(order);
   const title = orderNumberLabel(order);
@@ -174,7 +196,7 @@ export function OrderDetailScreen({ order, local = null }: OrderDetailScreenProp
         testID="order-header"
       >
         {order.table_no ? (
-          <Chip label={`Table ${order.table_no}`} variant="primary" icon="restaurant-outline" testID="order-table" />
+          <Chip label={`Table ${order.table_no}`} icon="restaurant-outline" testID="order-table" />
         ) : null}
       </TopBar>
       <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.fill}>
@@ -264,6 +286,14 @@ export function OrderDetailScreen({ order, local = null }: OrderDetailScreenProp
                       reliefCents={order.sc_pwd.vat_relief_cents}
                       discountCents={order.sc_pwd.discount_cents}
                       testIDPrefix="order"
+                    />
+                  ) : null}
+                  {(order.service_charge_cents ?? 0) > 0 ? (
+                    <AmountRow
+                      label={serviceChargeLabel(receiptServiceChargeBps(order, serviceChargeBps))}
+                      detail={order.split_count ? `Split ${order.split_count} ways` : undefined}
+                      cents={order.service_charge_cents}
+                      testID="order-service-charge"
                     />
                   ) : null}
                   <AmountRow label="Total" cents={order.total_cents} variant="total" testID="order-total" />
@@ -359,18 +389,17 @@ const styles = StyleSheet.create({
   queue: {
     alignItems: 'center',
     borderRadius: radius.lg,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.accent,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
   queueLabel: {
     ...typography.overline,
     color: colors.textSecondary,
-    textTransform: 'uppercase',
   },
   queueValue: {
     ...typography.title,
-    color: colors.accentDeep,
+    color: colors.text,
   },
   headText: {
     flex: 1,

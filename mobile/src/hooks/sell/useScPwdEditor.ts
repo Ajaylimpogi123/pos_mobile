@@ -8,9 +8,9 @@ import {
   type ScPwdConflicts,
   type ScPwdDraft,
   type ScPwdDraftErrors,
-} from '@/sale/scPwd';
+} from '@pos/core/sale/scPwd';
 import type { ScPwdMode, ScPwdPersonType, ScPwdRequest } from '@/services/types';
-import { useCartStore } from '@/stores/cart';
+import { useCartStoreApi, type CartStore } from '@/stores/cart';
 
 /** SC/PWD checked and waiting for the cashier to confirm removing the discounts it can't be combined with. */
 type PendingApply = {
@@ -31,8 +31,8 @@ function personKey(): string {
 }
 
 /** The draft of the cart's SC/PWD, or of a new one (one senior citizen, `Their items`, VAT exempt **unticked**). */
-function draftFromCart(): ScPwdDraft {
-  const { scPwd, lines } = useCartStore.getState();
+function draftFromCart(store: CartStore): ScPwdDraft {
+  const { scPwd, lines } = store.getState();
   if (!scPwd) {
     return {
       mode: 'items',
@@ -61,6 +61,7 @@ function draftFromCart(): ScPwdDraft {
  * the checkout), so rotating keeps what was typed.
  */
 export function useScPwdEditor() {
+  const useCartStore = useCartStoreApi();
   const [draft, setDraft] = useState<ScPwdDraft | null>(null);
   const [errors, setErrors] = useState<ScPwdDraftErrors | null>(null);
   const [pending, setPending] = useState<PendingApply | null>(null);
@@ -72,7 +73,7 @@ export function useScPwdEditor() {
 
   function open() {
     if (useCartStore.getState().awaitingConfirmation) return;
-    setDraft(draftFromCart());
+    setDraft(draftFromCart(useCartStore));
     setErrors(null);
     setPending(null);
   }

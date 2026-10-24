@@ -7,7 +7,7 @@
  * away from zero, as the server's bcmath / brick/math `HALF_UP`). The server
  * stays the authority; these helpers only build previews and display text.
  */
-import type { DecimalValue } from '@/services/types';
+import type { DecimalValue } from './contract/types';
 
 /** Stored quantities keep 3 decimals (`DECIMAL(15,3)`). */
 export const QTY_SCALE = 3;

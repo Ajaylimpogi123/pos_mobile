@@ -11,8 +11,8 @@ import { Icon, type IconName } from '@/components/ui/Icon';
 import { IconButton } from '@/components/ui/IconButton';
 import { colors, iconSizes, radius, sizes, spacing, typography } from '@/constants/theme';
 import type { TestPrintState } from '@/hooks/printers/usePrinterListScreen';
-import { printerRoleLabel } from '@/printing/documents/format';
-import { columnsFor } from '@/printing/escpos/layout';
+import { printerRoleLabel } from '@pos/core/printing/documents/format';
+import { columnsFor } from '@pos/core/printing/escpos/layout';
 import type { Printer, PrinterRole } from '@/services/types';
 import type { Reachability } from '@/stores/printing';
 

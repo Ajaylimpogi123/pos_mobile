@@ -14,13 +14,15 @@ import { Chip } from '@/components/ui/Chip';
 import { TopBar } from '@/components/ui/TopBar';
 import { IconButton } from '@/components/ui/IconButton';
 import { Screen } from '@/components/ui/Screen';
+import { StatCard } from '@/components/ui/StatCard';
 import { ROUTES } from '@/constants/routes';
 import { colors, layout, spacing } from '@/constants/theme';
 import { useShiftDetail } from '@/hooks/shifts/useShifts';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useSessionStore } from '@/stores/session';
-import { formatBranchDateTime } from '@/utils/businessDay';
-import { formatPeso } from '@/utils/money';
+import { formatBranchDateTime } from '@pos/core/businessDay';
+import { formatPeso } from '@pos/core/money';
+import { formatCount } from '@pos/core/numbers';
 import { goBackOr } from '@/utils/navigation';
 
 function backToShifts() {
@@ -90,6 +92,23 @@ export function ShiftDetailScreen({ ulid }: { ulid: string | null }) {
           testID="shift-detail-scroll"
         >
           <View style={[styles.inner, { gap: gutter }]}>
+            {/* MASTER §1.4: the shift's net sales (green) and orders (blue) as stat cards; the full report follows. */}
+            <View style={[styles.stats, { gap: gutter }]}>
+              <StatCard
+                label="Net sales"
+                value={formatPeso(shift.report.net_sales_cents)}
+                icon="trending-up-outline"
+                accent="sales"
+                testID="shift-stat-net"
+              />
+              <StatCard
+                label="Orders"
+                value={formatCount(shift.report.orders_count)}
+                icon="receipt-outline"
+                accent="orders"
+                testID="shift-stat-orders"
+              />
+            </View>
             <InfoCard title="Shift" icon="time-outline" testID="shift-detail-summary">
               <View style={styles.chips}>
                 <Chip
@@ -98,7 +117,7 @@ export function ShiftDetailScreen({ ulid }: { ulid: string | null }) {
                   testID="shift-detail-status"
                 />
                 {shift.flags.map((flag) => (
-                  <Chip key={flag} label={shiftFlagLabel(flag)} variant="caution" icon="flag-outline" testID={`shift-flag-${flag}`} />
+                  <Chip key={flag} label={shiftFlagLabel(flag)} variant="caution" testID={`shift-flag-${flag}`} />
                 ))}
               </View>
               <DetailRow label="Opened" value={`${time(shift.opened_at)} · ${shift.opened_by.name}`} testID="shift-detail-opened" />
@@ -145,6 +164,9 @@ export function ShiftDetailScreen({ ulid }: { ulid: string | null }) {
 const styles = StyleSheet.create({
   fill: {
     flex: 1,
+  },
+  stats: {
+    flexDirection: 'row',
   },
   inner: {
     width: '100%',

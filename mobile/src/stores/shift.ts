@@ -28,8 +28,6 @@ type ShiftState = {
   /** A message for the gate, e.g. the server's "This shift is closed. Open a new shift." */
   gateNotice: string | null;
   lastClose: LastClose | null;
-  /** A short confirmation on the Sell screen, e.g. "Cash in of ₱500.00 recorded." */
-  flash: string | null;
 
   startLoading: (branchId: number) => void;
   setLoaded: (branchId: number, shift: LocalShift | null) => void;
@@ -37,7 +35,6 @@ type ShiftState = {
   setCurrent: (shift: LocalShift | null) => void;
   setGateNotice: (message: string | null) => void;
   setLastClose: (close: LastClose | null) => void;
-  setFlash: (message: string | null) => void;
   /** Test helper: back to the initial state. */
   reset: () => void;
 };
@@ -49,7 +46,6 @@ const initialState = {
   error: null,
   gateNotice: null,
   lastClose: null,
-  flash: null,
 };
 
 export const useShiftStore = create<ShiftState>()((set) => ({
@@ -71,6 +67,5 @@ export const useShiftStore = create<ShiftState>()((set) => ({
   setCurrent: (current) => set({ current }),
   setGateNotice: (gateNotice) => set({ gateNotice }),
   setLastClose: (lastClose) => set({ lastClose }),
-  setFlash: (flash) => set({ flash }),
   reset: () => set(initialState),
 }));

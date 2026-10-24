@@ -1,10 +1,12 @@
 /**
- * The compact, flat top bar (visual refresh): one row only (56 dp on phones,
- * 64 on tablets), no eyebrow line, toolbar content below the bar, the ☰ menu
+ * The header (MASTER §2.1 / §2.2 / §6): one row only (56 dp on phones, 48 on
+ * tablets), the sync badge on every app-shell screen, no eyebrow line, toolbar content below the bar, the ☰ menu
  * only in drawer mode, and the Sell status chips inside the bar (labelled on
  * tablets and in landscape, icon-only on phones in portrait).
  */
-import { act, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, within } from '@testing-library/react-native';
+import { router } from 'expo-router';
+import { useNetworkState } from 'expo-network';
 import type { ReactElement } from 'react';
 import { StyleSheet, Text } from 'react-native';
 
@@ -14,7 +16,9 @@ import { ShellContext, type ShellContextValue } from '@/components/shell/ShellCo
 import { TopBar } from '@/components/ui/TopBar';
 import { hitTarget, sizes } from '@/constants/theme';
 import type { SellSyncState } from '@/hooks/sell/useSellScreen';
+import { useOfflineStore } from '@/stores/offline';
 import { useSessionStore } from '@/stores/session';
+import { useSyncStore } from '@/stores/sync';
 import { cashierUser, REFERENCE_SIZES, resetWindowSize, secureStoreMock, setWindowSize } from '@/test-utils';
 import { renderWithQuery } from '@/test-utils/catalog';
 import { freshTestDatabase } from '@/test-utils/database';
@@ -26,6 +30,7 @@ jest.mock('@/db/client', () => ({
 }));
 
 const FUTURE = '2099-09-25T01:30:00Z';
+const networkState = useNetworkState as jest.Mock;
 
 function sync(overrides: Partial<SellSyncState> = {}): SellSyncState {
   return {
@@ -72,7 +77,7 @@ afterEach(() => {
 });
 
 describe('TopBar', () => {
-  it('is one compact row: 64 on tablets, 56 on phones, and follows rotation', async () => {
+  it('is one compact row: 48 on tablets, 56 on phones, and follows rotation', async () => {
     await renderWithQuery(<TopBar title="Orders" testID="bar" />);
     expect(barHeight('bar-bar')).toBe(sizes.topBar.tablet);
 
@@ -103,6 +108,29 @@ describe('TopBar', () => {
     expect(within(screen.getByTestId('bar-toolbar')).getByTestId('tabs')).toBeOnTheScreen();
     expect(within(screen.getByTestId('bar-bar')).queryByTestId('tabs')).toBeNull();
   });
+
+  it('shows the sync state (dot + "Online · synced") inside the app shell, and opens the Sync queue for a cashier', async () => {
+    useSyncStore.setState({ status: 'synced', lastServerTime: '2026-10-13T01:00:00Z' });
+    await inShell(<TopBar title="Orders" testID="bar" />, 'persistent');
+    const badge = within(screen.getByTestId('bar-bar')).getByTestId('header-sync-status');
+    expect(badge).toHaveTextContent('Online · synced');
+    await fireEvent.press(screen.getByTestId('header-sync-status-open'));
+    expect(router.push).toHaveBeenCalledWith('/sync-queue');
+  });
+
+  it('says "Offline · n pending" while offline sales wait, and hides the badge outside the shell or when asked', async () => {
+    useOfflineStore.setState({ pending: 3 });
+    networkState.mockReturnValue({ isConnected: false, isInternetReachable: false, type: 'NONE' });
+    await inShell(<TopBar title="Orders" testID="bar" />, 'persistent');
+    expect(screen.getByTestId('header-sync-status')).toHaveTextContent('Offline · 3 pending');
+
+    await renderWithQuery(<TopBar title="Orders" testID="plain" />);
+    expect(screen.queryByTestId('header-sync-status')).toBeNull();
+    await inShell(<TopBar title="Sell" sync={false} testID="own" />, 'persistent');
+    expect(screen.queryByTestId('header-sync-status')).toBeNull();
+    networkState.mockReturnValue({ isConnected: true, isInternetReachable: true, type: 'WIFI' });
+    useOfflineStore.setState({ pending: 0 });
+  });
 });
 
 describe('Sell top bar', () => {
@@ -110,7 +138,7 @@ describe('Sell top bar', () => {
     await renderSellHeader('persistent');
 
     const bar = screen.getByTestId('sell-header-bar');
-    expect(barHeight('sell-header-bar')).toBe(64);
+    expect(barHeight('sell-header-bar')).toBe(sizes.topBar.tablet);
     expect(within(bar).getByTestId('shift-pill')).toBeOnTheScreen();
     expect(within(bar).getByTestId('sync-status')).toHaveTextContent(/Synced just now$/);
     expect(within(bar).getByTestId('printer-status')).toHaveTextContent(/\S/);
@@ -164,5 +192,21 @@ describe('List top bar', () => {
     expect(within(persistentBar).queryByTestId('staff2-open-navigation')).toBeNull();
     expect(within(persistentBar).getByTestId('staff2-back')).toBeOnTheScreen();
     expect(within(persistentBar).queryByTestId('staff2-new')).toBeNull();
+  });
+
+  it('band: the title, the branch and business date, and the green Add pill sit on the decorative band', async () => {
+    const onNew = jest.fn();
+    await inShell(
+      <ListHeader title="Customers" band newTitle="Add customer" newLabel="New customer" onNew={onNew} testIDPrefix="customers" />,
+      'persistent',
+    );
+    expect(screen.getByTestId('customers-band-title')).toHaveTextContent('Customers');
+    expect(screen.getByTestId('customers-band-subtitle')).toHaveTextContent(new RegExp(`^${cashierUser.branch.name} · `));
+    const gradient = screen.getByTestId('customers-band-gradient', { includeHiddenElements: true });
+    expect(gradient.props.accessibilityElementsHidden).toBe(true);
+    // The create action moves from the header onto the band.
+    expect(within(screen.getByTestId('customers-header-bar')).queryByTestId('customers-new')).toBeNull();
+    await fireEvent.press(within(screen.getByTestId('customers-band')).getByTestId('customers-new'));
+    expect(onNew).toHaveBeenCalled();
   });
 });

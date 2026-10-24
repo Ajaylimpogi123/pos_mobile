@@ -2,9 +2,9 @@
  * Table Number (Core Sale revision 2): the client check (the server's rule),
  * the cart store field, and a `422` on `table_no` sent back to the cart.
  */
-import { buildOrderRequest } from '@/sale/order';
+import { buildOrderRequest } from '@pos/core/sale/order';
 import { classifyOrderError } from '@/sale/orderErrors';
-import { parseTableNo, TABLE_NO_INVALID, TABLE_NO_TOO_LONG } from '@/sale/table';
+import { parseTableNo, TABLE_NO_INVALID, TABLE_NO_TOO_LONG } from '@pos/core/sale/table';
 import { ApiValidationError } from '@/services/api';
 import { resetCart, useCartStore } from '@/stores/cart';
 import { HOT_DOG } from '@/test-utils/sale';

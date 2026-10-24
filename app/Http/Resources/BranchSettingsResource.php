@@ -27,6 +27,9 @@ class BranchSettingsResource extends JsonResource
             'auto_print_receipt' => $settings->autoPrintReceipt(),
             'receipt_copies' => $settings->receiptCopies(),
             'print_kitchen_tickets' => $settings->printKitchenTickets(),
+            // Dine-in Tables & Tabs → A.
+            'dine_in_enabled' => $settings->dineInEnabled(),
+            'service_charge_bps' => $settings->serviceChargeBps(),
             'updated_at' => $settings->updatedAt()?->toIso8601ZuluString(),
         ];
     }

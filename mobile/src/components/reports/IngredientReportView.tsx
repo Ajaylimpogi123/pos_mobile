@@ -16,9 +16,9 @@ import type { IngredientReportState } from '@/hooks/reports/usePurchasingReport'
 import { useResponsive } from '@/hooks/useResponsive';
 import { getErrorMessage } from '@/services/api';
 import type { IngredientReportRow, IngredientReportTotals } from '@/services/types';
-import { formatPeso } from '@/utils/money';
-import { formatCount } from '@/utils/numbers';
-import { formatQty, isQtyAtOrBelowZero } from '@/utils/quantity';
+import { formatPeso } from '@pos/core/money';
+import { formatCount } from '@pos/core/numbers';
+import { formatQty, isQtyAtOrBelowZero } from '@pos/core/quantity';
 
 export const INGREDIENT_TRUNCATED_MESSAGE = 'Showing the first 500 ingredients. Choose a status to see every row.';
 

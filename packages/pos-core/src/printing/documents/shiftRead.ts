@@ -9,12 +9,12 @@
  * server's from the Shifts screen), formatted with `formatAmount`; nothing is
  * computed here. The layout is the one agreed in Q-014.
  */
-import { paymentMethodLabel } from '@/sale/payments';
-import { VAT_RATE_BPS } from '@/sale/pricing';
-import { formatPercentValue } from '@/sale/discountRules';
-import type { IsoDateTime, ShiftReport, UserRef } from '@/services/types';
-import { cashRefundsOf } from '@/shifts/shiftReport';
-import { formatAmount } from '@/utils/money';
+import { paymentMethodLabel } from '../../sale/payments';
+import { VAT_RATE_BPS } from '../../sale/pricing';
+import { formatPercentValue } from '../../sale/discountRules';
+import type { IsoDateTime, ShiftReport, UserRef } from '../../contract/types';
+import { cashRefundsOf } from '../../shifts/cashRefunds';
+import { formatAmount } from '../../money';
 
 import { EscPosBuilder } from '../escpos/builder';
 import { formatPrintedDateTime } from './format';
@@ -93,8 +93,10 @@ export function buildShiftRead(doc: ShiftReadDocument, options: ShiftReadOptions
   // Layout as agreed in Q-023. Senior Citizen / PWD Discount: after Discounts (which include them), `SC/PWD (N)`, `VAT exempted` (when not 0) and `SC/PWD discount`.
   builder.line(`  SC/PWD (${report.sc_pwd_orders_count ?? 0})`);
   if ((report.sc_pwd_vat_relief_cents ?? 0) !== 0) builder.pair('  VAT exempted', formatAmount(-(report.sc_pwd_vat_relief_cents ?? 0)));
+  builder.pair('  SC/PWD discount', formatAmount(-(report.sc_pwd_discount_cents ?? 0)));
+  // Dine-in Tables & Tabs §G: the service charge on its own row (Net sales already includes it), when there is one.
+  if ((report.service_charge_cents ?? 0) > 0) builder.pair('Service charge', formatAmount(report.service_charge_cents));
   builder
-    .pair('  SC/PWD discount', formatAmount(-(report.sc_pwd_discount_cents ?? 0)))
     .bold(true)
     .pair('Net sales', formatAmount(report.net_sales_cents))
     .bold(false)

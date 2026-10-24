@@ -1,204 +1,194 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { memo, useCallback, useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, hitTarget, layout, numeric, pressedScale, radius, sizes, spacing, typography } from '@/constants/theme';
+import { Icon, type IconName } from '@/components/ui/Icon';
+import {
+  colors,
+  gradients,
+  iconSizes,
+  layout,
+  numeric,
+  pressedScale,
+  radius,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+} from '@/constants/theme';
 import type { MenuCategory } from '@/db/menuQueries';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useResponsive } from '@/hooks/useResponsive';
 
-/** Test IDs of the category filter, shared by the side rail and the pill row: `<prefix>-all`, `<prefix>-<id>`. */
+/** Test IDs of the category tabs: `<prefix>-all`, `<prefix>-<id>`, and `<prefix>s` (the scroll row). */
 export const CATEGORY_FILTER_TEST_ID = 'sell-category';
 
 type CategoryRailProps = {
   categories: readonly MenuCategory[];
   selectedId: number | null;
-  /** Keep it stable (e.g. a state setter): the pills are memoised. */
+  /** Keep it stable (e.g. a state setter): the tiles are memoised. */
   onChange: (id: number | null) => void;
-  /**
-   * `side`: a vertical column beside the tiles (tablet landscape, from `sellLayoutFor`).
-   * `row`: a horizontally scrolling pill row above the tiles (every other size).
-   */
-  variant: 'side' | 'row';
 };
 
-type PillProps = {
+type TileProps = {
   id: number | null;
   label: string;
   /** Available products. */
   count: number;
+  icon: IconName;
   selected: boolean;
   onSelect: (id: number | null) => void;
-  fill: boolean;
   testID: string;
 };
 
-/** A 44 dp pill: label + count badge; the selected one is solid primary. */
-const CategoryPill = memo(function CategoryPill({ id, label, count, selected, onSelect, fill, testID }: PillProps) {
+function itemsLabel(count: number): string {
+  return `${count} ${count === 1 ? 'item' : 'items'}`;
+}
+
+/**
+ * One category tab tile (MASTER §3, the legacy tab tiles): 112 dp wide.
+ * - Inactive: a #F3F4F6 → #F9FAFB gradient with a 4 px #D1D5DB **top** border.
+ * - Active: white → `green-soft` with a 4 px `green-line` **bottom** border and the tile shadow.
+ * An icon in a 40 dp circle (`green-chip` when active), the name (15 / 500)
+ * and the count ("4 items", 12, #4B5563).
+ */
+const CategoryTile = memo(function CategoryTile({ id, label, count, icon, selected, onSelect, testID }: TileProps) {
   const press = useCallback(() => onSelect(id), [onSelect, id]);
+  const reduceMotion = useReducedMotion();
+  const gradient = selected ? gradients.tileActive.colors : gradients.tileInactive.colors;
+
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole="tab"
       accessibilityLabel={`${label}, ${count} available`}
       accessibilityState={{ selected }}
       onPress={press}
       testID={testID}
       style={({ pressed }) => [
-        styles.pill,
-        fill && styles.pillFill,
-        selected ? styles.pillSelected : styles.pillIdle,
-        pressed && (selected ? styles.pillSelectedPressed : styles.pillIdlePressed),
+        styles.tile,
+        selected ? styles.tileActive : styles.tileIdle,
+        pressed && !reduceMotion && styles.pressed,
       ]}
     >
-      <Text style={[styles.label, fill && styles.labelFill, selected && styles.labelSelected]} numberOfLines={fill ? 2 : 1}>
+      <LinearGradient colors={gradient} style={StyleSheet.absoluteFill} pointerEvents="none" />
+      <View style={[styles.iconCircle, selected ? styles.iconCircleActive : styles.iconCircleIdle]}>
+        <Icon name={icon} size={iconSizes.md} color={selected ? colors.greenHover : colors.textResting} />
+      </View>
+      <Text style={styles.name} numberOfLines={1}>
         {label}
       </Text>
-      <View style={[styles.count, selected && styles.countSelected]}>
-        <Text style={[styles.countText, selected && styles.countTextSelected]}>{count}</Text>
-      </View>
+      <Text style={styles.count} numberOfLines={1}>
+        {itemsLabel(count)}
+      </Text>
     </Pressable>
   );
 });
 
 /**
- * The category filter: "All items" then every visible category in menu
- * order, each with its available-product count. As a side column on tablet
- * landscape (it scrolls with many categories), else as the pill row above the
- * tiles (it scrolls sideways).
+ * The category tabs (sell.md, Menu column step 2): "All" then every visible
+ * category in menu order, each with its available-product count, as tab tiles
+ * in a white card. It scrolls sideways (the only horizontal scroll on Sell).
  */
-export function CategoryRail({ categories, selectedId, onChange, variant }: CategoryRailProps) {
-  const { screenPaddingX, screenPaddingY, gutter } = useResponsive();
-  const insets = useSafeAreaInsets();
-  const side = variant === 'side';
+export function CategoryRail({ categories, selectedId, onChange }: CategoryRailProps) {
+  const { screenPaddingX } = useResponsive();
   const total = useMemo(() => categories.reduce((sum, category) => sum + category.products_count, 0), [categories]);
 
-  const pills = (
-    <>
-      <CategoryPill
-        id={null}
-        label="All items"
-        count={total}
-        selected={selectedId === null}
-        onSelect={onChange}
-        fill={side}
-        testID={`${CATEGORY_FILTER_TEST_ID}-all`}
-      />
-      {categories.map((category) => (
-        <CategoryPill
-          key={category.id}
-          id={category.id}
-          label={category.name}
-          count={category.products_count}
-          selected={selectedId === category.id}
-          onSelect={onChange}
-          fill={side}
-          testID={`${CATEGORY_FILTER_TEST_ID}-${category.id}`}
-        />
-      ))}
-    </>
-  );
-
-  if (side) {
-    return (
-      <View style={styles.rail} testID="sell-category-rail">
+  return (
+    <View style={[styles.wrap, { paddingHorizontal: screenPaddingX }]}>
+      <View style={styles.card}>
         <ScrollView
-          contentContainerStyle={[
-            styles.railContent,
-            { paddingTop: gutter, paddingBottom: insets.bottom + screenPaddingY + layout.tabBarHeight },
-          ]}
-          showsVerticalScrollIndicator={false}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.row}
+          accessibilityRole="tablist"
+          testID={`${CATEGORY_FILTER_TEST_ID}s`}
         >
-          {pills}
+          <CategoryTile
+            id={null}
+            label="All"
+            count={total}
+            icon="grid-outline"
+            selected={selectedId === null}
+            onSelect={onChange}
+            testID={`${CATEGORY_FILTER_TEST_ID}-all`}
+          />
+          {categories.map((category) => (
+            <CategoryTile
+              key={category.id}
+              id={category.id}
+              label={category.name}
+              count={category.products_count}
+              icon="restaurant-outline"
+              selected={selectedId === category.id}
+              onSelect={onChange}
+              testID={`${CATEGORY_FILTER_TEST_ID}-${category.id}`}
+            />
+          ))}
         </ScrollView>
       </View>
-    );
-  }
-
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-      style={styles.rowScroll}
-      contentContainerStyle={[styles.rowContent, { paddingHorizontal: screenPaddingX }]}
-      testID={`${CATEGORY_FILTER_TEST_ID}s`}
-    >
-      {pills}
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  rail: {
-    width: layout.categoryRailWidth,
+  wrap: {
+    paddingBottom: spacing.md,
   },
-  railContent: {
-    gap: spacing.sm,
-    paddingLeft: spacing.lg,
-    paddingRight: spacing.xs,
-  },
-  rowScroll: {
-    flexGrow: 0,
-  },
-  rowContent: {
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: hitTarget.min,
-    borderRadius: radius.pill,
-    borderWidth: sizes.borderWidth,
-    paddingHorizontal: spacing.lg,
-  },
-  pillFill: {
-    paddingVertical: spacing.xs,
-  },
-  pillIdle: {
+  card: {
     backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: sizes.borderWidth,
     borderColor: colors.border,
+    ...shadows.sm,
   },
-  pillIdlePressed: {
-    backgroundColor: colors.surfaceMuted,
+  row: {
+    gap: spacing.sm,
+    padding: spacing.sm,
+  },
+  tile: {
+    width: layout.categoryTileWidth,
+    overflow: 'hidden',
+    borderRadius: radius.md,
+    alignItems: 'center',
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  tileIdle: {
+    borderTopWidth: sizes.categoryTileBorder,
+    borderTopColor: colors.borderStrong,
+  },
+  tileActive: {
+    borderBottomWidth: sizes.categoryTileBorder,
+    borderBottomColor: colors.greenLine,
+    ...shadows.tile,
+  },
+  pressed: {
     transform: [{ scale: pressedScale }],
   },
-  pillSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+  iconCircle: {
+    width: sizes.categoryIcon,
+    height: sizes.categoryIcon,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xxs,
   },
-  pillSelectedPressed: {
-    backgroundColor: colors.primaryPressed,
-    borderColor: colors.primaryPressed,
-    transform: [{ scale: pressedScale }],
+  iconCircleIdle: {
+    backgroundColor: colors.surface,
   },
-  label: {
-    ...typography.control,
-    color: colors.textResting,
+  iconCircleActive: {
+    backgroundColor: colors.greenChip,
   },
-  labelFill: {
-    flex: 1,
-  },
-  labelSelected: {
-    color: colors.onPrimary,
+  name: {
+    ...typography.tileName,
+    color: colors.text,
+    textAlign: 'center',
   },
   count: {
-    minWidth: spacing.xxl,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceMuted,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
-    alignItems: 'center',
-  },
-  countSelected: {
-    backgroundColor: colors.onGradientSurface,
-  },
-  countText: {
-    ...typography.captionStrong,
+    ...typography.captionMedium,
     ...numeric,
-    color: colors.textSecondary,
-  },
-  countTextSelected: {
-    color: colors.onPrimary,
+    color: colors.textSubtle,
   },
 });

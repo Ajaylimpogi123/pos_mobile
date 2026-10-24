@@ -83,4 +83,46 @@ return [
 
     'dev_printer_host' => env('DEV_PRINTER_HOST') ?: null,
 
+    /*
+    |--------------------------------------------------------------------------
+    | Print agent (Web POS & Print Bridge → E)
+    |--------------------------------------------------------------------------
+    |
+    | Server side: `token` is the shared secret every /api/v1/print-agent/*
+    | request sends in `X-Print-Agent-Token` (unset or empty → those endpoints
+    | answer 503), and `branch_id` is the one branch the agent serves.
+    |
+    | Agent side (`php artisan print-agent:run`, on a PC on the printers' LAN):
+    | `api_url` is the API origin (e.g. http://192.168.1.50:8000), `token` the
+    | same secret, and `agent_id` the name it claims jobs under (default: the
+    | hostname).
+    |
+    */
+
+    'print_agent' => [
+        'token' => env('PRINT_AGENT_TOKEN') ?: null,
+        'branch_id' => (int) (env('PRINT_AGENT_BRANCH_ID') ?: 1),
+        'api_url' => env('PRINT_AGENT_API_URL') ?: null,
+        'agent_id' => env('PRINT_AGENT_ID') ?: null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | App versions (Hardening & Pilot → C)
+    |--------------------------------------------------------------------------
+    |
+    | Served by GET /api/v1/app-version and in every heartbeat response as
+    | `AppVersionInfo`. A tablet below `min` shows a blocking "Update required"
+    | screen; below `latest` a dismissible banner. Semver `major.minor.patch`.
+    | `update_url` is the link to the release APK, or null. Web terminals are
+    | never version-gated.
+    |
+    */
+
+    'app_version' => [
+        'min' => env('APP_MIN_VERSION') ?: '1.0.0',
+        'latest' => env('APP_LATEST_VERSION') ?: '1.0.0',
+        'update_url' => env('APP_UPDATE_URL') ?: null,
+    ],
+
 ];

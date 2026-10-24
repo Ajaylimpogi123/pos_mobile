@@ -18,14 +18,20 @@
  * `SC/PWD discount 20%`; before the footer one `Senior citizen  ID …` (or
  * `PWD  ID …`) line per person, `Shared by 4 diners, 1 SC/PWD` (headcount
  * mode) and a signature line.
+ *
+ * Dine-in Tables & Tabs §F adds: a `Service charge (10%)` row before the
+ * total when `service_charge_cents > 0`, and for an equal split one receipt
+ * per share, each with the full order plus `Share 1 of 3 · ₱415.00 · Cash`.
  */
-import { showVatBreakdown } from '@/constants/features';
-import { SC_PWD_RATE_BPS, VAT_RATE_BPS } from '@/sale/pricing';
-import { personTypeLabel, sharedMealLine } from '@/sale/scPwd';
-import { formatPercentValue } from '@/sale/discountRules';
-import { orderNumberLabel, ticketNumberLabel } from '@/sale/localOrder';
-import type { BranchSettings, OrderItem, OrderPayment, OrderScPwd, PrintableOrder } from '@/services/types';
-import { formatAmount, formatPeso } from '@/utils/money';
+import { showVatBreakdown } from '../../features';
+import { SC_PWD_RATE_BPS, VAT_RATE_BPS } from '../../sale/pricing';
+import { personTypeLabel, sharedMealLine } from '../../sale/scPwd';
+import { paymentMethodLabel } from '../../sale/payments';
+import { equalSplitShares } from '../../sale/serviceCharge';
+import { formatPercentValue } from '../../sale/discountRules';
+import { orderNumberLabel, ticketNumberLabel } from '../../sale/orderNumbers';
+import type { BranchSettings, OrderItem, OrderPayment, OrderScPwd, PaymentMethod, PrintableOrder } from '../../contract/types';
+import { formatAmount, formatPeso } from '../../money';
 
 import { EscPosBuilder } from '../escpos/builder';
 import { formatPrintedDateTime, formatPrintedDateTimeAt, printedDiscountLabel } from './format';
@@ -49,7 +55,40 @@ export type ReceiptOptions = {
   reprint?: boolean;
   /** "Copy 2 of 2" prints only when `of` > 1. */
   copy?: { number: number; of: number };
+  /** Dine-in: the branch's `service_charge_bps`, for the `Service charge (10%)` label (without it: `Service charge`). */
+  serviceChargeBps?: number;
+  /** Dine-in (T2): the equal-split share this receipt is for (`receiptShares`). */
+  share?: ReceiptShare;
 };
+
+/** One share of an equally split order: `Share 1 of 3 · ₱415.00 · Cash`. */
+export type ReceiptShare = { number: number; of: number; amountCents: number; method: PaymentMethod };
+
+/**
+ * The shares of an equally split order (one receipt each), in share order:
+ * share `k` = `floor(total / N)` + 1 centavo for `k ≤ total mod N`, paid by
+ * `payments[k − 1]`. `[]` when the order isn't split.
+ */
+export function receiptShares(order: Pick<PrintableOrder, 'split_count' | 'total_cents' | 'payments'>): ReceiptShare[] {
+  const count = order.split_count ?? 0;
+  if (count < 2) return [];
+  return equalSplitShares(order.total_cents, count).map((amountCents, index) => ({
+    number: index + 1,
+    of: count,
+    amountCents,
+    method: order.payments[index]?.method ?? 'cash',
+  }));
+}
+
+/** `Share 1 of 3 · ₱415.00 · Cash`. */
+export function shareLine(share: ReceiptShare): string {
+  return `Share ${share.number} of ${share.of} · ${formatPeso(share.amountCents)} · ${paymentMethodLabel(share.method)}`;
+}
+
+/** `Service charge (10%)`, or `Service charge` when the rate isn't known. */
+export function serviceChargeLabel(bps: number | null | undefined): string {
+  return bps && bps > 0 ? `Service charge (${formatPercentValue(bps)})` : 'Service charge';
+}
 
 /** The receipt header lines, centred, the first one bold (the void and refund slips use them too). */
 export function header(builder: EscPosBuilder, lines: readonly string[]): void {
@@ -138,9 +177,14 @@ export function buildReceipt(order: PrintableOrder, options: ReceiptOptions): Ui
   if (order.order_discount) {
     builder.pair(`Order discount (${printedDiscountLabel(order.order_discount)})`, formatAmount(-order.order_discount.amount_cents));
   }
+  // Dine-in §F: the service charge, before the total (an order stored before Dine-in has none).
+  if ((order.service_charge_cents ?? 0) > 0) {
+    builder.pair(serviceChargeLabel(options.serviceChargeBps), formatAmount(order.service_charge_cents));
+  }
   builder.bold(true).size(1, 2).pair('TOTAL', formatPeso(order.total_cents)).size(1, 1).bold(false);
   for (const payment of order.payments) paymentRow(builder, payment);
   builder.pair('Change', formatAmount(order.change_cents));
+  if (options.share) builder.bold(true).wrapped(shareLine(options.share)).bold(false);
 
   const showVat = showVatBreakdown();
   const copyLine = options.copy !== undefined && options.copy.of > 1;

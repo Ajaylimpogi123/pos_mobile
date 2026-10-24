@@ -44,19 +44,24 @@ it('backfills order_items.category_id from the products, then makes it NOT NULL 
 
     expect(OrderItem::query()->orderBy('id')->pluck('category_id')->all())->toBe([$breakfast->id, $drinks->id, $drinks->id]);
 
+    // information_schema holds the physical (prefixed) table names.
+    $prefix = DB::getTablePrefix();
+
     $column = DB::selectOne(
         "SELECT IS_NULLABLE AS nullable FROM information_schema.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'category_id'",
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'category_id'",
+        [$prefix.'order_items'],
     );
     $foreignKey = DB::selectOne(
         "SELECT rc.DELETE_RULE AS delete_rule, rc.REFERENCED_TABLE_NAME AS referenced_table
          FROM information_schema.REFERENTIAL_CONSTRAINTS rc
          JOIN information_schema.KEY_COLUMN_USAGE k
            ON k.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA AND k.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
-         WHERE rc.CONSTRAINT_SCHEMA = DATABASE() AND k.TABLE_NAME = 'order_items' AND k.COLUMN_NAME = 'category_id'",
+         WHERE rc.CONSTRAINT_SCHEMA = DATABASE() AND k.TABLE_NAME = ? AND k.COLUMN_NAME = 'category_id'",
+        [$prefix.'order_items'],
     );
 
     expect($column->nullable)->toBe('NO')
-        ->and($foreignKey->referenced_table)->toBe('categories')
+        ->and($foreignKey->referenced_table)->toBe($prefix.'categories')
         ->and($foreignKey->delete_rule)->toBe('RESTRICT');
 });

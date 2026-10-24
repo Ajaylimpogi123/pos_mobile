@@ -1,5 +1,5 @@
 import { AmountRow } from '@/components/shared/AmountRow';
-import { SC_PWD_DISCOUNT_LABEL } from '@/sale/scPwd';
+import { SC_PWD_DISCOUNT_LABEL } from '@pos/core/sale/scPwd';
 
 type ScPwdAmountRowsProps = {
   /** The sale's `sc_pwd.vat_exempt`: the `VAT exempted` row shows only when it is ticked. */

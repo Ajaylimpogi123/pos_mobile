@@ -45,6 +45,7 @@ export function PrinterListScreen() {
   return (
     <Screen edges={[]} testID="printer-list-screen">
       <ListHeader
+        band
         title="Printers"
         newLabel="New printer"
         onNew={canManage ? openNewPrinter : undefined}

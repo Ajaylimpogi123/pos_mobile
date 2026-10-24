@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import { useNow } from '@/hooks/useNow';
 import { useSessionStore } from '@/stores/session';
-import { addBusinessDays, businessDateAt, businessDaysBetween, firstOfMonth } from '@/utils/businessDay';
+import { addBusinessDays, businessDateAt, businessDaysBetween, firstOfMonth } from '@pos/core/businessDay';
 
 /** Contract: a report covers at most 366 days (inclusive range of 366 dates means 365 days apart). */
 export const MAX_RANGE_DAYS = 366;

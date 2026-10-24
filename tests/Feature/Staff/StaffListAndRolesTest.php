@@ -112,14 +112,14 @@ describe('GET /admin/roles', function () {
                 'customer.manage', 'discount.apply', 'discount.override', 'inventory.adjust', 'order.review', 'product.manage',
                 'purchase.receive', 'purchase.request',
                 'report.view', 'report.zread', 'sale.create', 'sale.refund', 'sale.void',
-                'settings.manage', 'shift.close', 'shift.open', 'supplier.manage', 'user.manage',
+                'settings.manage', 'shift.close', 'shift.open', 'supplier.manage', 'system.manage', 'user.manage',
             ],
             'assignable' => true,
         ]);
 
         expect($roles->firstWhere('slug', 'cashier')['permissions'])
             ->toBe(['discount.apply', 'sale.create', 'shift.close', 'shift.open'])
-            ->and($roles->firstWhere('slug', 'owner')['permissions'])->toHaveCount(21);
+            ->and($roles->firstWhere('slug', 'owner')['permissions'])->toHaveCount(22);
     });
 
     it('marks every role assignable for an owner', function () {

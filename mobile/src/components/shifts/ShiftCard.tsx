@@ -4,11 +4,11 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { Chip, type ChipVariant } from '@/components/ui/Chip';
 import { colors, numeric, pressedScale, radius, spacing, typography } from '@/constants/theme';
-import { varianceWord } from '@/printing/documents/shiftRead';
+import { varianceWord } from '@pos/core/printing/documents/shiftRead';
 import type { Shift } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
-import { formatBranchDateTime, formatBranchTime } from '@/utils/businessDay';
-import { formatPeso } from '@/utils/money';
+import { formatBranchDateTime, formatBranchTime } from '@pos/core/businessDay';
+import { formatPeso } from '@pos/core/money';
 
 type ShiftCardProps = {
   shift: Shift;
@@ -97,13 +97,13 @@ export const ShiftCard = memo(function ShiftCard({ shift, onPress }: ShiftCardPr
           {(shift.report.refunds_cents ?? 0) > 0 ? (
             <Chip
               label={`Refunds ${formatPeso(shift.report.refunds_cents)}`}
-              variant="pending"
+              variant="processing"
               icon="return-down-back-outline"
               testID={`${testID}-refunds`}
             />
           ) : null}
           {shift.flags.map((flag) => (
-            <Chip key={flag} label={shiftFlagLabel(flag)} variant="caution" icon="flag-outline" />
+            <Chip key={flag} label={shiftFlagLabel(flag)} variant="caution" />
           ))}
         </View>
       </Pressable>
@@ -131,13 +131,13 @@ const styles = StyleSheet.create({
     minWidth: spacing.giant,
     alignItems: 'center',
     borderRadius: radius.md,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.accent,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
   },
   deviceText: {
     ...typography.heading,
-    color: colors.primaryDark,
+    color: colors.text,
   },
   titles: {
     flex: 1,
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
   },
   total: {
     ...typography.price,
-    color: colors.primary,
+    color: colors.green,
   },
   chips: {
     flexDirection: 'row',

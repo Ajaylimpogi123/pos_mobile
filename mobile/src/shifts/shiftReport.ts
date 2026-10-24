@@ -23,6 +23,8 @@
  * - Senior Citizen / PWD Discount: `sc_pwd_orders_count` (the sales with
  *   SC/PWD), `sc_pwd_vat_relief_cents` (Σ `sc_pwd.vat_relief_cents`) and
  *   `sc_pwd_discount_cents` (Σ `sc_pwd.discount_cents`), over the same sales.
+ * - Dine-in Tables & Tabs: `service_charge_cents` (Σ `service_charge_cents`)
+ *   over the same sales; `net_sales_cents` already includes it.
  *
  * A pure function: integer centavos only, no clock, no storage.
  */
@@ -34,6 +36,8 @@ import type {
   ShiftReport,
   ShiftReportCashier,
 } from '@/services/types';
+
+export { cashRefundsOf } from '@pos/core/shifts/cashRefunds';
 
 export type ShiftReportMovement = { type: CashMovementType; amountCents: number };
 
@@ -66,6 +70,7 @@ export function computeShiftReport(input: ShiftReportInput): ShiftReport {
   let scPwdOrders = 0;
   let scPwdRelief = 0;
   let scPwdDiscount = 0;
+  let serviceCharge = 0;
   const methods = new Map<PaymentMethod, { orders: number; amount: number }>(METHODS.map((method) => [method, { orders: 0, amount: 0 }]));
   const cashiers = new Map<number, CashierTotals>();
 
@@ -77,6 +82,8 @@ export function computeShiftReport(input: ShiftReportInput): ShiftReport {
     vatable += order.vatable_sales_cents;
     vat += order.vat_amount_cents;
     vatExempt += order.vat_exempt_sales_cents;
+    // An order stored before Dine-in has no `service_charge_cents`.
+    serviceCharge += order.service_charge_cents ?? 0;
     // An order stored before SC/PWD has no `sc_pwd`.
     if (order.sc_pwd) {
       scPwdOrders += 1;
@@ -176,15 +183,11 @@ export function computeShiftReport(input: ShiftReportInput): ShiftReport {
     sc_pwd_orders_count: scPwdOrders,
     sc_pwd_vat_relief_cents: scPwdRelief,
     sc_pwd_discount_cents: scPwdDiscount,
+    service_charge_cents: serviceCharge,
   };
 }
 
 /** `counted − expected`, the live figure the close dialog shows. */
 export function varianceOf(countedCashCents: number, expectedCashCents: number): number {
   return countedCashCents - expectedCashCents;
-}
-
-/** Cash refunds of a report (Σ `refunds_by_method` cash), for the cash drawer lines. */
-export function cashRefundsOf(report: Pick<ShiftReport, 'refunds_by_method'>): number {
-  return report.refunds_by_method?.find((method) => method.method === 'cash')?.amount_cents ?? 0;
 }

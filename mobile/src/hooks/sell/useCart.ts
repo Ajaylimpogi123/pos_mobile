@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 
-import { discountNeedsApproval, discountTooLargeMessage } from '@/sale/discountRules';
-import { priceCart } from '@/sale/order';
-import { SC_PWD_CONFLICT_MESSAGE, TICK_ITEMS_MESSAGE } from '@/sale/scPwd';
-import { parseTableNo } from '@/sale/table';
-import { useCartStore } from '@/stores/cart';
+import { discountNeedsApproval, discountTooLargeMessage } from '@pos/core/sale/discountRules';
+import { priceCart } from '@pos/core/sale/order';
+import { SC_PWD_CONFLICT_MESSAGE, TICK_ITEMS_MESSAGE } from '@pos/core/sale/scPwd';
+import { parseTableNo } from '@pos/core/sale/table';
+import { useCartStoreApi } from '@/stores/cart';
 import { useSessionStore } from '@/stores/session';
 
 /** Contract wording of the size limit (`422` on `items`). */
@@ -21,6 +21,7 @@ export const SALE_TOO_LARGE_MESSAGE = 'This sale is too large.';
  */
 export function useCart() {
   const user = useSessionStore((state) => state.user);
+  const useCartStore = useCartStoreApi();
   const lines = useCartStore((state) => state.lines);
   const orderDiscount = useCartStore((state) => state.orderDiscount);
   const customer = useCartStore((state) => state.customer);

@@ -2,20 +2,23 @@ import { useRef } from 'react';
 import { StyleSheet, Text, View, type TextInput } from 'react-native';
 
 import { ReceiptHistoryCard } from '@/components/purchasing/PurchaseOrderParts';
+import { PdfButton, PdfErrorBanner, PurchasePdfSheet } from '@/components/purchasing/PurchasePdf';
 import { chipFor, LINE_STATUS, PO_RECEIVING_STATUS, PURCHASING_OFFLINE_MESSAGE } from '@/components/purchasing/purchasingLabels';
 import { FormSection } from '@/components/shared/FormSection';
+import { FormFooter } from '@/components/shared/FormFooter';
 import { FormLayout } from '@/components/shared/FormLayout';
 import { RecordLoadState } from '@/components/shared/RecordLoadState';
 import { QtyUnitField } from '@/components/units/QtyUnitField';
 import { Banner } from '@/components/ui/Banner';
-import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
+import { useFieldInputs } from '@/components/ui/ErrorSummary';
 import { Input } from '@/components/ui/Input';
 import { SwitchRow } from '@/components/ui/SwitchRow';
 import { ROUTES } from '@/constants/routes';
 import { colors, numeric, radius, spacing, typography } from '@/constants/theme';
 import { usePurchaseOrder } from '@/hooks/purchasing/usePurchaseOrders';
+import { usePurchasePdf } from '@/hooks/purchasing/usePurchasePdf';
 import { usePurchasingPermissions } from '@/hooks/purchasing/usePurchasingPermissions';
 import { lineField, RECEIVING_LIMITS, useReceiveScreen, type ReceiveScreenState } from '@/hooks/purchasing/useReceiving';
 import { useIsOnline } from '@/hooks/useIsOnline';
@@ -23,7 +26,7 @@ import { ApiError } from '@/services/api';
 import type { PurchaseOrder, PurchaseOrderLine } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
 import { goBackOr } from '@/utils/navigation';
-import { formatQtyUnit } from '@/utils/quantity';
+import { formatQtyUnit } from '@pos/core/quantity';
 
 function backToList() {
   goBackOr(ROUTES.receiving);
@@ -44,7 +47,15 @@ function Figure({ label, value, testID }: { label: string; value: string; testID
   );
 }
 
-function ReceiveLine({ line, screen, disabled }: { line: PurchaseOrderLine; screen: ReceiveScreenState; disabled: boolean }) {
+type ReceiveLineProps = {
+  line: PurchaseOrderLine;
+  screen: ReceiveScreenState;
+  disabled: boolean;
+  /** The error summary focuses the line's quantity through this. */
+  register: (field: string) => (input: TextInput | null) => void;
+};
+
+function ReceiveLine({ line, screen, disabled, register }: ReceiveLineProps) {
   const testID = `receive-line-${line.id}`;
   const entry = screen.entryOf(line);
   const choices = screen.choicesOf(line);
@@ -89,6 +100,7 @@ function ReceiveLine({ line, screen, disabled }: { line: PurchaseOrderLine; scre
           returnKeyType={entry.correction ? 'next' : 'done'}
           submitBehavior={entry.correction ? 'submit' : undefined}
           onSubmitEditing={entry.correction ? () => reasonRef.current?.focus() : undefined}
+          inputRef={register(lineField(line.id, 'qty'))}
           testID={testID}
         />
       ) : (
@@ -127,6 +139,8 @@ function ReceiveLine({ line, screen, disabled }: { line: PurchaseOrderLine; scre
 
 function ReceiveForm({ po }: { po: PurchaseOrder }) {
   const screen = useReceiveScreen(po);
+  const fields = useFieldInputs();
+  const pdf = usePurchasePdf();
   const online = useIsOnline();
   const { canReceive } = usePurchasingPermissions();
   const timeZone = useSessionStore((state) => state.user?.branch.timezone ?? '');
@@ -134,19 +148,48 @@ function ReceiveForm({ po }: { po: PurchaseOrder }) {
   const approved = po.status === 'approved';
   const disabled = screen.busy || screen.locked || !online || !approved || !canReceive;
 
+  // MASTER §4: the summary names each line ("Line 2: Quantity"); the form-level message stays its banner.
+  const receiveLabel = (field: string): string | null | undefined => {
+    if (field === 'form') return null;
+    if (field === 'remarks') return 'Remarks';
+    const match = /^line-(\d+)-(qty|unit|reason)$/.exec(field);
+    if (!match) return undefined;
+    const index = po.lines.findIndex((line) => line.id === Number(match[1]));
+    const what = { qty: 'Quantity', unit: 'Unit', reason: 'Correction reason' }[match[2] as 'qty' | 'unit' | 'reason'];
+    return index >= 0 ? `Line ${index + 1}: ${what}` : what;
+  };
+
   return (
     <FormLayout
       title={`Receive ${po.po_no}`}
       subtitle={receiving.label}
       onBack={backToList}
       banner={screen.banner}
+      fieldErrors={screen.errors}
+      fieldLabels={receiveLabel}
+      onSelectError={fields.focus}
+      footer={
+        canReceive ? (
+          <FormFooter
+            onCancel={backToList}
+            cancelDisabled={screen.busy}
+            saveTitle={screen.locked ? 'Retry' : 'Save receipt'}
+            onSave={screen.submit}
+            saving={screen.busy}
+            saveDisabled={screen.busy || !online || !approved}
+            saveTestID="receive-save"
+          />
+        ) : null
+      }
       notice={screen.notice}
       asidePlacement="end"
+      headerRight={<PdfButton pdf={pdf} target={{ kind: 'po', ulid: po.ulid, po }} accessibilityLabel={`PDF of ${po.po_no}`} testID="receive-pdf" />}
       testID="receive-screen"
       aside={<ReceiptHistoryCard receipts={po.receipts} lines={po.lines} timeZone={timeZone} />}
       main={
         <>
           {online ? null : <Banner variant="warning" message={PURCHASING_OFFLINE_MESSAGE} testID="receive-offline" />}
+          <PdfErrorBanner pdf={pdf} testID="receive-pdf-error" />
           {approved ? null : <Banner variant="warning" message="Approve the order before receiving." testID="receive-not-approved" />}
           <View style={styles.chips}>
             <Chip label={receiving.label} variant={receiving.variant} testID="receive-po-status" />
@@ -154,7 +197,7 @@ function ReceiveForm({ po }: { po: PurchaseOrder }) {
           </View>
           {screen.errors.form ? <Banner message={screen.errors.form} testID="receive-form-error" /> : null}
           {po.lines.map((line) => (
-            <ReceiveLine key={line.id} line={line} screen={screen} disabled={disabled} />
+            <ReceiveLine key={line.id} line={line} screen={screen} disabled={disabled} register={fields.register} />
           ))}
           <FormSection title="Remarks">
             <Input
@@ -169,20 +212,11 @@ function ReceiveForm({ po }: { po: PurchaseOrder }) {
               testID="receive-remarks"
             />
           </FormSection>
-          {canReceive ? (
-            <Button
-              title={screen.locked ? 'Retry' : 'Save receipt'}
-              leftIcon={screen.locked ? 'refresh' : 'download-outline'}
-              size="lg"
-              onPress={screen.submit}
-              loading={screen.busy}
-              disabled={screen.busy || !online || !approved}
-              testID="receive-save"
-            />
-          ) : null}
         </>
       }
-    />
+    >
+      <PurchasePdfSheet pdf={pdf} testID="receive-pdf-sheet" />
+    </FormLayout>
   );
 }
 

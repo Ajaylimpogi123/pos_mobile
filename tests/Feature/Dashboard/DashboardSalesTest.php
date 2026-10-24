@@ -64,6 +64,31 @@ function salesWeek(array $days): array
     ], ['2026-09-19', '2026-09-20', '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25']);
 }
 
+/**
+ * v1.28: the default (Day / today) period fields for business day 2026-09-25, with the
+ * trend over the same 7 days as `last_7_days`.
+ *
+ * @param  array<string, array{0: int, 1: int}>  $days  date => [orders_count, net_sales_cents]
+ * @return array<string, mixed>
+ */
+function todayPeriod(array $days): array
+{
+    return [
+        'period' => 'day',
+        'date_from' => '2026-09-25',
+        'date_to' => '2026-09-25',
+        'business_date' => '2026-09-25',
+        'trend' => [
+            'unit' => 'day',
+            'buckets' => array_map(fn (array $day) => [
+                'start' => $day['date'],
+                'orders_count' => $day['orders_count'],
+                'net_sales_cents' => $day['net_sales_cents'],
+            ], salesWeek($days)),
+        ],
+    ];
+}
+
 it('computes today\'s figures from real orders of the caller\'s branch', function () {
     // Today (business day 2026-09-25).
     soldAt('2026-09-25 01:00:00', $this->cashier, [[$this->a, 1], [$this->c, 2]], [                   // 17000, VAT 1821
@@ -97,7 +122,11 @@ it('computes today\'s figures from real orders of the caller\'s branch', functio
     $sales = salesDashboard($this->owner)->assertOk()->json('data.sales');
 
     expect($sales)->toBe([
-        'business_date' => '2026-09-25',
+        ...todayPeriod([
+            '2026-09-19' => [1, 10000],
+            '2026-09-24' => [1, 10000],
+            '2026-09-25' => [4, 42598],
+        ]),
         'orders_count' => 4,
         'items_sold' => 13,
         'gross_sales_cents' => 43498,
@@ -144,7 +173,7 @@ it('keeps the fixed shapes, all zero, with no sales today', function () {
     soldAt('2026-09-24 12:00:00', $this->cashier, [[$this->a, 1]]); // yesterday only
 
     expect(salesDashboard($this->owner)->assertOk()->json('data.sales'))->toBe([
-        'business_date' => '2026-09-25',
+        ...todayPeriod(['2026-09-24' => [1, 10000]]),
         'orders_count' => 0,
         'items_sold' => 0,
         'gross_sales_cents' => 0,

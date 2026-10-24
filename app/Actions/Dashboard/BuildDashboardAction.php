@@ -5,11 +5,14 @@ namespace App\Actions\Dashboard;
 use App\Actions\Inventory\IngredientInventoryQuery;
 use App\Actions\Inventory\InventoryQuery;
 use App\Models\Branch;
+use App\Models\Device;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseRequest;
 use App\Models\User;
 use App\Support\BusinessDay;
+use App\Support\Devices\DeviceHealth;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 
 /**
  * Builds the data behind GET /api/v1/dashboard for the caller.
@@ -18,7 +21,8 @@ use Carbon\CarbonImmutable;
  * - `catalog`, `activity`: `report.view`
  * - `staff`: `user.manage`
  * - `customers`: any authenticated user
- * - `sales`: `report.view` (Phase 3: today's sales of the branch; Phase 7: not voided, plus voids and refunds)
+ * - `sales`: `report.view` (Phase 3: today's sales of the branch; Phase 7: not voided, plus voids and refunds;
+ *   v1.28: over the chosen `period` anchored on `date`, default today)
  * `insights` are derived only from the visible sections; the stock alerts (Inventory) need
  * `inventory.adjust` or `report.view` and count the caller's branch.
  *
@@ -51,8 +55,12 @@ class BuildDashboardAction
      *     insights: list<array<string, mixed>>,
      * }
      */
-    public function execute(User $caller, ?CarbonImmutable $now = null): array
-    {
+    public function execute(
+        User $caller,
+        ?CarbonImmutable $now = null,
+        string $period = BuildSalesSection::PERIOD_DAY,
+        ?string $date = null,
+    ): array {
         $now = ($now ?? now()->toImmutable())->utc();
         $branchId = (int) $caller->branch_id;
         $businessDay = BusinessDay::forBranch(Branch::withTrashed()->find($branchId));
@@ -63,7 +71,7 @@ class BuildDashboardAction
         $staff = $caller->hasPermission('user.manage') ? $this->staff->execute($branchId) : null;
         $customers = $this->customers->execute($now);
         $activity = $canViewReports ? $this->activity->execute($branchId, $businessDay, $now) : null;
-        $sales = $canViewReports ? $this->sales->execute($branchId, $businessDay, $now) : null;
+        $sales = $canViewReports ? $this->sales->execute($branchId, $businessDay, $now, $period, $date) : null;
 
         $canViewInventory = $caller->hasPermission('inventory.adjust') || $canViewReports;
 
@@ -74,6 +82,8 @@ class BuildDashboardAction
             $canViewInventory ? $this->inventory->summary($branchId) : null,
             $canViewInventory ? $this->ingredients->summary($branchId) : null,
             $this->purchasingQueues($caller, $branchId),
+            $caller->hasPermission('system.manage') ? $this->unsyncedDevices($branchId, $now) : null,
+            $now,
         );
 
         // Internal to the insights; not a contract field.
@@ -91,6 +101,32 @@ class BuildDashboardAction
             'sales' => $sales,
             'insights' => $insights,
         ];
+    }
+
+    /**
+     * Hardening & Pilot → C (`device_unsynced`): the branch's active tablets whose last
+     * heartbeat reported `outbox_pending > 0` and is over 30 minutes old, by code.
+     *
+     * @return list<array{code: string, outbox_pending: int, last_seen_at: CarbonInterface|null}>
+     */
+    private function unsyncedDevices(int $branchId, CarbonImmutable $now): array
+    {
+        return Device::query()
+            ->where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->where('platform', '!=', Device::PLATFORM_WEB)
+            ->whereNotNull('last_heartbeat_at')
+            ->where('last_heartbeat_at', '<', $now->subMinutes(DeviceHealth::STALE_MINUTES))
+            ->orderBy('code')
+            ->get()
+            ->filter(fn (Device $device) => (int) ($device->last_heartbeat['outbox_pending'] ?? 0) > 0)
+            ->map(fn (Device $device) => [
+                'code' => $device->code,
+                'outbox_pending' => (int) $device->last_heartbeat['outbox_pending'],
+                'last_seen_at' => $device->last_seen_at,
+            ])
+            ->values()
+            ->all();
     }
 
     /**

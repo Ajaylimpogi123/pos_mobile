@@ -1,6 +1,9 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Admin\CategoryController as AdminCategoryController;
+use App\Http\Controllers\Api\V1\Admin\DeviceController as AdminDeviceController;
+use App\Http\Controllers\Api\V1\Admin\DiningTableController;
+use App\Http\Controllers\Api\V1\Admin\ErrorLogController;
 use App\Http\Controllers\Api\V1\Admin\IngredientController;
 use App\Http\Controllers\Api\V1\Admin\IngredientCostController;
 use App\Http\Controllers\Api\V1\Admin\IngredientStockController;
@@ -12,21 +15,27 @@ use App\Http\Controllers\Api\V1\Admin\RoleController;
 use App\Http\Controllers\Api\V1\Admin\SettingsController;
 use App\Http\Controllers\Api\V1\Admin\SupplierController;
 use App\Http\Controllers\Api\V1\Admin\UserController;
+use App\Http\Controllers\Api\V1\AppVersionController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CategoryController;
+use App\Http\Controllers\Api\V1\ClientErrorController;
 use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DeviceController;
 use App\Http\Controllers\Api\V1\IngredientInventoryController;
 use App\Http\Controllers\Api\V1\InventoryController;
 use App\Http\Controllers\Api\V1\OrderController;
+use App\Http\Controllers\Api\V1\PrintAgentController;
 use App\Http\Controllers\Api\V1\PrintConfigController;
+use App\Http\Controllers\Api\V1\PrintJobController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\PurchaseOrderController;
 use App\Http\Controllers\Api\V1\PurchaseRequestController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\ShiftController;
 use App\Http\Controllers\Api\V1\SyncController;
+use App\Http\Controllers\Api\V1\TabController;
+use App\Http\Controllers\Api\V1\TableController;
 use App\Http\Controllers\Api\V1\UnitController;
 use Illuminate\Support\Facades\Route;
 
@@ -36,7 +45,31 @@ Route::prefix('v1')->name('v1.')->group(function () {
         ->middleware('throttle:login')
         ->name('auth.login');
 
-    // Authenticated: a valid, unexpired token whose user is still active
+    // Print agent (Web POS & Print Bridge → E): machine endpoints, no Sanctum. Authorized by the
+    // X-Print-Agent-Token header (503 when unconfigured, 401 when wrong); throttled at 120/min.
+    Route::controller(PrintAgentController::class)
+        ->prefix('print-agent')
+        ->name('print-agent.')
+        ->middleware(['throttle:print-agent', 'print.agent'])
+        ->group(function () {
+            Route::get('ping', 'ping')->name('ping');
+            Route::post('jobs/claim', 'claim')->name('claim');
+            Route::post('jobs/{ulid}/result', 'result')->whereUlid('ulid')->name('result');
+        });
+
+    // App error reports (Hardening & Pilot → B): auth optional (a valid token records the user
+    // and device); 30 requests per minute per IP, 1..20 errors each. 202.
+    Route::post('client-errors', [ClientErrorController::class, 'store'])
+        ->middleware('throttle:client-errors')
+        ->name('client-errors.store');
+
+    // The app versions the server announces (Hardening & Pilot → C): no auth, 60/min per IP.
+    Route::get('app-version', [AppVersionController::class, 'show'])
+        ->middleware('throttle:app-version')
+        ->name('app-version');
+
+    // Authenticated: a valid, unexpired token whose user is still active (and, since Hardening &
+    // Pilot → C, whose device isn't retired)
     Route::middleware(['auth:sanctum', 'session.active'])->group(function () {
         Route::get('auth/me', [AuthController::class, 'me'])->name('auth.me');
         Route::post('auth/logout', [AuthController::class, 'logout'])->name('auth.logout');
@@ -72,6 +105,8 @@ Route::prefix('v1')->name('v1.')->group(function () {
             ->group(function () {
                 Route::get('/', 'index')->name('index');
                 Route::post('/', 'store')->name('store');
+                // The token device's open shift, or null (Q-035; any authenticated user). Before {ulid}.
+                Route::get('current', 'current')->name('current');
                 Route::get('{ulid}', 'show')->whereUlid('ulid')->name('show');
                 Route::post('{ulid}/cash-movements', 'storeCashMovement')->whereUlid('ulid')->name('cash.store');
                 Route::post('{ulid}/close', 'close')->whereUlid('ulid')->name('close');
@@ -152,6 +187,9 @@ Route::prefix('v1')->name('v1.')->group(function () {
         // Device registration (Phase 5; any authenticated user): binds the token to the tablet
         Route::post('devices/register', [DeviceController::class, 'register'])->name('devices.register');
 
+        // Device heartbeat (Hardening & Pilot → C; any authenticated user, a token bound to a device)
+        Route::post('devices/heartbeat', [DeviceController::class, 'heartbeat'])->name('devices.heartbeat');
+
         // Dashboard (any authenticated user; each section is gated by permission in BuildDashboardAction)
         Route::get('dashboard', [DashboardController::class, 'show'])->name('dashboard');
 
@@ -171,6 +209,38 @@ Route::prefix('v1')->name('v1.')->group(function () {
         // Print configuration (any authenticated user): the branch, its receipt settings and
         // its printers with their category routes, cached by the device for offline printing
         Route::get('print-config', [PrintConfigController::class, 'show'])->name('print-config');
+
+        // Print jobs of the web terminals (Web POS & Print Bridge → D; any authenticated user,
+        // branch-scoped; creating needs a token bound to a device). Idempotent by the job's ulid.
+        Route::controller(PrintJobController::class)
+            ->prefix('print-jobs')
+            ->name('print-jobs.')
+            ->group(function () {
+                Route::get('/', 'index')->name('index');
+                Route::post('/', 'store')->name('store');
+                Route::post('{ulid}/retry', 'retry')->whereUlid('ulid')->name('retry');
+            });
+
+        // Dine-in Tables & Tabs (sale.create, via TabPolicy; 409 while dine-in is off in the
+        // branch settings). Tab mutations are idempotent; `{ulid}` resolves within the caller's
+        // branch only (other branches → 404).
+        Route::get('tables', [TableController::class, 'index'])->name('tables.index');
+
+        Route::controller(TabController::class)
+            ->prefix('tabs')
+            ->name('tabs.')
+            ->whereUlid('ulid')
+            ->group(function () {
+                Route::post('/', 'store')->middleware('idempotent')->name('store');
+                Route::get('{ulid}', 'show')->name('show');
+                Route::patch('{ulid}', 'update')->middleware('idempotent')->name('update');
+                Route::post('{ulid}/rounds', 'rounds')->middleware('idempotent')->name('rounds');
+                Route::post('{ulid}/items/{id}/cancel', 'cancelItem')->middleware('idempotent')->whereNumber('id')->name('items.cancel');
+                Route::post('{ulid}/settle', 'settle')->middleware('idempotent')->name('settle');
+                Route::post('{ulid}/close', 'close')->middleware('idempotent')->name('close');
+                Route::post('{ulid}/transfer', 'transfer')->middleware('idempotent')->name('transfer');
+                Route::post('{ulid}/merge', 'merge')->middleware('idempotent')->name('merge');
+            });
 
         // Customers (read: any authenticated user; write: sale.create; delete: customer.manage, via CustomerPolicy)
         Route::controller(CustomerController::class)
@@ -297,12 +367,52 @@ Route::prefix('v1')->name('v1.')->group(function () {
                     Route::delete('{printer}', 'destroy')->name('destroy');
                 });
 
+            // Dine-in tables (Dine-in Tables & Tabs → B; permission settings.manage, via
+            // DiningTablePolicy). `{diningTable}` is bound within the caller's branch only.
+            Route::controller(DiningTableController::class)
+                ->prefix('tables')
+                ->name('tables.')
+                ->whereNumber('diningTable')
+                ->group(function () {
+                    Route::get('/', 'index')->name('index');
+                    Route::post('/', 'store')->name('store');
+                    Route::patch('{diningTable}', 'update')->name('update');
+                    Route::delete('{diningTable}', 'destroy')->name('destroy');
+                });
+
             Route::controller(SettingsController::class)
                 ->prefix('settings')
                 ->name('settings.')
                 ->group(function () {
                     Route::get('/', 'show')->name('show');
                     Route::patch('/', 'update')->name('update');
+                });
+
+            // Devices (Hardening & Pilot → C; permission system.manage, via DevicePolicy). `{device}`
+            // is bound within the caller's branch only (AppServiceProvider): other branches → 404.
+            Route::controller(AdminDeviceController::class)
+                ->prefix('devices')
+                ->name('devices.')
+                ->whereNumber('device')
+                ->group(function () {
+                    Route::get('/', 'index')->name('index');
+                    Route::get('{device}', 'show')->name('show');
+                    Route::patch('{device}', 'update')->name('update');
+                    Route::post('{device}/retire', 'retire')->name('retire');
+                    Route::post('{device}/restore', 'restore')->name('restore');
+                });
+
+            // The error log (Hardening & Pilot → B; permission system.manage, via ErrorGroupPolicy).
+            // `{errorGroup}` resolves only to a group the caller can see (AppServiceProvider).
+            Route::controller(ErrorLogController::class)
+                ->prefix('error-log')
+                ->name('error-log.')
+                ->whereNumber('errorGroup')
+                ->group(function () {
+                    Route::get('/', 'index')->name('index');
+                    Route::get('{errorGroup}', 'show')->name('show');
+                    Route::post('{errorGroup}/resolve', 'resolve')->name('resolve');
+                    Route::post('{errorGroup}/reopen', 'reopen')->name('reopen');
                 });
         });
     });

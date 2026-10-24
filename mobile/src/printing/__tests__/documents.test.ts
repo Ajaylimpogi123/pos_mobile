@@ -4,9 +4,9 @@
  * decoded by the test-utils decoder. The documents print the server's
  * `Order` fields and never compute money.
  */
-import { buildKitchenTicket, mergeTicketLines } from '@/printing/documents/kitchenTicket';
-import { buildReceipt, buildReceiptSample } from '@/printing/documents/receipt';
-import { buildTestPage, columnRuler } from '@/printing/documents/testPage';
+import { buildKitchenTicket, mergeTicketLines } from '@pos/core/printing/documents/kitchenTicket';
+import { buildReceipt, buildReceiptSample } from '@pos/core/printing/documents/receipt';
+import { buildTestPage, columnRuler } from '@pos/core/printing/documents/testPage';
 import { decodeEscPos, printedLines } from '@/test-utils/escpos';
 import { mockVatBreakdown } from '@/test-utils/features';
 import { makeSettings } from '@/test-utils/printing';

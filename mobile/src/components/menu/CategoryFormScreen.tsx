@@ -3,17 +3,20 @@ import { StyleSheet, Text, type TextInput } from 'react-native';
 
 import { ImagePickerPanel } from '@/components/menu/ImagePickerPanel';
 import { itemCountLabel } from '@/components/menu/CategoryCard';
+import { FormFooter } from '@/components/shared/FormFooter';
 import { FormLayout } from '@/components/shared/FormLayout';
 import { FormSection } from '@/components/shared/FormSection';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Input } from '@/components/ui/Input';
 import { SwitchRow } from '@/components/ui/SwitchRow';
+import { focusField } from '@/components/ui/ErrorSummary';
 import { ROUTES } from '@/constants/routes';
 import { colors, spacing, typography } from '@/constants/theme';
 import { CATEGORY_LIMITS, useCategoryForm } from '@/hooks/menu/useCategoryForm';
 import type { Category } from '@/services/types';
 import { goBackOr } from '@/utils/navigation';
+import { showToast } from '@/stores/toast';
 
 type CategoryFormScreenProps = {
   /** The category to edit; omitted when creating. */
@@ -26,12 +29,18 @@ function backToList() {
   goBackOr(LIST_ROUTE);
 }
 
+/** MASTER §6: save success is a toast. */
+function savedAndBack() {
+  showToast('Category saved.');
+  backToList();
+}
+
 /**
  * Create / edit a category. Deleting a category that still has products
  * returns 409; its message is shown in the banner.
  */
 export function CategoryFormScreen({ category }: CategoryFormScreenProps) {
-  const form = useCategoryForm({ initial: category, onSaved: backToList, onDeleted: backToList });
+  const form = useCategoryForm({ initial: category, onSaved: savedAndBack, onDeleted: backToList });
   // Keyboard "Next" moves through the fields.
   const categoryDescriptionRef = useRef<TextInput>(null);
   const { values, setField, fieldErrors, busy } = form;
@@ -47,6 +56,19 @@ export function CategoryFormScreen({ category }: CategoryFormScreenProps) {
       subtitle={form.isEdit ? form.saved?.name : null}
       onBack={backToList}
       banner={form.bannerError}
+      fieldErrors={fieldErrors}
+      onSelectError={(field) => focusField(field, { description: categoryDescriptionRef })}
+      footer={
+          <FormFooter
+            onCancel={backToList}
+            cancelDisabled={form.submitting}
+            saveTitle={saveLabel}
+            onSave={form.submit}
+            saving={form.submitting}
+            saveDisabled={busy}
+            saveTestID="category-save"
+          />
+      }
       testID="category-form-screen"
       aside={<ImagePickerPanel image={form.image} placeholderIcon="grid-outline" title="Category photo" disabled={busy} />}
       main={
@@ -102,16 +124,6 @@ export function CategoryFormScreen({ category }: CategoryFormScreenProps) {
             {form.isEdit ? <Text style={styles.help}>{itemCountLabel(productCount)} in this category.</Text> : null}
           </FormSection>
 
-          <Button
-            title={saveLabel}
-            leftIcon="checkmark"
-            size="lg"
-            onPress={form.submit}
-            loading={form.submitting}
-            disabled={busy}
-            accessibilityLabel={saveLabel}
-            testID="category-save"
-          />
           {form.isEdit ? (
             <Button
               title="Delete category"

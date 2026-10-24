@@ -4,6 +4,7 @@ import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DetailColumns, RecordHeaderCard, SummaryCard, SummaryDivider, SummaryLine } from '@/components/purchasing/PurchaseDetailParts';
+import { PdfButton, PdfErrorBanner, PurchasePdfSheet } from '@/components/purchasing/PurchasePdf';
 import { estimateTotalCents, itemEstimateCents } from '@/components/purchasing/PurchaseRequestCard';
 import { chipFor, DECISION, PO_STATUS, PR_STATUS, PURCHASING_OFFLINE_MESSAGE, SELF_APPROVAL_MESSAGE } from '@/components/purchasing/purchasingLabels';
 import { TimelineCard } from '@/components/purchasing/TimelineCard';
@@ -24,17 +25,18 @@ import { TopBar } from '@/components/ui/TopBar';
 import { editPurchaseRequestRoute, purchaseOrderRoute, ROUTES } from '@/constants/routes';
 import { colors, layout, numeric, spacing, typography } from '@/constants/theme';
 import { DECISION_REASON_MAX, isUndecided, usePurchaseRequest, usePurchaseRequestActions } from '@/hooks/purchasing/usePurchaseRequests';
+import { usePurchasePdf } from '@/hooks/purchasing/usePurchasePdf';
 import { usePurchasingPermissions } from '@/hooks/purchasing/usePurchasingPermissions';
 import { useIsOnline } from '@/hooks/useIsOnline';
 import { useResponsive } from '@/hooks/useResponsive';
 import { ApiError } from '@/services/api';
 import type { PurchaseDecision, PurchaseRequest, PurchaseRequestItem } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
-import { formatBranchDateTime } from '@/utils/businessDay';
+import { formatBranchDateTime } from '@pos/core/businessDay';
 import { formatBusinessDate } from '@/utils/dates';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 import { goBackOr } from '@/utils/navigation';
-import { formatQtyUnit } from '@/utils/quantity';
+import { formatQtyUnit } from '@pos/core/quantity';
 
 function backToList() {
   goBackOr(ROUTES.purchaseRequests);
@@ -124,7 +126,7 @@ type ItemCardProps = {
   onDecline: (item: PurchaseRequestItem) => void;
 };
 
-/** Phones: one PR item as a card (what, from whom, how much, the estimate, the decision, and Approve / Decline). */
+/** Portrait and phones (MASTER §6): one PR item as a card (what, from whom, how much, the estimate, the decision, and Approve / Decline). */
 const ItemCard = memo(function ItemCard({ item, timeZone, decidable, busy, onApprove, onDecline }: ItemCardProps) {
   const testID = itemTestID(item);
   const estimate = itemEstimateCents(item);
@@ -257,18 +259,21 @@ function decisionTotal(pr: PurchaseRequest, decision: PurchaseDecision): string 
 }
 
 /**
- * One purchase request (§L; Sage "Purchasing" board): the head card (PR
- * number, requester, dates, status, remarks, the PO link), **Edit** /
- * **Cancel request** while nothing is decided, the items table with
- * **Approve** / **Decline** per item for those who can decide (a decline asks
- * for a reason) and **Approve all remaining**, then the timeline beside a
- * summary card (tablet landscape). Phones show the items as cards.
- * Pull-to-refresh. Needs a connection.
+ * One purchase request (§L), structured like the PO detail: the head card
+ * (PR number and status badge, then labelled details: requested by, date
+ * needed, the PO with **Open** and its PDF, remarks) with the actions
+ * (**Approve all remaining**, **Edit**, **Cancel request** while nothing is
+ * decided), the items (a table in tablet landscape, cards in portrait and on
+ * phones) with **Approve** / **Decline** per item for those who can decide (a
+ * decline asks for a reason), then the decision history beside a summary
+ * card (tablet landscape). The PR PDF sits in the top bar. Pull-to-refresh.
+ * Needs a connection.
  */
 export function PurchaseRequestDetailScreen({ ulid }: { ulid: string | null }) {
   const query = usePurchaseRequest(ulid);
   const pr = query.data ?? null;
   const actions = usePurchaseRequestActions(pr);
+  const pdf = usePurchasePdf();
   const permissions = usePurchasingPermissions();
   const online = useIsOnline();
   const timeZone = useSessionStore((state) => state.user?.branch.timezone ?? '');
@@ -318,74 +323,87 @@ export function PurchaseRequestDetailScreen({ ulid }: { ulid: string | null }) {
   const created = formatBranchDateTime(pr.created_at, timeZone) ?? pr.created_at;
   const declineState = actions.decline.state;
   const purchaseOrder = pr.purchase_order;
-  const meta = [`Requested by ${pr.requested_by.name}`, created];
-  if (pr.date_needed) meta.push(`Needed by ${formatBusinessDate(pr.date_needed)}`);
   const estimateTotal = estimateTotalCents(pr.items);
+  const canApproveAll = canDecide && actions.pendingCount > 0;
+  const blocked = actions.busy !== null;
 
   const header = (
     <View style={{ gap: gutter }}>
       {online ? null : <Banner variant="warning" message={PURCHASING_OFFLINE_MESSAGE} testID="pr-detail-offline" />}
       {actions.notice ? <Banner variant="success" message={actions.notice} testID="pr-detail-notice" /> : null}
       {actions.banner ? <Banner message={actions.banner} testID="pr-detail-banner" /> : null}
+      <PdfErrorBanner pdf={pdf} testID="pr-detail-pdf-error" />
       {own && permissions.canApprove && online && !permissions.canApproveOwn && actions.pendingCount > 0 ? (
         <Banner variant="info" message={`This is your request. ${SELF_APPROVAL_MESSAGE}`} testID="pr-detail-own" />
       ) : null}
 
       <RecordHeaderCard
         title={pr.pr_no}
-        meta={meta.join(' · ')}
-        metaTestID="pr-detail-requested"
+        meta={`Created ${created}`}
         chips={<Chip label={status.label} variant={status.variant} testID="pr-detail-status" />}
         testID="pr-detail-summary"
       >
-        {pr.remarks ? <DetailRow label="Remarks" value={pr.remarks} /> : null}
-        {purchaseOrder ? (
-          <View style={styles.poRow}>
-            <View style={styles.flex}>
-              <DetailRow label="Purchase order" value={`${purchaseOrder.po_no} · ${chipFor(PO_STATUS, purchaseOrder.status).label}`} testID="pr-detail-po" />
-            </View>
-            <Button title="Open" leftIcon="open-outline" variant="secondary" onPress={() => router.push(purchaseOrderRoute(purchaseOrder.ulid))} testID="pr-detail-open-po" />
+        <View style={styles.details}>
+          <View style={styles.detail}>
+            <DetailRow label="Requested by" value={pr.requested_by.name} testID="pr-detail-requested" />
           </View>
-        ) : null}
-        {canEdit ? (
-          <View style={styles.actions}>
-            <Button
-              title="Edit"
-              leftIcon="create-outline"
-              variant="secondary"
-              onPress={() => router.push(editPurchaseRequestRoute(pr.ulid))}
-              disabled={actions.busy !== null}
-              style={styles.action}
-              testID="pr-detail-edit"
-            />
-            <Button
-              title="Cancel request"
-              leftIcon="close-circle-outline"
-              variant="ghost"
-              onPress={actions.cancelRequest.open}
-              disabled={actions.busy !== null}
-              style={styles.action}
-              testID="pr-detail-cancel"
-            />
+          <View style={styles.detail}>
+            <DetailRow label="Date needed" value={pr.date_needed ? formatBusinessDate(pr.date_needed) : 'Not set'} testID="pr-detail-needed" />
+          </View>
+          {purchaseOrder ? (
+            <View style={[styles.detail, styles.withAction]}>
+              <View style={styles.flex}>
+                <DetailRow label="Purchase order" value={`${purchaseOrder.po_no} · ${chipFor(PO_STATUS, purchaseOrder.status).label}`} testID="pr-detail-po" />
+              </View>
+              <View style={styles.poActions}>
+                <Button title="Open" leftIcon="open-outline" variant="secondary" onPress={() => router.push(purchaseOrderRoute(purchaseOrder.ulid))} testID="pr-detail-open-po" />
+                <PdfButton pdf={pdf} target={{ kind: 'po', ulid: purchaseOrder.ulid }} accessibilityLabel={`PDF of ${purchaseOrder.po_no}`} testID="pr-detail-po-pdf" />
+              </View>
+            </View>
+          ) : null}
+        </View>
+        {pr.remarks ? <DetailRow label="Remarks" value={pr.remarks} testID="pr-detail-remarks" /> : null}
+        {canApproveAll || canEdit ? (
+          <View style={styles.actions} testID="pr-detail-actions">
+            {canApproveAll ? (
+              <Button
+                title={`Approve all remaining (${actions.pendingCount})`}
+                leftIcon="checkmark-done-outline"
+                onPress={actions.approveAll.open}
+                disabled={blocked}
+                style={styles.action}
+                testID="pr-detail-approve-all"
+              />
+            ) : null}
+            {canEdit ? (
+              <Button
+                title="Edit"
+                leftIcon="create-outline"
+                variant="secondary"
+                onPress={() => router.push(editPurchaseRequestRoute(pr.ulid))}
+                disabled={blocked}
+                style={styles.action}
+                testID="pr-detail-edit"
+              />
+            ) : null}
+            {canEdit ? (
+              <Button
+                title="Cancel request"
+                leftIcon="close-circle-outline"
+                variant="danger"
+                onPress={actions.cancelRequest.open}
+                disabled={blocked}
+                style={styles.action}
+                testID="pr-detail-cancel"
+              />
+            ) : null}
           </View>
         ) : null}
       </RecordHeaderCard>
 
-      <View style={styles.itemsHeader} testID="pr-detail-items-header">
-        <View style={styles.itemsTitle}>
-          <SectionLabel>Items</SectionLabel>
-          <Text style={styles.muted}>{`${pr.items.length} ${pr.items.length === 1 ? 'item' : 'items'}`}</Text>
-        </View>
-        {canDecide && actions.pendingCount > 0 ? (
-          <Button
-            title={`Approve all remaining (${actions.pendingCount})`}
-            leftIcon="checkmark-done-outline"
-            variant="tonal"
-            onPress={actions.approveAll.open}
-            disabled={actions.busy !== null}
-            testID="pr-detail-approve-all"
-          />
-        ) : null}
+      <View style={styles.itemsTitle} testID="pr-detail-items-header">
+        <SectionLabel>Items</SectionLabel>
+        <Text style={styles.muted}>{`${pr.items.length} ${pr.items.length === 1 ? 'item' : 'items'}`}</Text>
       </View>
     </View>
   );
@@ -422,6 +440,7 @@ export function PurchaseRequestDetailScreen({ ulid }: { ulid: string | null }) {
         title={pr.pr_no}
         subtitle={status.label}
         left={<IconButton icon="arrow-back" variant="bar" accessibilityLabel="Back" onPress={backToList} testID="pr-detail-back" />}
+        right={<PdfButton pdf={pdf} target={{ kind: 'pr', ulid: pr.ulid, pr }} accessibilityLabel={`PDF of ${pr.pr_no}`} testID="pr-detail-pdf" />}
         testID="pr-detail-header"
       />
       <SafeAreaView edges={['left', 'right']} style={styles.fill}>
@@ -433,6 +452,7 @@ export function PurchaseRequestDetailScreen({ ulid }: { ulid: string | null }) {
           rowAccessibilityLabel={itemAccessibilityLabel}
           rowAccessible={false}
           renderCard={renderCard}
+          cardsInPortrait
           rowHeight="auto"
           extraData={actions.busy}
           ListHeaderComponent={header}
@@ -502,6 +522,7 @@ export function PurchaseRequestDetailScreen({ ulid }: { ulid: string | null }) {
         onCancel={actions.cancelRequest.cancel}
         testID="pr-cancel-dialog"
       />
+      <PurchasePdfSheet pdf={pdf} testID="pr-pdf-sheet" />
     </Screen>
   );
 }
@@ -517,10 +538,10 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  poRow: {
+  poActions: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   actions: {
     flexDirection: 'row',
@@ -531,11 +552,19 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: layout.sectionTitleMinWidth,
   },
-  itemsHeader: {
+  details: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.lg,
+  },
+  detail: {
+    flexGrow: 1,
+    flexBasis: layout.sectionTitleMinWidth * 2,
+  },
+  withAction: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: spacing.md,
   },
   itemsTitle: {

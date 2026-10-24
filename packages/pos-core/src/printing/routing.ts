@@ -13,7 +13,7 @@
  *   `print_kitchen_tickets` is off, no tickets print automatically (and nothing
  *   is "unrouted"). A manual reprint ignores the setting (Q-007, resolved).
  */
-import type { Order, OrderItem, PrintConfig, Printer } from '@/services/types';
+import type { Order, OrderItem, PrintConfig, Printer } from '../contract/types';
 
 /** Printers by name (case-insensitive), then id: the order print-config already uses. */
 export function sortPrinters(printers: readonly Printer[]): Printer[] {
@@ -68,11 +68,27 @@ export function routeKitchen(
   config: Pick<PrintConfig, 'printers' | 'settings'>,
   options: { manual?: boolean } = {},
 ): KitchenRouting {
+  return routeTicketLines(order.items, config, options);
+}
+
+/** One station's lines of any kind (order items, or a tab round's items). */
+export type StationLines<T> = { printer: Printer; items: T[] };
+
+/**
+ * `routeKitchen` for any lines that carry a `category_id` (Dine-in: a tab
+ * round's items, or a cancelled tab item): the same routing and the same
+ * `print_kitchen_tickets` rule.
+ */
+export function routeTicketLines<T extends Pick<OrderItem, 'category_id'>>(
+  items: readonly T[],
+  config: Pick<PrintConfig, 'printers' | 'settings'>,
+  options: { manual?: boolean } = {},
+): { tickets: StationLines<T>[]; unrouted: T[] } {
   if (!options.manual && !config.settings.print_kitchen_tickets) return { tickets: [], unrouted: [] };
 
-  const byPrinter = new Map<number, StationTicket>();
-  const unrouted: OrderItem[] = [];
-  for (const item of order.items) {
+  const byPrinter = new Map<number, StationLines<T>>();
+  const unrouted: T[] = [];
+  for (const item of items) {
     const printer = stationFor(item, config.printers);
     if (!printer) {
       unrouted.push(item);
@@ -83,7 +99,7 @@ export function routeKitchen(
     byPrinter.set(printer.id, ticket);
   }
   const tickets = sortPrinters([...byPrinter.values()].map((ticket) => ticket.printer)).map(
-    (printer) => byPrinter.get(printer.id) as StationTicket,
+    (printer) => byPrinter.get(printer.id) as StationLines<T>,
   );
   return { tickets, unrouted };
 }

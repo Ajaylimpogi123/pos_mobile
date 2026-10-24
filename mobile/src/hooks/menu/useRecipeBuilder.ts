@@ -21,10 +21,10 @@ import type {
   RecipeLineRequest,
   Unit,
 } from '@/services/types';
-import { formatPeso } from '@/utils/money';
-import { isWholeQty, parseQtyInput, PRODUCT_WHOLE_MESSAGE, qtyProblemMessage, toBaseQty } from '@/utils/quantity';
-import { marginBps, RECIPE_MAX_LINES, recipeCostCents, recipeLineCostCents } from '@/utils/recipe';
-import { findUnit, ingredientUnitChoices, PRODUCT_UNIT_CHOICES, type UnitChoices } from '@/utils/units';
+import { formatPeso } from '@pos/core/money';
+import { isWholeQty, parseQtyInput, PRODUCT_WHOLE_MESSAGE, qtyProblemMessage, toBaseQty } from '@pos/core/quantity';
+import { marginBps, RECIPE_MAX_LINES, recipeCostCents, recipeLineCostCents } from '@pos/core/recipe';
+import { findUnit, ingredientUnitChoices, PRODUCT_UNIT_CHOICES, type UnitChoices } from '@pos/core/units';
 
 /** Contract wording while the device has no connection (the recipe builder needs one). */
 export const RECIPE_OFFLINE_MESSAGE = 'Recipes need a connection.';

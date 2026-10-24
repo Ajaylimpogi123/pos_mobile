@@ -12,7 +12,7 @@ import OrdersIndexRoute from '@/app/(app)/(pos)/orders/index';
 import CheckoutRoute from '@/app/(app)/(pos)/sell/checkout';
 import SellRoute from '@/app/(app)/(pos)/sell/index';
 import { catalogueRepository } from '@/db/catalogueRepository';
-import { TABLE_NO_INVALID } from '@/sale/table';
+import { TABLE_NO_INVALID } from '@pos/core/sale/table';
 import { resetCart, useCartStore } from '@/stores/cart';
 import { useSessionStore } from '@/stores/session';
 import { useSyncStore } from '@/stores/sync';
@@ -56,9 +56,11 @@ describe('the cart', () => {
     await fireEvent.press(screen.getByTestId('product-tile-1-body'));
   }
 
-  it('has an optional Table field next to the customer; an invalid value is shown under it and blocks Charge', async () => {
+  it('has an optional Table button next to the customer; its field shows an invalid value under it, and that blocks Checkout', async () => {
     await renderSellWithMenu();
 
+    expect(screen.getByTestId('cart-table-button')).toHaveTextContent(/Table/);
+    await fireEvent.press(screen.getByTestId('cart-table-button'));
     const field = screen.getByTestId('cart-table');
     expect(field.props.value).toBe('');
     await fireEvent.changeText(field, '#12');
@@ -69,11 +71,16 @@ describe('the cart', () => {
     expect(screen.queryByTestId('cart-table-error')).toBeNull();
     expect(screen.getByTestId('cart-checkout')).not.toBeDisabled();
     expect(useCartStore.getState().tableNo).toBe(' Patio 2 ');
+
+    await fireEvent.press(screen.getByTestId('cart-table-done'));
+    expect(screen.getByTestId('cart-table-button')).toHaveTextContent(/Table Patio 2/);
   });
 
   it("shows the server's 422 under the field, and locks it while a sale attempt is unconfirmed", async () => {
     await renderSellWithMenu();
+    await fireEvent.press(screen.getByTestId('cart-table-button'));
     await fireEvent.changeText(screen.getByTestId('cart-table'), '12');
+    await fireEvent.press(screen.getByTestId('cart-table-done'));
 
     await act(async () =>
       useCartStore.getState().showServerErrors({ lines: {}, orderDiscount: null, customer: null, table: 'The table no field format is invalid.', cart: null }),
@@ -81,7 +88,7 @@ describe('the cart', () => {
     expect(screen.getByTestId('cart-table-error')).toHaveTextContent('The table no field format is invalid.');
 
     await act(async () => useCartStore.getState().setAwaitingConfirmation(true));
-    expect(screen.getByTestId('cart-table').props.editable).toBe(false);
+    expect(screen.getByTestId('cart-table-button')).toBeDisabled();
   });
 });
 

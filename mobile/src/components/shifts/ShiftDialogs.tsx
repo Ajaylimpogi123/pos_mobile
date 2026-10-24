@@ -17,7 +17,7 @@ import { CLOSE_BLOCKED_MESSAGE, type ShiftControls } from '@/hooks/shifts/useShi
 import { useResponsive } from '@/hooks/useResponsive';
 import { SHIFT_LIMITS } from '@/shifts/shiftForms';
 import { useSessionStore } from '@/stores/session';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 
 type DialogProps = { controls: ShiftControls };
 

@@ -106,7 +106,7 @@ function deps(log: Log, overrides: Partial<OutboxSyncDeps> = {}) {
   const sendShiftEvent = jest.fn(async (entry: ShiftEventEntry) => {
     log.push(`${entry.entity}:${entry.ulid}`);
   });
-  const register = jest.fn(async () => ({ id: 1, code: 'T01', name: 'Tab' }));
+  const register = jest.fn(async () => ({ id: 1, code: 'T01', name: 'Tab', platform: 'android' as const }));
   const worker: OutboxSyncDeps = {
     repository: offlineRepository,
     send,

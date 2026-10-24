@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import type { TextInput } from 'react-native';
 
 import { PURCHASING_OFFLINE_MESSAGE } from '@/components/purchasing/purchasingLabels';
+import { FormFooter } from '@/components/shared/FormFooter';
 import { FormLayout } from '@/components/shared/FormLayout';
 import { FormSection } from '@/components/shared/FormSection';
 import { Banner } from '@/components/ui/Banner';
@@ -9,15 +10,23 @@ import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Input } from '@/components/ui/Input';
 import { SwitchRow } from '@/components/ui/SwitchRow';
+import { focusField } from '@/components/ui/ErrorSummary';
 import { ROUTES } from '@/constants/routes';
 import { SUPPLIER_LIMITS, useSupplierForm } from '@/hooks/suppliers/useSupplierForm';
 import { useCanManageSuppliers } from '@/hooks/suppliers/useSuppliers';
 import { useIsOnline } from '@/hooks/useIsOnline';
 import type { Supplier } from '@/services/types';
 import { goBackOr } from '@/utils/navigation';
+import { showToast } from '@/stores/toast';
 
 function backToList() {
   goBackOr(ROUTES.suppliers);
+}
+
+/** MASTER §6: save success is a toast. */
+function savedAndBack() {
+  showToast('Supplier saved.');
+  backToList();
 }
 
 /**
@@ -27,8 +36,9 @@ function backToList() {
  * in the banner. One centred column (max 480). Needs a connection.
  */
 export function SupplierFormScreen({ supplier }: { supplier?: Supplier }) {
-  const form = useSupplierForm({ initial: supplier, onSaved: backToList, onDeleted: backToList });
+  const form = useSupplierForm({ initial: supplier, onSaved: savedAndBack, onDeleted: backToList });
   // Keyboard "Next" moves through the fields.
+  const supplierNameRef = useRef<TextInput>(null);
   const supplierContactPersonRef = useRef<TextInput>(null);
   const supplierContactNumberRef = useRef<TextInput>(null);
   const supplierEmailRef = useRef<TextInput>(null);
@@ -45,6 +55,21 @@ export function SupplierFormScreen({ supplier }: { supplier?: Supplier }) {
       subtitle={form.isEdit ? name : null}
       onBack={backToList}
       banner={form.bannerError}
+      fieldErrors={fieldErrors}
+      onSelectError={(field) => focusField(field, { name: supplierNameRef, contact_person: supplierContactPersonRef, contact_number: supplierContactNumberRef, email: supplierEmailRef, address: supplierAddressRef })}
+      footer={
+        canManage ? (
+          <FormFooter
+            onCancel={backToList}
+            cancelDisabled={form.submitting}
+            saveTitle={form.isEdit ? 'Save changes' : 'Create supplier'}
+            onSave={form.submit}
+            saving={form.submitting}
+            saveDisabled={!editable}
+            saveTestID="supplier-save"
+          />
+        ) : null
+      }
       testID="supplier-form-screen"
       main={
         <>
@@ -62,6 +87,7 @@ export function SupplierFormScreen({ supplier }: { supplier?: Supplier }) {
               returnKeyType="next"
               submitBehavior="submit"
               onSubmitEditing={() => supplierContactPersonRef.current?.focus()}
+              ref={supplierNameRef}
               testID="supplier-name"
             />
             <Input
@@ -136,17 +162,6 @@ export function SupplierFormScreen({ supplier }: { supplier?: Supplier }) {
               testID="supplier-active"
             />
           </FormSection>
-          {canManage ? (
-            <Button
-              title={form.isEdit ? 'Save changes' : 'Create supplier'}
-              leftIcon="checkmark"
-              size="lg"
-              onPress={form.submit}
-              loading={form.submitting}
-              disabled={!editable}
-              testID="supplier-save"
-            />
-          ) : null}
           {form.isEdit && canManage ? (
             <Button title="Delete supplier" leftIcon="trash-outline" variant="danger" onPress={form.deleteDialog.request} disabled={!editable} testID="supplier-delete" />
           ) : null}

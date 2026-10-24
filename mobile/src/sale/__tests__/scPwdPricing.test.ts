@@ -4,8 +4,8 @@
  * examples A and B unchanged; and the refund VAT split with SC/PWD
  * (`τ_i = line_total_i − X_i`).
  */
-import { priceSale, type PricingLine, type PricingScPwd } from '@/sale/pricing';
-import { priceRefund, refundTaxableAmount, taxablePartCents } from '@/sale/refunds';
+import { priceSale, type PricingLine, type PricingScPwd } from '@pos/core/sale/pricing';
+import { priceRefund, refundTaxableAmount, taxablePartCents } from '@pos/core/sale/refunds';
 import type { OrderItem } from '@/services/types';
 
 function line(unit: number, qty: number, vatable = true, scPwd = false): PricingLine {

@@ -12,9 +12,9 @@ import { useCurrentShift } from '@/hooks/shifts/useCurrentShift';
 import { useCart } from '@/hooks/sell/useCart';
 import { useIsOnline } from '@/hooks/useIsOnline';
 import { useConnectivityStore } from '@/stores/connectivity';
-import { discountNeedsApproval, eligibleApprovers } from '@/sale/discountRules';
-import { buildOrderRequest, priceCart } from '@/sale/order';
-import { parseTableNo } from '@/sale/table';
+import { discountNeedsApproval, eligibleApprovers } from '@pos/core/sale/discountRules';
+import { buildOrderRequest, priceCart } from '@pos/core/sale/order';
+import { parseTableNo } from '@pos/core/sale/table';
 import { OFFLINE_APPROVAL_MESSAGE, OFFLINE_SAVED_MESSAGE, saveOfflineSale } from '@/sale/offlineSale';
 import { ALREADY_RECORDED_MESSAGE, classifyOrderError, EARLIER_ATTEMPT_NOTE, type OrderFailure } from '@/sale/orderErrors';
 import {
@@ -25,7 +25,7 @@ import {
   type GcashDraft,
   type TenderDraft,
   type TenderErrors,
-} from '@/sale/payments';
+} from '@pos/core/sale/payments';
 import { printSale } from '@/printing/printActions';
 import { isApiError } from '@/services/api';
 import { createOrder, getOrder } from '@/services/orders';
@@ -38,7 +38,7 @@ import { markShiftClosedByServer, NO_SHIFT_MESSAGE, storeOnlineSale } from '@/sh
 import { requestCatalogueSync } from '@/sync/catalogueSync';
 import { deviceMatches, loadCachedDevice, OFFLINE_SETUP_MESSAGE } from '@/sync/deviceRegistration';
 import { requestStockSync } from '@/sync/stockSync';
-import { centsToInputText, parsePesoInput } from '@/utils/money';
+import { centsToInputText, parsePesoInput } from '@pos/core/money';
 import { goBackOr } from '@/utils/navigation';
 import { isPinComplete } from '@/utils/pin';
 

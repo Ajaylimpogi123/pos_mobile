@@ -7,6 +7,7 @@ import { getErrorMessage, isApiValidationError } from '@/services/api';
 import { getBranchSettings, updateBranchSettings } from '@/services/settings';
 import type { BranchSettings, BranchSettingsUpdateRequest } from '@/services/types';
 import { requestPrintConfigSync } from '@/sync/printConfigSync';
+import { showToast } from '@/stores/toast';
 
 /** Contract: up to 6 lines of up to 48 characters; copies 1–3. */
 export const RECEIPT_LIMITS = { maxLines: 6, lineLength: 48, minCopies: 1, maxCopies: 3 } as const;
@@ -179,7 +180,8 @@ export function useReceiptSettingsForm(initial: BranchSettings) {
       setValues(settingsToValues(next));
       client.setQueryData(printingKeys.settings(), next);
       void requestPrintConfigSync();
-      setNotice(SETTINGS_SAVED_MESSAGE);
+      // MASTER §6: save success is a toast.
+      showToast(SETTINGS_SAVED_MESSAGE);
     } catch (error) {
       const mapped = isApiValidationError(error) ? mapSettingsErrors(error.errors) : null;
       if (mapped) setErrors(mapped);

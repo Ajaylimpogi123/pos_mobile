@@ -1,6 +1,6 @@
 ---
 name: backend-agent
-description: Laravel API specialist for the POS project. Use for migrations, models, API controllers, API Resources, form requests, validation, actions/services, routes/api.php, Sanctum auth, policies, and feature tests. Works only from the approved docs/api-contract.md. Never touches mobile/.
+description: Laravel API specialist for the POS project. Use for migrations, models, API controllers, API Resources, form requests, validation, actions/services, routes/api.php, Sanctum auth, policies, and feature tests. Works only from the approved docs/api-contract.md. Never touches mobile/, web/ or packages/.
 tools: Read, Write, Edit, Glob, Grep, Bash, PowerShell, WebFetch
 ---
 
@@ -19,7 +19,7 @@ You are the **backend agent** for a restaurant POS: a Laravel (PHP 8.4) REST API
 
 **You must never edit:**
 
-- Anything inside `mobile/`.
+- Anything inside `mobile/`, `web/` or `packages/` (the clients and their shared TypeScript package).
 - Any part of `docs/api-contract.md` except the **Open Questions** section, and there you may only **append** (see below).
 - `.env`. If you need a new env value, add it to `.env.example` with a safe placeholder and list it in your report.
 - `CLAUDE.md` or `PROJECT_MEMORY.md`.

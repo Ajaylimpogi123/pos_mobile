@@ -85,7 +85,9 @@ describe('tablet landscape: the cart is always visible beside the menu', () => {
     expect(screen.getByTestId('cart-total-amount')).toHaveTextContent('₱135.00');
     // SHOW_VAT_BREAKDOWN is off (constants/features.ts): no "VAT included" row.
     expect(screen.queryByTestId('cart-vat')).toBeNull();
-    expect(screen.getByTestId('cart-checkout')).toHaveTextContent(/Charge ₱135\.00/);
+    expect(screen.getByTestId('cart-checkout')).toHaveTextContent(/Checkout \(₱135\.00\)/);
+    // The card says "Added ✓" after a tap.
+    expect(screen.getByTestId('product-tile-4-add')).toHaveTextContent('Added ✓');
   });
 
   it('never adds an unavailable product', async () => {
@@ -282,21 +284,26 @@ describe('phones and portrait: a bottom bar opens the cart', () => {
     expect(screen.getByTestId('cart-total-amount')).toHaveTextContent('₱70.00');
   });
 
-  it('tablet portrait uses the bar too, and a rejected sale opens the sheet with the messages', async () => {
+  it('tablet portrait: the card stays visible under the menu, and the pinned bar\'s Checkout goes straight to checkout', async () => {
     setWindowSize(REFERENCE_SIZES.tabletPortrait.width, REFERENCE_SIZES.tabletPortrait.height);
     await storeMenu();
     await renderSell();
     await tap(4);
+    expect(screen.getByTestId('cart-panel-below')).toBeOnTheScreen();
     expect(screen.getByTestId('cart-bar')).toBeOnTheScreen();
-    expect(screen.queryByTestId('cart-sheet')).toBeNull();
+    expect(screen.getByTestId('cart-bar-checkout')).toHaveTextContent(/Checkout \(₱/);
+    // The card under the menu has no Checkout of its own: the bar has it.
+    expect(screen.queryByTestId('cart-checkout')).toBeNull();
 
     await act(async () =>
       useCartStore.getState().showServerErrors({ lines: { 0: 'Only 0 "Iced Tea" left in stock.' }, orderDiscount: null, customer: null, cart: null }),
     );
-
-    const sheet = await screen.findByTestId('cart-sheet');
-    expect(within(sheet).getByTestId('cart-line-0-error')).toHaveTextContent('Only 0 "Iced Tea" left in stock.');
+    expect(screen.queryByTestId('cart-sheet')).toBeNull();
+    expect(screen.getByTestId('cart-line-0-error')).toHaveTextContent('Only 0 "Iced Tea" left in stock.');
     expect(screen.getByTestId('cart-bar-attention')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByTestId('cart-bar-checkout'));
+    expect(router.push).toHaveBeenCalledWith('/sell/checkout');
   });
 });
 

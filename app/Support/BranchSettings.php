@@ -29,6 +29,18 @@ final class BranchSettings
     public const PRINT_KITCHEN_TICKETS = 'print_kitchen_tickets';
 
     /**
+     * Dine-in Tables & Tabs → A: the Tables view and the tab endpoints are on.
+     */
+    public const DINE_IN_ENABLED = 'dine_in_enabled';
+
+    /**
+     * Dine-in: the service charge of tab settlements, in basis points (0 = none).
+     */
+    public const SERVICE_CHARGE_BPS = 'service_charge_bps';
+
+    public const MAX_SERVICE_CHARGE_BPS = 2000;
+
+    /**
      * Every key, in the contract's order.
      */
     public const KEYS = [
@@ -37,6 +49,8 @@ final class BranchSettings
         self::AUTO_PRINT_RECEIPT,
         self::RECEIPT_COPIES,
         self::PRINT_KITCHEN_TICKETS,
+        self::DINE_IN_ENABLED,
+        self::SERVICE_CHARGE_BPS,
     ];
 
     public const DEFAULT_FOOTER_LINES = ['This is not an official receipt.'];
@@ -94,6 +108,8 @@ final class BranchSettings
             self::AUTO_PRINT_RECEIPT => true,
             self::RECEIPT_COPIES => 1,
             self::PRINT_KITCHEN_TICKETS => true,
+            self::DINE_IN_ENABLED => false,
+            self::SERVICE_CHARGE_BPS => 0,
         ];
     }
 
@@ -127,7 +143,8 @@ final class BranchSettings
                 && array_filter($value, fn ($line) => ! is_string($line)) === []
                     ? array_values($value)
                     : $default,
-            self::AUTO_PRINT_RECEIPT, self::PRINT_KITCHEN_TICKETS => is_bool($value) ? $value : $default,
+            self::AUTO_PRINT_RECEIPT, self::PRINT_KITCHEN_TICKETS, self::DINE_IN_ENABLED => is_bool($value) ? $value : $default,
+            self::SERVICE_CHARGE_BPS => is_int($value) && $value >= 0 && $value <= self::MAX_SERVICE_CHARGE_BPS ? $value : $default,
             self::RECEIPT_COPIES => is_int($value) && $value >= self::MIN_COPIES && $value <= self::MAX_COPIES ? $value : $default,
             default => $value,
         };
@@ -162,6 +179,16 @@ final class BranchSettings
     public function printKitchenTickets(): bool
     {
         return $this->values[self::PRINT_KITCHEN_TICKETS];
+    }
+
+    public function dineInEnabled(): bool
+    {
+        return $this->values[self::DINE_IN_ENABLED];
+    }
+
+    public function serviceChargeBps(): int
+    {
+        return $this->values[self::SERVICE_CHARGE_BPS];
     }
 
     public function get(string $key): mixed

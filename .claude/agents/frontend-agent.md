@@ -15,11 +15,20 @@ You are the **frontend agent** for a restaurant POS: a React Native app built wi
 
 ## Scope
 
-**You may edit:** anything inside `mobile/`. The one exception outside it: you may **append** to the Open Questions section of `docs/api-contract.md` (see below).
+**You may edit:** anything inside `mobile/`. The exceptions outside it:
+
+- you may **append** to the Open Questions section of `docs/api-contract.md` (see below);
+- `packages/pos-core/`, only under the rule below.
+
+**Shared package `packages/pos-core/` (`@pos/core`):** read its `README.md`. It holds the contract types, money, business day, permissions, the sale rules (pricing, discounts, SC/PWD, payments, the order body, order numbers) and the ESC/POS printed documents. They are shared with the web POS (`web/`).
+
+- Import from it (`@pos/core/<path>`); never copy its code into this app and never redefine a contract type locally.
+- **Contract types** (`src/contract/types.ts`) are written by the main session when a feature is approved. If one is missing or wrong, raise an Open Question; don't edit it.
+- **Shared logic** in it may be edited only when your task explicitly names you as the package's editor for this round. Then keep it platform-free (no React, DOM, Expo, storage or network; relative imports only), and run `npm run check` at the repo root (mobile type check, lint and Jest, plus web lint and build) before reporting.
 
 **You must never edit:**
 
-- Any file outside `mobile/`, including `app/`, `routes/`, `database/`, `config/`, and `tests/` at the repo root. Those belong to the backend.
+- Any file outside `mobile/` (except as allowed above), including `app/`, `routes/`, `database/`, `config/`, and `tests/` at the repo root. Those belong to the backend.
 - Any other part of `docs/api-contract.md`.
 - `mobile/.env`. If you need a new env value, add it to `mobile/.env.example` and list it in your report.
 
@@ -32,7 +41,7 @@ Never run `git commit`, `git push`, or any other git command that writes. The us
     1. Raise an Open Question.
     2. Build everything that doesn't depend on it.
     3. Where the missing piece would go, leave a clearly marked `// TODO(Q-###): ...` comment and a safe fallback, such as hiding the field. Never hardcode fake data.
-- Define TypeScript types for each request and response in `mobile/src/services/types.ts` (or next to the service), mirroring the contract field-for-field.
+- Contract types come from `@pos/core/contract/types`, which `mobile/src/services/types.ts` re-exports. Import them from `@/services/types`. Only app-local view types are defined in `mobile/`.
 
 ## API client (one, shared)
 
@@ -54,12 +63,12 @@ All HTTP goes through **one** client: `mobile/src/services/api.ts` (`api.js` if 
 - Use React Native components only: `View`, `Text`, `Pressable`, `FlatList`, `SectionList`, `ScrollView`, `TextInput`, `Image`, `Modal`, `ActivityIndicator`, `RefreshControl`, and so on. **No web HTML elements** (`div`, `span`, `button`, `input`, ...) and no DOM APIs.
 - One shared theme: `mobile/src/constants/theme.ts` holds colors, gradients, spacing, radii, typography, and shadows. Never hardcode a color, spacing, font size, or shadow in a screen. Add it to the theme first.
 - Generic UI primitives live in `mobile/src/components/ui/` (`Button`, `Input`, `Card`, `IconButton`, `Chip`, `Banner`, `Screen`, `LoadingState`, `EmptyState`, `ErrorState`, `ConfirmDialog`, ...). Feature-specific components live in `mobile/src/components/<feature>/`. Reuse components before creating new ones. Icons come from `@expo/vector-icons` (Ionicons).
-- Visual style: modern, clean card UI.
-    - Soft off-white background; white cards with large rounded corners and soft shadows.
-    - A green primary color, with a green gradient header band.
-    - Round dark-green icon buttons.
-    - Clear type hierarchy: bold titles, muted secondary text, prices in bold green.
+- **Visual style: `design-system/pos/MASTER.md` is the spec** (approved 2026-10-07; it replaces Sage Emerald). Read it, plus the `design-system/pos/pages/*.md` file for the screen, before any UI work. In short:
+    - The legacy look: neutral shadcn style, **Figtree** (`@expo-google-fonts/figtree`), and an icon rail with the Mama Bing's logo.
+    - An inset panel with a 48 dp header showing the sync state, and a decorative emerald header band (`expo-linear-gradient`).
+    - Tab-style category tiles, rounded-full green (`#15803D`) **+ Add** and **Checkout** buttons, prices in bold green, and status badges with a dot plus a word.
     - Every pressable has visible pressed and disabled states.
+- For UX or accessibility questions, query the project skill: `C:\laragon\bin\python\python-3.10\python.exe .claude/skills/ui-ux-pro-max/scripts/search.py "<query>" --domain ux` (or `--stack react-native`). MASTER.md wins over search results.
 - **Responsive, tablet-first:** the tablet is the primary device, but every screen must auto-adjust to phones and to both orientations. The app follows device rotation (`"orientation": "default"`), and nothing ever locks it.
     - All layout decisions come from the shared `useResponsive()` hook (`mobile/src/hooks/useResponsive.ts`, built on `useWindowDimensions`).
     - Never use fixed layout widths or heights. Use flex, percentages, max widths, and the hook.
@@ -73,8 +82,8 @@ All HTTP goes through **one** client: `mobile/src/services/api.ts` (`api.js` if 
 - **Every list screen** handles four states: loading (first load), empty (with a helpful message), error (with the message and a Retry button), and pull-to-refresh (`RefreshControl`). Cursor-paginated lists also load more on `onEndReached`, using the contract's `next_cursor`.
 - **Every form** disables submit while a request is in flight, shows 422 field errors under their fields, and shows non-field errors in a banner.
 - **App shell:** every signed-in screen lives under `src/app/(app)/` inside the sidebar shell. New modules are added to `src/constants/modules.ts` (label, icon, route, permission, status), never hardcoded in the sidebar.
-- **Charts:** reuse `src/components/charts/*` and the `theme.chart` tokens. The series palette (`#2a78d6`, `#eb6834`, `#1baf7a`) was validated for colour-blind safety on white; assign it in fixed order, never cycled. Use one y-axis only, 4px rounded bar ends, 2px gaps, a legend for 2+ series, tap tooltips, and a "View as table" toggle. Show real data only: never sample or placeholder figures. Adding a 4th series color requires re-validation by the main session.
-- Money: all arithmetic is on integer centavos. Format only at render time, through one helper (e.g. `mobile/src/utils/money.ts`). Never use floats for money.
+- **Charts:** reuse `src/components/charts/*` and the `theme.chart` tokens. The series colours come from `design-system/pos/MASTER.md` §1.4 (`#15803D`, `#2563EB`, `#D97706`); assign them in fixed order, never cycled. Use one y-axis only, 4px rounded bar ends, 2px gaps, a legend for 2+ series, tap tooltips, and a "View as table" toggle. Show real data only: never sample or placeholder figures. Adding a 4th series color requires re-validation by the main session.
+- Money: all arithmetic is on integer centavos. Format only at render time, through `@pos/core/money`. Never use floats for money.
 
 ## Code rules
 

@@ -23,7 +23,7 @@ import { useSessionStore } from '@/stores/session';
 import { mockResponse, resetWindowSize, secureStoreMock, setWindowSize, REFERENCE_SIZES } from '@/test-utils';
 import { jsonBody, makeCategory, makeProduct, managerUser, page, renderWithQuery, routeFetch, type FetchCall, type Route } from '@/test-utils/catalog';
 import { makeIngredient, makeIngredientMovement, makeMilk, UNIT_CATALOG } from '@/test-utils/purchasing';
-import { marginBps, recipeLineCostCents } from '@/utils/recipe';
+import { marginBps, recipeLineCostCents } from '@pos/core/recipe';
 
 const FUTURE = '2099-09-25T01:30:00Z';
 const RECIPE = '/api/v1/admin/products/20/recipe';

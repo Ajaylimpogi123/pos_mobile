@@ -102,17 +102,27 @@ function seedYearOfPurchasing(int $branchId, int $requesterId, int $approverId, 
     }
 
     // One PO line per approved item, received in part (a received line every other one).
-    DB::statement(
-        'INSERT INTO purchase_order_lines (purchase_order_id, purchase_request_item_id, ingredient_id, product_id, supplier_id, qty, unit, unit_factor, '
-        .'base_qty, unit_price_cents, line_total_cents, received_base_qty, received_cents, receiving_status, last_received_at, created_at, updated_at) '
-        .'SELECT po.id, pri.id, pri.ingredient_id, NULL, pri.supplier_id, pri.qty, pri.unit, pri.unit_factor, pri.base_qty, 10000, 20000, '
-        .'CASE WHEN pri.id % 2 = 0 THEN 2000 ELSE 0 END, CASE WHEN pri.id % 2 = 0 THEN 20000 ELSE 0 END, '
-        ."CASE WHEN pri.id % 2 = 0 THEN 'complete' ELSE 'pending' END, CASE WHEN pri.id % 2 = 0 THEN pri.created_at END, pri.created_at, pri.created_at "
-        ."FROM purchase_request_items pri JOIN purchase_orders po ON po.purchase_request_id = pri.purchase_request_id WHERE pri.decision = 'approved'",
+    // Qualified columns inside raw SQL go through the grammar (the connection's table prefix).
+    $col = fn (string $column): string => DB::getQueryGrammar()->wrap($column);
+    $even = "{$col('pri.id')} % 2 = 0";
+
+    DB::table('purchase_order_lines')->insertUsing(
+        ['purchase_order_id', 'purchase_request_item_id', 'ingredient_id', 'product_id', 'supplier_id', 'qty', 'unit', 'unit_factor',
+            'base_qty', 'unit_price_cents', 'line_total_cents', 'received_base_qty', 'received_cents', 'receiving_status', 'last_received_at', 'created_at', 'updated_at'],
+        DB::table('purchase_request_items as pri')
+            ->join('purchase_orders as po', 'po.purchase_request_id', '=', 'pri.purchase_request_id')
+            ->where('pri.decision', 'approved')
+            ->selectRaw("{$col('po.id')}, {$col('pri.id')}, {$col('pri.ingredient_id')}, NULL, {$col('pri.supplier_id')}, {$col('pri.qty')}, {$col('pri.unit')}, "
+                ."{$col('pri.unit_factor')}, {$col('pri.base_qty')}, 10000, 20000, "
+                ."CASE WHEN {$even} THEN 2000 ELSE 0 END, CASE WHEN {$even} THEN 20000 ELSE 0 END, "
+                ."CASE WHEN {$even} THEN 'complete' ELSE 'pending' END, CASE WHEN {$even} THEN {$col('pri.created_at')} END, "
+                ."{$col('pri.created_at')}, {$col('pri.created_at')}"),
     );
 
     // Each approved item's link to its line, as DecidePurchaseRequestAction writes it.
-    DB::statement('UPDATE purchase_request_items pri JOIN purchase_order_lines pol ON pol.purchase_request_item_id = pri.id SET pri.purchase_order_line_id = pol.id');
+    DB::table('purchase_request_items as pri')
+        ->join('purchase_order_lines as pol', 'pol.purchase_request_item_id', '=', 'pri.id')
+        ->update(['pri.purchase_order_line_id' => DB::raw($col('pol.id'))]);
 
     return $items;
 }
@@ -122,7 +132,7 @@ it('answers the purchasing report over a year of purchasing in under 500 ms, wit
 
     expect($seeded)->toBeGreaterThan(20000);
 
-    DB::statement('ANALYZE TABLE purchase_requests, purchase_request_items, purchase_orders, purchase_order_lines, suppliers, ingredients, users');
+    analyzeTables('purchase_requests', 'purchase_request_items', 'purchase_orders', 'purchase_order_lines', 'suppliers', 'ingredients', 'users');
 
     $token = tokenFor($this->owner);
     $this->withToken($token)->getJson('/api/v1/auth/me')->assertOk();

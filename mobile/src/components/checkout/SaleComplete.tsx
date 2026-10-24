@@ -21,7 +21,7 @@ import {
 import { useResponsive } from '@/hooks/useResponsive';
 import { isLocalOrder, ticketNumberLabel } from '@/sale/localOrder';
 import type { PrintableOrder } from '@/services/types';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 
 type SaleCompleteProps = {
   order: PrintableOrder;

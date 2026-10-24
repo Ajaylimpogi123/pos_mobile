@@ -6,12 +6,15 @@ use App\Actions\Shifts\BuildShiftReports;
 use App\Actions\Shifts\CloseShiftAction;
 use App\Actions\Shifts\OpenShiftAction;
 use App\Actions\Shifts\RecordCashMovementAction;
+use App\Exceptions\ConflictException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Shifts\CloseShiftRequest;
 use App\Http\Requests\Shifts\ListShiftsRequest;
 use App\Http\Requests\Shifts\StoreCashMovementRequest;
 use App\Http\Requests\Shifts\StoreShiftRequest;
+use App\Http\Requests\Sync\SyncOrdersRequest;
 use App\Http\Resources\CashMovementResource;
+use App\Http\Resources\CurrentShiftResource;
 use App\Http\Resources\ShiftResource;
 use App\Models\Device;
 use App\Models\Shift;
@@ -142,6 +145,37 @@ class ShiftController extends Controller
         return $this->shiftResource($closeShift->execute($shift, $request->validated(), $request->ip()))
             ->response()
             ->setStatusCode(200);
+    }
+
+    /**
+     * GET /api/v1/shifts/current (any authenticated user; Q-035)
+     *
+     * The open shift of the token's device in the caller's branch, or `data: null`. 409
+     * "Register this tablet first." when the token isn't bound to a device.
+     */
+    public function current(Request $request): CurrentShiftResource
+    {
+        $caller = $this->actor($request);
+        $device = Device::ofSession($caller) ?? throw new ConflictException(SyncOrdersRequest::MESSAGE_NO_DEVICE);
+
+        $shift = Shift::query()
+            ->where('branch_id', $caller->branch_id)
+            ->where('device_id', $device->id)
+            ->whereNull('closed_at')
+            ->orderByDesc('opened_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($shift === null) {
+            return new CurrentShiftResource(null);
+        }
+
+        $this->authorize('view', [$shift, $device]);
+
+        $shift->load(self::RESOURCE_RELATIONS);
+        $this->buildReports->execute([$shift]);
+
+        return new CurrentShiftResource($shift);
     }
 
     private function shiftResource(Shift $shift): ShiftResource

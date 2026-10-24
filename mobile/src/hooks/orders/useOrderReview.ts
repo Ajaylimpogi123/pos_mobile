@@ -7,7 +7,7 @@ import { getErrorMessage, isApiError, isApiValidationError } from '@/services/ap
 import { reviewOrder } from '@/services/orders';
 import type { PrintableOrder } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
-import { REVIEW_NOTE_MAX } from '@/sale/reviewReasons';
+import { REVIEW_NOTE_MAX } from '@pos/core/sale/reviewReasons';
 import { hasPermission, PERMISSIONS } from '@/utils/permissions';
 
 /**

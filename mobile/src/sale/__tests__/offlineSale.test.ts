@@ -10,8 +10,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { offlineRepository } from '@/db/offlineRepository';
 import { readCategoryNames } from '@/db/menuQueries';
 import { catalogueRepository } from '@/db/catalogueRepository';
-import { buildKitchenTicket } from '@/printing/documents/kitchenTicket';
-import { buildReceipt } from '@/printing/documents/receipt';
+import { buildKitchenTicket } from '@pos/core/printing/documents/kitchenTicket';
+import { buildReceipt } from '@pos/core/printing/documents/receipt';
 import {
   buildLocalOrder,
   buildOfflineOrder,
@@ -23,7 +23,7 @@ import {
   ticketNumberLabel,
 } from '@/sale/localOrder';
 import { saveOfflineSale, stockDemand, type OfflineSaleDeps, type OfflineSaleInput } from '@/sale/offlineSale';
-import { priceCart } from '@/sale/order';
+import { priceCart } from '@pos/core/sale/order';
 import type { CachedDevice } from '@/services/secureStorage';
 import { resetCart, useCartStore } from '@/stores/cart';
 import { cashierUser } from '@/test-utils';

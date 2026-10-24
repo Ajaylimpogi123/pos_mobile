@@ -20,7 +20,7 @@ import { offlineRepository } from '@/db/offlineRepository';
 import { refundRepository } from '@/db/refundRepository';
 import { resetPrintingForTests, whenPrintQueueIdle } from '@/printing/printActions';
 import { getPrintTransport } from '@/printing/transport';
-import { REFUND_UNCONFIRMED_MESSAGE, REVERSAL_OFFLINE_MESSAGE, VOID_UNCONFIRMED_MESSAGE } from '@/sale/reversals';
+import { REFUND_UNCONFIRMED_MESSAGE, REVERSAL_OFFLINE_MESSAGE, VOID_UNCONFIRMED_MESSAGE } from '@pos/core/sale/reversals';
 import type { Order, RefundCreateRequest } from '@/services/types';
 import { useConnectivityStore } from '@/stores/connectivity';
 import { usePrintingStore } from '@/stores/printing';

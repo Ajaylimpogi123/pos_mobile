@@ -24,12 +24,12 @@
  * The VATable / VAT / VAT-exempt pairs print only while `SHOW_VAT_BREAKDOWN`
  * is on (`constants/features.ts`; off until BIR accreditation).
  */
-import { showVatBreakdown } from '@/constants/features';
-import { formatPercentValue } from '@/sale/discountRules';
-import { orderNumberLabel } from '@/sale/localOrder';
-import { VAT_RATE_BPS } from '@/sale/pricing';
-import type { Order, Refund } from '@/services/types';
-import { formatAmount, formatPeso } from '@/utils/money';
+import { showVatBreakdown } from '../../features';
+import { formatPercentValue } from '../../sale/discountRules';
+import { orderNumberLabel } from '../../sale/orderNumbers';
+import { VAT_RATE_BPS } from '../../sale/pricing';
+import type { Order, Refund } from '../../contract/types';
+import { formatAmount, formatPeso } from '../../money';
 
 import { EscPosBuilder } from '../escpos/builder';
 import { formatPrintedDateTime } from './format';

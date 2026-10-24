@@ -14,7 +14,8 @@ import {
 import { barPath, linearScale, stackedSegments } from '@/components/charts/chartMath';
 import { chart, colors, spacing, typography } from '@/constants/theme';
 
-export type BarSeries = { key: string; label: string; color: string };
+/** `legendValue`: shown beside the legend label (e.g. "₱3,000.00 · 74%"). */
+export type BarSeries = { key: string; label: string; color: string; legendValue?: string };
 
 export type BarRow = {
   key: string;
@@ -72,7 +73,7 @@ export const HorizontalBarChart = memo(function HorizontalBarChart({
 }: HorizontalBarChartProps) {
   const [selected, setSelected] = useState<string | null>(null);
 
-  const legendItems: LegendItem[] = series.map((entry) => ({ key: entry.key, label: entry.label, color: entry.color }));
+  const legendItems: LegendItem[] = series.map((entry) => ({ key: entry.key, label: entry.label, color: entry.color, value: entry.legendValue }));
   const legend = series.length >= 2 ? <Legend items={legendItems} testID={`${testID}-legend`} /> : null;
 
   return (

@@ -19,8 +19,8 @@ import {
   type IngredientStockDialogState,
 } from '@/hooks/ingredients/useIngredientStock';
 import type { Ingredient } from '@/services/types';
-import { formatPeso } from '@/utils/money';
-import { formatQty } from '@/utils/quantity';
+import { formatPeso } from '@pos/core/money';
+import { formatQty } from '@pos/core/quantity';
 
 const DIALOG: Record<IngredientStockDialogKind, { title: string; confirm: string; icon: IconName; qtyLabel: string }> = {
   adjustment: { title: 'Adjust stock', confirm: 'Save adjustment', icon: 'swap-vertical-outline', qtyLabel: 'Quantity' },

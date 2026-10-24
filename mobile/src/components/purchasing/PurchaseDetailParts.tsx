@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
   },
   summary: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.subtle,
   },
   summaryLines: {
     gap: spacing.sm,

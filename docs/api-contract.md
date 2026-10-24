@@ -3028,7 +3028,8 @@ A `product` item must have `stock_mode = own` (Round B; until then, `track_stock
 
 ---
 
-## Feature: Hardening & Pilot (Phase 8) — DRAFT (v1.20)
+## Feature: Hardening & Pilot (Phase 8) — APPROVED (v1.23)
+Status: **APPROVED** (2026-10-12, revised for the Web POS).
 
 **Goal:** run a full real service day with no data loss.
 
@@ -3038,6 +3039,18 @@ A `product` item must have `stock_mode = own` (Round B; until then, `track_stock
 - **Release:** one `production` EAS profile: an APK, internal distribution, channel `production`.
 - **Devices:** setup and health screen, device management, and release builds with a version check.
 - **Training:** written guides only.
+
+**Choices added (2026-10-12, after the Web POS):**
+- **Web terminals get full parity.** That means error capture, a heartbeat and a "This terminal" health page (§I). `W` devices appear in admin Devices and can be retired and restored.
+- **Version gating stays tablet-only.** The server always serves the current web build.
+- **The admin Devices and Error log screens are built on both the tablet and the web.**
+- **Shared rules go in `@pos/core/errors`** (`packages/pos-core/src/errors/`), owned by **frontend-agent**:
+  - redaction;
+  - message normalisation and the local fingerprint;
+  - the semver compare;
+  - the device `health` labels.
+
+  web-agent imports them once they land, and builds the admin screens first.
 
 ### A. Permission (the permissions seeder must be re-run)
 - New slug **`system.manage`**: "Manage tablets and the error log".
@@ -3103,6 +3116,8 @@ It never records request input, headers or the query string. Recording fails sil
 
 **`is_active = false`** means retired.
 
+**Registering an existing device** (Q-044): it keeps its current `name`, so an admin rename lasts. The `name` sent is only used when the device is created.
+
 **Registering a retired tablet:** `POST /devices/register` with a retired tablet's `install_id` → `403 "This tablet has been retired. Ask a manager to restore it."`.
 
 **A token bound to a retired device** → `401 { "message": "This tablet has been retired." }` on every request. The app signs out, as for any 401. **This is the only case where a sale can't be sent.** Retiring checks for unsynced sales first (below).
@@ -3134,19 +3149,25 @@ Versions are compared as semver `major.minor.patch`.
 #### Admin devices (permission `system.manage`, branch-scoped)
 - **`GET /api/v1/admin/devices`:**
   - Cursor list, ordered active first, then by `code`.
-  - Filters: `status` (`active|retired|all`, default `active`) and `search`.
-  - **Item:** `{ id, code, name, app_version, last_seen_at, is_active, retired_at, last_user{id,name}|null, heartbeat{outbox_pending, outbox_failed, oldest_pending_at, errors_pending, last_catalogue_sync_at, last_stock_sync_at, storage_free_mb, os_version, device_model, printers}|null, heartbeat_at, health }`.
+  - Filters: `status` (`active|retired|all`, default `active`), `platform` (`android|web`) and `search`.
+  - **Item:** `{ id, code, name, platform, app_version, last_seen_at, is_active, retired_at, last_user{id,name}|null, heartbeat{outbox_pending, outbox_failed, oldest_pending_at, errors_pending, last_catalogue_sync_at, last_stock_sync_at, storage_free_mb, os_version, device_model, printers}|null, heartbeat_at, health }`.
   - **`health`** is derived:
     - `offline`: last seen over 30 min ago;
     - `attention`: `outbox_failed > 0`, or pending sales older than 30 min, or an app older than `min_version`, or storage under 500 MB;
     - otherwise `ok`. Retired devices get `retired`.
+    - **Web terminals** (`platform: web`) have no outbox and no version gating. Only the last-seen rule and `errors_pending > 0` (`attention`) apply to them.
+- **`GET /api/v1/admin/devices/{id}`** (Q-043): 200 `{ data: AdminDevice }`.
+  - Includes retired devices.
+  - 404 for a device in another branch (unless `branch.all`) or one that doesn't exist.
 - **`PATCH /api/v1/admin/devices/{id}`:** `{name}` (max 60). Audited `device.renamed`.
 - **`POST /api/v1/admin/devices/{id}/retire`:** `{confirm?: bool}`.
   - If the last heartbeat reported `outbox_pending > 0` and `confirm` isn't true: `409 { "message": "T02 still has 5 unsynced sales. Sync it first, or retire it anyway.", "outbox_pending": 5 }`.
   - Otherwise it sets `is_active=false` and `retired_at`, **deletes the tokens bound to it**, and audits `device.retired`.
+  - A web terminal never gets the 409, because it sells online only.
 - **`POST /api/v1/admin/devices/{id}/restore`:** reactivates the device (staff log in again). Audited `device.restored`.
 
 **Insight:** `device_unsynced` (warning), "T02 has 5 unsynced sales (last seen 2 h ago)", for an active device with `outbox_pending > 0` whose heartbeat is over 30 min old.
+- Its `action` is `settings.devices`, and it appears only when the caller has `system.manage`.
 
 ### D. Release builds (mobile)
 
@@ -3163,7 +3184,7 @@ The APK is installed on the pilot tablets directly from the EAS internal-distrib
 
 **App version:** `expo.version` in `app.json` is the semver sent as `app_version`, read with `expo-constants`.
 
-**Version check:** on launch, on foreground (at most every 15 min) and in every heartbeat response:
+**Version check (tablet only):** on launch, on foreground (at most every 15 min) and in every heartbeat response:
 - **Below `min_version`:**
   - A blocking **Update required** screen with the update link. The **outbox and the error queue keep syncing**, and the screen shows `N sales still to send`.
   - Nothing is blocked server-side: sales from any version are always accepted.
@@ -3198,8 +3219,9 @@ The APK is installed on the pilot tablets directly from the EAS internal-distrib
 - Sent every 5 min while online and signed in, and on foreground (throttled to 1/min).
 - Never blocks the UI. Failures are silent.
 
-**Admin screens:**
+**Admin screens (tablet and web, the same behaviour on both):**
 - **Devices** (Settings, `system.manage`):
+  - a platform filter (Tablets / Web terminals);
   - list cards with a health chip and the unsynced count;
   - a detail with the heartbeat fields;
   - rename, retire (with the 409 confirm dialog) and restore.
@@ -3259,7 +3281,63 @@ The APK is installed on the pilot tablets directly from the EAS internal-distrib
 - **`pilot-runbook.md`:**
   - **Server:** server setup, including the scheduler task on Windows (`schedule:run` every minute, for error-log pruning and token pruning).
   - **Tablets:** tablet install (the `production` APK) and first login, printer setup and test.
+  - **Web terminals:**
+    - the web build (`npm run build`, served at `/pos`);
+    - running the print agent (`print-agent:run`) as a Windows scheduled task that restarts it;
+    - first login on a counter PC, and choosing its receipt printer.
   - **Service day:** the opening-day checklist, the offline procedure, end of day (Z-read), and "what to do if…".
+
+### I. Web terminals (added v1.23)
+
+**Version:** `web/package.json` `version` (set to `1.0.0` for the pilot). Vite injects it at build time as `__APP_VERSION__`, and it is sent as `app_version`.
+
+**Error capture:**
+- `window.onerror` and `unhandledrejection`.
+- A root React error boundary showing "Something went wrong" with **Reload**.
+- The same "caught errors worth knowing" as the tablet:
+  - a print job that ends `failed`;
+  - an unexpected 5xx from any service call.
+- **Redaction and the 60 s local de-duplication** come from `@pos/core/errors`, so they match the tablet.
+- **The queue** lives in `localStorage` key `pos.errorQueue`:
+  - at most 200 entries, the oldest dropped first;
+  - flushed in batches of 20 every 60 s, on the browser's `online` event, and after login;
+  - a 429 or network error keeps the entries;
+  - a `localStorage` failure loses the entries silently and never breaks the page.
+- **Context:**
+  - `os: "web"`;
+  - `os_version`: the browser name and major version;
+  - `device_model`: null;
+  - `install_id`: the terminal's install id.
+
+**Heartbeat:**
+- The same `POST /devices/heartbeat`, every 5 min while signed in and the tab is visible, and on `visibilitychange` (at most 1/min).
+- It sends:
+  - `app_version`;
+  - `os_version`;
+  - `errors_pending`;
+  - `printers`: the terminal's receipt printer plus the kitchen printers. Each one's `ok` is its latest print job's status (`printed` means ok, `failed` means not ok, none means omitted).
+- No outbox fields. Failures are silent.
+
+**"This terminal" page:** route `/device`, under Settings, for every signed-in user. It has the same layout as the tablet's §E, without the outbox and version items.
+- **Checklist:**
+  1. Server reachable;
+  2. Terminal registered;
+  3. Clock in sync;
+  4. A receipt printer is chosen and its last job is OK;
+  5. The print agent is running: none of this terminal's jobs has been `queued` for over 2 min (Q-042).
+- The print-agent check uses the existing `GET /print-jobs`: `queued` jobs older than 2 min mean the agent is down.
+- Actions: *Check now*, *Test print* (`kind: "test"`) and *Send diagnostics*.
+
+**A retired web terminal:** the 401 "This tablet has been retired." signs the user out like any 401. The login page shows the message when registration then returns 403. The server wording stays "tablet" for both platforms.
+
+### J. Build round (one round; the three agents run in parallel)
+| Agent | Work |
+|---|---|
+| **backend-agent** | §A permission + seeder; §B tables, `POST /client-errors`, 5xx capture, admin error-log endpoints, daily prune; §C device columns, heartbeat, `GET /app-version`, retired 401/403, admin devices with `platform` + `health`, `device_unsynced` insight; §G backend soak (`--group=soak`); feature tests for each |
+| **frontend-agent** | `@pos/core/errors` (first); §D `production` profile + version check; §E "This tablet" + admin Devices + Error log; §F capture + `error_queue`; heartbeat; jest outbox soak |
+| **web-agent** | §E admin Devices + Error log (web); §I capture, queue, heartbeat, "This terminal" page; `__APP_VERSION__` |
+
+The main session writes §H (guides) after the build.
 
 ### Not in this phase
 - **Backups** (removed from Phase 8 by the user, 2026-09-30).
@@ -3269,6 +3347,723 @@ The APK is installed on the pilot tablets directly from the EAS internal-distrib
 - Multi-branch activation (v3).
 
 ---
+
+## Feature: Web POS & Print Bridge
+Status: **APPROVED** (2026-10-08)
+
+**Goal:** a browser-based POS terminal and back-office (`web/`), on the same API and the same database as the tablet app. It replaces the legacy `C:\xampp\htdocs\pos` system, which is **not migrated**; it only donates UI pieces.
+
+**Choices made (user, 2026-10-07):**
+- **One system:** one Laravel API, one database (every table is `tbl_`-prefixed; changelog 1.20.4).
+- **Scope:** cashier selling **and** the full back-office.
+- **Online only:** the web terminal has no offline queue. A failed `POST /orders` keeps the cart and shows the error.
+- **Printing:** a server-side print-job queue and a print agent on the restaurant LAN, for **web terminals only**. Tablets keep printing directly over TCP (PROJECT_MEMORY decision #8 is unchanged).
+
+**Not in this phase:** offline web sales, browser print dialog receipts, a kitchen display screen, a PWA install, multi-branch print agents, and importing `db_pos` data.
+
+### A. Hosting (same origin, so no CORS)
+- `web/` is a standalone Vite app with its own `package.json`.
+- **Dev:** the Vite dev server proxies `/api` and `/storage` to `VITE_API_PROXY_TARGET` (e.g. `http://127.0.0.1:8000`) and listens on `0.0.0.0`, so another PC on the LAN can open it.
+- **Prod:** `npm run build` writes to `public/pos/`. `routes/web.php` adds `GET /pos/{path?}` (`where('path', '.*')`, route name `web-pos`), which returns `public/pos/index.html` (404 with a plain message when the build is missing). The app runs at `/pos` with React Router `basename="/pos"`.
+- Because the browser always talks to its own origin, **`config/cors.php` is not added**. `public/pos/` is gitignored.
+
+### B. Auth (unchanged endpoints)
+- Login, `me`, logout and the PIN switch are exactly as in "Auth & Access Control". The web client sends `Authorization: Bearer <token>`; decision #9 (tokens, no session cookies) stands.
+- The token is stored in `localStorage` under `pos.token`. To keep that safe the web app never uses `dangerouslySetInnerHTML` and `index.html` carries a CSP `<meta>` limited to `'self'`.
+- 401 → clear the token and session, go to `/pos/login`. 403 → "You don't have permission to do that." Navigation is filtered by `me.permissions`, but the server stays the authority.
+
+### C. Devices: web terminals
+`POST /api/v1/devices/register` gains one optional field:
+
+| Name | Rules | Notes |
+|---|---|---|
+| `platform` | `nullable`, `in:android,web` | Default `android` (existing tablets send nothing) |
+
+- **Migration:** `devices.platform` `string(10)`, not null, default `'android'`.
+- A **new** web device gets the code `W` + its id padded to 2 digits (`W03`); tablets keep `T`. An existing device's code and platform never change.
+- The response `data` gains `platform`. Admin device items (Phase 8) also show it.
+- The web client generates `install_id` (a ULID) once per browser profile, stores it in `localStorage` under `pos.install_id`, and registers after every login with `name` = `Web · <browser> on <OS>` (max 60). Each browser profile is therefore one terminal, with its own shift.
+- Web terminals never send heartbeats and call no `/sync/*` endpoint except `GET /sync/stock` (read-only stock badges; Q-036).
+
+### D. Print jobs (users; branch-scoped)
+**Table `print_jobs`:**
+- `id`; `ulid` char(26) UNIQUE (client-generated); `branch_id`; `device_id` (nullable FK); `printer_id` (FK `printers`, RESTRICT)
+- `kind` enum `receipt, kitchen, x_read, z_read, void_slip, kitchen_void, refund_slip, test` (the tablet's kinds plus `test`)
+- `order_ulid` char(26) nullable: the order's ULID, or the **refund's** ULID for `refund_slip` (as on the tablet)
+- `copy_no` tinyint (1–3); `is_reprint` boolean
+- `payload` MEDIUMBLOB: the raw ESC/POS bytes
+- `status` enum `queued, printing, printed, failed`; `attempts` tinyint; `last_error` string(255) nullable
+- `claimed_by` string(40) nullable; `claimed_at`, `printed_at` nullable; `created_by` (user); timestamps
+- Index `(branch_id, status, id)`.
+
+**`PrintJob` resource:** `{ ulid, printer_id, printer_name, kind, order_ulid, copy_no, is_reprint, status, attempts, last_error, created_at, printed_at }` (`printer_name` from the printer, including soft-deleted).
+
+#### POST /api/v1/print-jobs
+Route `v1.print-jobs.store`, `Api\V1\PrintJobController@store`. Any authenticated user. The token must be bound to a device, otherwise `409 "Register this terminal first."`.
+
+| Field | Rules |
+|---|---|
+| `ulid` | `required`, ULID regex |
+| `printer_id` | `required`, `integer`, a non-deleted printer in the caller's branch (`422 "The selected printer is invalid."`); a disabled printer → `422 "This printer is disabled."` |
+| `kind` | `required`, `in:` the kinds above |
+| `order_ulid` | ULID regex; `required` unless `kind` is `x_read`, `z_read` or `test` |
+| `copy_no` | `integer`, `min:1`, `max:3`, default 1 |
+| `is_reprint` | `boolean`, default `false` |
+| `payload_base64` | `required`, `string`, valid base64; the decoded size must be 1–65,536 bytes (`422 "The print data is too large."`) |
+
+- **Idempotent by `ulid`:** a replay returns `200` with the existing job.
+- **First-print deduplication:** when `is_reprint` is false and `kind` isn't `x_read`, `z_read` or `test`, a job with the same `(order_ulid, kind, printer_id, copy_no)` in the branch returns `200` with that job instead of creating one (so a double-click never prints twice).
+- New job: `201 {data: PrintJob}`, status `queued`. No audit entry.
+
+#### GET /api/v1/print-jobs
+Route `v1.print-jobs.index`. Query `ulids[]` (`required`, `array`, `max:50`, each a ULID). Returns `{ data: PrintJob[] }` for the jobs found in the caller's branch, in no particular order; unknown ulids are left out. Not paginated (bounded by 50).
+
+#### POST /api/v1/print-jobs/{ulid}/retry
+Route `v1.print-jobs.retry`. Only a `failed` job: back to `queued`, `attempts` reset to 0, `last_error` cleared → `200 {data: PrintJob}`. Any other status → `409 "Only a failed print can be retried."`. Another branch → `404`.
+
+**Errors (all three):** `401` · `404` · `409` · `422`
+
+### E. Print agent (machine endpoints)
+- No Sanctum. Every request carries `X-Print-Agent-Token`, compared with `hash_equals` against `PRINT_AGENT_TOKEN`. Unset or empty env → `503 {"message": "The print agent is not configured."}`. Wrong token → `401 {"message": "Invalid print agent token."}`. Throttled at 120/min.
+- The agent serves one branch: `PRINT_AGENT_BRANCH_ID` (default `1`). Multi-branch agents are v3.
+
+| Method | URI | Route name | Success |
+|---|---|---|---|
+| GET | `/api/v1/print-agent/ping` | `v1.print-agent.ping` | `200 {data: {server_time}}` |
+| POST | `/api/v1/print-agent/jobs/claim` | `v1.print-agent.claim` | `200 {data: AgentJob[]}` |
+| POST | `/api/v1/print-agent/jobs/{ulid}/result` | `v1.print-agent.result` | `200 {data: {ulid, status}}` |
+
+**Claim** body: `agent_id` (`required`, `string`, `max:40`), `limit` (`integer`, 1–20, default 10).
+- In one transaction (`SELECT … FOR UPDATE SKIP LOCKED`), takes the oldest jobs of the branch that are `queued`, or `printing` with `claimed_at` older than **60 s** (a crashed agent). Sets `status = printing`, `claimed_by`, `claimed_at`, `attempts + 1`.
+- A job whose printer is now disabled or deleted is set to `failed` with `last_error "The printer is disabled."` and not returned.
+- `AgentJob` = `{ ulid, printer: { host, port }, payload_base64, attempts }`. Host and port are read **at claim time**, so editing a printer's IP takes effect on the next job.
+
+**Result** body: `agent_id` (`required`), `status` (`required`, `in:printed,failed`), `error` (`nullable`, `string`, `max:255`), `retryable` (`boolean`, default `false`).
+- `printed` → `printed_at` set.
+- `failed` with `retryable` and `attempts < 3` → back to `queued`; otherwise `failed` with `last_error`.
+- The job must be `printing` and claimed by this `agent_id`, otherwise `409 "This job is not claimed by this agent."`. Unknown ulid → `404`.
+
+**Command `php artisan print-agent:run {--once}`**
+- Reads `PRINT_AGENT_API_URL`, `PRINT_AGENT_TOKEN` and `PRINT_AGENT_ID` (default: the hostname). It talks to the API **over HTTP**, so it can run on any PC on the printers' LAN even when the server is in the cloud. In dev it runs on the Laragon PC.
+- Loop: claim → group jobs by `host:port` → send each job's bytes with the tablet's transport rules (connect timeout **5 s**, write, flush, shut down output, drain input until EOF or 1.5 s, close) → report the result. Connect errors (timeout, refused, unreachable) are `retryable`. A dead printer skips the rest of its group in that round so the others aren't delayed. Sleep 1 s when nothing was claimed. `--once` runs one round (used by tests).
+- The bytes are prebuilt by the client, so the agent needs **no ESC/POS library** and no new Composer package.
+
+**Command `php artisan print-jobs:prune`:** deletes `printed` and `failed` jobs older than 30 days. Scheduled daily.
+
+**`.env.example` gains:** `PRINT_AGENT_TOKEN=`, `PRINT_AGENT_BRANCH_ID=1`, `PRINT_AGENT_API_URL=`, `PRINT_AGENT_ID=`.
+
+### F. Web client rules (frontend)
+- **Stack:** Vite, React 19, TypeScript strict, Tailwind 4, shadcn/ui (Radix), TanStack Query, TanStack Table, React Router, Recharts, `ulid`. Colours and status colours come from the Sage Emerald tokens, as CSS variables in one theme file.
+- **Structure (`web/src/`):** `routes/` (pages only), `components/ui/` (shadcn primitives; ported from the legacy `resources/js/Components/ui/*`, converted to TSX), `components/<feature>/`, `services/` (the **only** place HTTP happens; `services/api.ts` is the shared client, `services/types.ts` mirrors the contract), `hooks/`, `stores/`, `printing/`, `utils/` (`money.ts`).
+- **API client:** same rules as the tablet's (Accept/Content-Type JSON, Bearer token, typed 422 errors with field messages, 401 → logout with a loop guard, friendly network errors). URLs are relative (`/api/v1/...`).
+- **Money:** integer centavos only; formatted at render. The cart total is a checksum; the server computes every amount.
+- **Selling:** layout ported from the legacy `Pages/Menu/Menu.jsx` + `Partials/CartSummary.jsx` (category grid, search, cart panel always visible). `POST /orders` with a ULID made when checkout opens; the same rules as the tablet's online sale (shift required, SC/PWD, line and order discounts with the manager PIN, table number, customer, split payments). Keyboard-first: `/` focuses search, `Enter` adds the highlighted product, `F2` opens payment, `Esc` closes dialogs.
+- **Printing:** The ESC/POS builder, the documents and the routing are **shared with the tablet** through `packages/pos-core` (`@pos/core/printing/*`): same layouts, same routing rules, same print-config. Only the transport differs: each job is `POST /print-jobs` with a new ULID and the bytes in base64. The receipt printer per terminal is chosen and stored in `localStorage`. After a sale, the success screen polls `GET /print-jobs` every 2 s for up to 60 s and shows each job's status, with **Retry** on a failed one.
+- **Layout:** desktop-first (≥1280 px), still usable down to 768 px; no horizontal scroll. Every list has loading, empty, error-with-retry and load-more (cursor) states; every form disables submit in flight and shows 422 messages under the fields.
+
+### G. Build rounds (one approval for this section; built in order)
+| Round | Backend | Web |
+|---|---|---|
+| **W1** | `devices.platform`; `print_jobs` + user and agent endpoints; agent and prune commands; `/pos` web route; tests | Scaffold, auth, device registration, shell and permission nav, **open-shift gate** (view the terminal's current shift and open one; close and X/Z-read stay in W2), Sell + checkout, print bridge client, order history + reprint, printers and receipt settings |
+| **W2** | — | Shifts (open, cash in/out, X/Z-read, close), voids and refunds, Needs review list |
+| **W3** | — | Catalogue (categories, products, images, recipes), staff and roles, customers |
+| **W4** | — | Inventory, ingredients, units, suppliers, purchasing (PR, PO, receiving) |
+| **W5** | — | Dashboard and reports with CSV export (legacy Recharts charts ported) |
+
+Rounds W2–W5 use existing endpoints only; any gap is raised as an Open Question, never invented.
+
+**Tests (backend):** device platform and `W` codes; print-job validation, idempotent replay, first-print dedupe, retry; agent token (503/401), claim ordering, `SKIP LOCKED`, stale reclaim, disabled-printer fail, result transitions and the 3-attempt cap, branch isolation; `print-agent:run --once` against a fake TCP listener.
+
+---
+
+## Feature: Category Kitchen Printer — DRAFT (v1.22)
+Status: **DRAFT** (2026-10-09), waiting for approval.
+
+**Goal:** a manager chooses, **on the category itself**, which kitchen or bar printer its products print to. This is on the tablet and on the web.
+
+**What exists already (unchanged):** Printing (Phase 4) routes each item by its category.
+- **Routes:** a kitchen or bar printer's `category_ids` lists the categories it prints. A category is routed to at most one printer per branch.
+- **Default:** items in an unrouted category go to the default kitchen printer.
+- **Management:** the Printers screens (tablet and web) manage this from the printer's side.
+
+This feature adds the same control from the category's side. **No new table, and no change to `GET /print-config` or to how tickets are routed.**
+
+### A. `Category` (admin endpoints only) gains `kitchen_printer`
+| Field | Type | Nullable | Notes |
+|---|---|---|---|
+| `kitchen_printer` | `{ id, name, role: "kitchen" \| "bar", is_enabled }` | yes | The non-deleted printer **in the caller's branch** whose `category_ids` contains this category. `null` means the category is not routed, so its items go to the default kitchen printer. |
+
+- **Where it appears:** on every admin category response (`GET /admin/categories`, `GET /admin/categories/{id}`, store, update, image).
+- **Where it does not:** the POS read endpoint `GET /categories` and `GET /sync/catalogue` don't change.
+- **Branch scope:** categories are shared by every branch but printers aren't, so the field is resolved for the caller's branch.
+
+### B. Store and update accept `kitchen_printer_id`
+`POST /api/v1/admin/categories` and `PATCH /api/v1/admin/categories/{id}` gain one optional field:
+
+| Name | Type | Store | Update | Validation rules |
+|---|---|---|---|---|
+| `kitchen_printer_id` | integer\|null | optional | sometimes | `nullable`, `integer`. It must be a non-deleted `kitchen` or `bar` printer **in the caller's branch**; otherwise `422` on `kitchen_printer_id` with `Choose a kitchen or bar printer.` A disabled printer is allowed; the client shows a warning. |
+
+**Behaviour** (in the same transaction as the category write):
+- **A printer id:** the category is routed to that printer. If another printer in the branch had it, the route **moves**, exactly like `PATCH /admin/printers/{id}` with `category_ids`.
+- **`null`:** removes the category's route in the caller's branch, so its items go to the default kitchen printer.
+- **Field absent:** the routes don't change.
+- **Permission:** routes are a printer setting. Sending `kitchen_printer_id` (any value, `null` included) also needs **`settings.manage`**, otherwise `403 "You don't have permission to change printer routing."`. A `product.manage`-only user can still edit everything else, as long as they leave the field out. Owner and Manager have both permissions.
+- **Audit:** `printer.updated` on each printer whose `category_ids` changed (`{from, to}`), as the printer endpoints already record. `category.updated` stays as it is.
+- **Errors:** the existing ones, plus `403` (routing without `settings.manage`) and `422` (`kitchen_printer_id`).
+
+### C. Clients (tablet `mobile/` and web `web/`)
+- **Category form:** a **Kitchen printer** select, shown only with `settings.manage`.
+  - **Options:** `Default kitchen printer` (sends `null`; the hint names the current default, or says `No default kitchen printer is set` and that items won't print), then every kitchen and bar printer by name, with role and `Disabled` tags.
+  - **Saving:** a changed choice is sent as `kitchen_printer_id`.
+  - **Moving a route:** choosing a printer while the category is routed elsewhere says `Moves from <old printer> to <new printer>.`
+  - **Disabled printer:** choosing one warns `This printer is disabled. Items won't print until it's enabled.`
+  - **Printer list:** read from `GET /admin/printers` (`settings.manage`).
+- **Category list:** a `Prints to` column on the web, or a chip on the tablet, showing the printer's name, `Default`, or `Disabled` with a warning tone.
+- **After a save that changed the route:**
+  - the tablet refreshes its cached print-config (as it does after a printer change);
+  - the web invalidates its print-config and printer queries.
+- The Printers screens keep their category picker, and both ways stay in sync, because the server holds one set of routes.
+
+### D. Build
+- **backend-agent:** CategoryResource `kitchen_printer` (eager-loaded per branch, no N+1); the request rules; the route move in the category store/update action, reusing the printer routing logic; the permission check; tests (field resolution per branch, move, clear, absent, wrong role or branch → 422, no `settings.manage` → 403, audit on both printers, no change to `/categories` or `/sync/catalogue`).
+- **frontend-agent** (tablet) and **web-agent** (web), in parallel: section C.
+- **Shared types:** the main session adds `kitchen_printer` and `kitchen_printer_id` to `packages/pos-core/src/contract/types.ts` once this is approved.
+- **Flags:** no migration (the existing route table is reused), no new `.env` keys, and no new packages.
+
+---
+
+## Feature: Purchase Request & Order PDF — APPROVED (v1.24)
+Status: **APPROVED** (2026-10-12), revised the same day: one PDF per purchase request or purchase order. **There is no whole-list printout**; the user removed it.
+
+**Goal:** a clean, printable PDF of **one** purchase request or purchase order with all its items, to file, sign, or send to a supplier. It is made from the browser's Save as PDF.
+
+**Scope:**
+- **Web only.** Built with the browser's own print dialog (Save as PDF): no new package and no backend change.
+- The tablet would need `expo-print`, which means a new package and a new Dev Client build. It is left for later.
+
+**Data:** existing endpoints only, nothing new.
+- `GET /api/v1/purchase-requests/{ulid}` and `GET /api/v1/purchase-orders/{ulid}`: the document itself.
+- `GET /api/v1/print-config` (any user): the branch name and `settings.receipt_header_lines` (business name, address, TIN) for the letterhead.
+- `GET /api/v1/admin/suppliers/{id}` (when the caller may read suppliers): the supplier's contact person, number, email and address on a PO. If it can't be read, only the supplier name is shown.
+
+### A. Where the button is
+- **Each row** of the Purchase requests, Purchase orders and Receiving lists has a small **print icon button** (label "Print {PR/PO number}") in a last column. It prints that one request or order.
+  - Clicking it doesn't open the row.
+  - There is no Print / PDF button for the whole list.
+- **Purchase request detail** (`/purchasing/requests/:ulid`) and **purchase order detail** (`/purchasing/orders/:ulid`): a **Print / PDF** button in the page header.
+- It opens a print view in a new tab:
+  - `/purchasing/requests/:ulid/print`;
+  - `/purchasing/orders/:ulid/print?supplier=<id>` (`supplier` is optional).
+- **Visibility:** whoever can open the detail page can print it. No new permission.
+
+### B. The print view
+- A plain A4 portrait page outside the app shell: no sidebar, white background, black text, one accent colour for headings.
+- **On screen**, a toolbar sits at the top and is hidden when printing: **Print / Save as PDF** (calls `window.print()`), **Back**, and on a PO the **Supplier** picker (below).
+- The print dialog opens automatically once the data has loaded.
+- **Repeated on every printed page:** the table header row.
+- **Page footer:** "Printed {date, time} by {user} · {PR/PO number} · Page n of m".
+- Money is formatted from integer centavos (₱1,234.50). Quantities use the existing `@pos/core` quantity formatting with their unit.
+- Dates and times are shown in the branch's timezone (`print-config.branch.timezone`).
+- **The PDF file name** is the document number, e.g. `PR-MAIN-2026-00003.pdf`.
+
+### C. Purchase request layout
+1. **Letterhead** (left): the receipt header lines, or the branch name when there are none. **Title** (right): **PURCHASE REQUEST**, the PR number, and a status chip.
+2. **Details** (two columns):
+   - Requested by;
+   - Date requested;
+   - Date needed ("—" when none);
+   - Status;
+   - Purchase order (its number and status, or "—");
+   - Remarks (full width, only when set).
+3. **Items table, every item:**
+
+   | # | Item | Supplier | Qty | Unit | Est. unit price | Est. amount | Decision | Remarks |
+   |---|---|---|---|---|---|---|---|---|
+
+   - **Est. amount** is `round_half_up(estimated_unit_price_cents × qty)`, or "—" when there is no price.
+   - **Decision** is Pending, Approved or Declined. A declined item also shows its reason under the remarks, and its row is greyed.
+4. **Totals** (right):
+   - Estimated total of all items;
+   - Estimated total of approved items;
+   - "Items without a price: N" when any item has no price.
+5. **Signature lines:**
+   - **Requested by:** the requester's name;
+   - **Approved by:** the approver's name, when every decided item was decided by the same person; otherwise blank.
+
+   Each line has room for a signature and a date.
+6. When the status is not approved, a small **NOT APPROVED — FOR REVIEW ONLY** band runs under the title.
+
+### D. Purchase order layout
+1. **Letterhead:** as on the PR. **Title:** **PURCHASE ORDER**, the PO number, and a status chip with the receiving status.
+2. **Details:**
+   - PO date (the first timeline entry);
+   - From request (the PR number);
+   - Created by;
+   - Approved by and approved at;
+   - Expected delivery;
+   - Remarks.
+3. **Lines are grouped by supplier**, because a PO can hold several suppliers. For each supplier there is:
+   - a block with the supplier's name, contact person, number, email and address;
+   - then its lines:
+
+     | # | Item | Qty | Unit | Unit price | Amount | Received | Remaining |
+     |---|---|---|---|---|---|---|---|
+
+   - then the supplier subtotal (Σ `line_total_cents`).
+4. **Grand total:** `total_cents`.
+5. **Signature lines:** Prepared by (the creator), Approved by (the approver), and Received by (blank).
+6. **Supplier picker** (toolbar):
+   - **All suppliers** (the default) prints every group, each starting on a new page when there is more than one.
+   - **Picking one supplier** prints only that supplier's lines, its subtotal as the total, and a "Lines for {supplier} only" note. This is the copy to send to that supplier.
+7. **When the PO is not approved**, the band reads **NOT APPROVED — DO NOT SEND TO SUPPLIER**. A declined PO also shows the decline reason.
+8. **Received / Remaining** columns are left out when the PO's `receiving_status` is `not_received`. That keeps a fresh order clean to send.
+
+### E. States
+- **Loading:** a spinner, and the print dialog doesn't open yet.
+- **Errors:** a 404 shows "This request was not found." or "This order was not found."; other errors show Retry.
+- **A 403** shows "You don't have access to this document."
+- The print-config or supplier reads failing never block the document. It prints with the branch name, or with the supplier name only.
+
+### F. Build
+- **web-agent:**
+  - the two print routes (one per document);
+  - the shared print layout components and print CSS:
+    - `@page { size: A4; margin: 14mm }`, portrait;
+    - `thead` repeated;
+    - rows never split across pages;
+  - the buttons on the two detail pages and on each list row;
+  - unit tests for the totals and the supplier grouping.
+- Run lint and build.
+- No backend, mobile or `packages/` changes.
+
+### G. Revision 2: the tablet (APPROVED v1.27, 2026-10-13)
+Status: **APPROVED** (2026-10-13, as drafted).
+
+**Goal:** the same PDF of one purchase request or one purchase order on the tablet, with the same layout as the web (§B–§E).
+
+**Choices made (user, 2026-10-13):**
+- It is built with **`expo-print`**, a native module, so it needs a **new EAS Dev Client build**.
+- On the purchase request detail, the purchase order row keeps **Open** (goes to the PO screen) and gains **PDF** beside it (opens that PO's PDF).
+
+**Data:** the same existing endpoints as §Data. No backend change.
+
+**One layout for both clients:**
+- The document model (totals, supplier grouping, decision labels, the not-approved band) moves from `web/src/components/purchasing/print/printModel.ts` into `@pos/core/purchasing/printModel`, so both clients compute it once.
+- `@pos/core/purchasing/printHtml` builds the complete A4 HTML document (inline CSS, no external fonts or images) from that model. The tablet prints it; the web keeps its React print pages, but they read the shared model.
+
+**Where the buttons are (tablet):**
+- **Purchase request detail:** a **PDF** button in the header. On the purchase order row, **Open** (unchanged) plus **PDF**.
+- **Purchase order detail:** a **PDF** button in the header. When the PO has more than one supplier, it first asks **All suppliers** or one supplier (§D.6).
+- The **Receiving** detail has the same PDF button as the PO.
+- **Visibility:** whoever can open the detail can make its PDF. No new permission.
+
+**What PDF does:**
+- It fetches what's missing (the document, `print-config`, and the suppliers when readable), builds the HTML, and opens a **preview sheet** with two actions:
+  - **Print / Save as PDF:** Android's print screen (`Print.printAsync`), where the user picks a printer or "Save as PDF".
+  - **Share:** the PDF file (`Print.printToFileAsync`), renamed to the document number (e.g. `PR-MAIN-2026-00003.pdf`), sent through the existing `expo-sharing`.
+- **The footer** "Printed {date, time} by {user} · {number} · Page n of m" uses the same `@page` margin boxes as the web. Where the print engine doesn't support them, it falls back to the footer at the end of the document without page numbers, as on the web.
+- **States:** a spinner on the button while loading. A 404, a 403 or other errors show the §E messages in a banner, with Retry. A failing `print-config` or supplier read never blocks the PDF.
+- **Online only.** Offline, the button is disabled and reads "Needs a connection".
+
+**Build:**
+- **frontend-agent** (named editor of `packages/pos-core/`):
+  - move the print model into `purchasing/printModel.ts` with its tests;
+  - add `purchasing/printHtml.ts` (§C and §D in HTML, A4 portrait, 14 mm margins, repeated `thead`, rows never split) with snapshot tests;
+  - the tablet buttons, the preview sheet, and `npx expo install expo-print`.
+- **web-agent:** after the move, import the model from `@pos/core/purchasing/printModel` and delete the local copy. The web output must not change.
+- **After merging:** run `eas build --profile development` and install the new APK.
+
+
+---
+
+## Feature: Reports PDF — DRAFT (v1.25)
+Status: **DRAFT** (2026-10-12), waiting for approval.
+
+**Goal:** a **Print / PDF** button on the web Reports page. It prints the report on screen as a clean document, made from the browser's Save as PDF, the same way as purchase requests and orders.
+
+**Scope:**
+- **Web only.** There is no backend change, no new package and no `packages/` change.
+- It reuses the print layout from "Purchase Request & Order PDF": the letterhead, the footer with "Page n of m", the money and quantity formats, and the auto-opening print dialog.
+
+### A. The button
+- **Print / PDF** sits next to **Export CSV** in the Reports header, and is disabled while the report is loading.
+- It opens `/reports/print?view=…` in a new tab. The query carries exactly what the screen shows:
+  - `view`: `sales`, `inventory` or `purchasing`;
+  - `kind` for inventory: `products` or `ingredients`;
+  - `from` and `to`;
+  - and every option of that view, such as the sales `group_by` and the inventory or purchasing filters.
+- **Access:** the same permissions as the Reports page. A user who can't see a report gets "You don't have access to this report."
+- **Data:** the print view loads the report from the same endpoints the screen uses, with the same parameters. Nothing new.
+
+### B. Common layout
+1. **Letterhead** (left): the receipt header lines, or the branch name. **Title** (right): **SALES REPORT**, **INVENTORY REPORT: PRODUCTS**, **INVENTORY REPORT: INGREDIENTS** or **PURCHASING REPORT**.
+2. **Period:** "1 Oct 2026 – 12 Oct 2026" in the branch timezone. Under it, the options in words, for example "Grouped by: Product · Category: Drinks · Status: Low stock", or "All" when nothing is filtered.
+3. **Summary:** a box grid of the report's `totals`, with the labels the screen uses.
+4. **Table:** every row of `rows`, with a totals row at the bottom when the report has column totals. The header row repeats on every page, and rows never split.
+5. **When `meta.truncated` is true**, a notice reads "This report is cut short. Narrow the dates or filters to see every row."
+6. **Footer:** "Printed {date, time} by {user} · {report title} · Page n of m".
+7. **File name:** for example `Sales-report-2026-10-01-to-2026-10-12`.
+8. **Charts are not printed**, only the figures and tables, so it stays clean in black and white.
+
+### C. Per report
+- **Sales** (A4 portrait):
+  - **Summary:** orders, items sold, gross sales, discounts, net sales, VAT, voids (count and amount), refunds (count and amount), net after refunds.
+  - **Table:** grouped as on screen (day, product, category, payment or cashier). Columns: label, orders, qty, gross, discounts, net, refunds, net after refunds. A column that is null for that grouping is left out.
+- **Inventory, products** (A4 landscape):
+  - **Summary:** tracked, low, out, stock value, received, sold, returned, wasted, adjusted.
+  - **Table:** product, category, opening, received, sold, returned, wasted, adjusted, closing, reorder level, status, unit cost, stock value.
+- **Inventory, ingredients** (A4 landscape): the same layout, with the ingredient report's own columns, quantities shown with their units.
+- **Purchasing** (A4 landscape):
+  - **Summary:** requests, items, approved, declined, pending, POs by status, ordered, received, remaining.
+  - **Table:** PR no, date, requested by, item, supplier, requested qty + unit, decision, PO no, PO status, ordered, received, remaining, unit price, ordered amount, received amount.
+
+### D. States
+As in "Purchase Request & Order PDF" §E:
+- **Loading:** a spinner, and the print dialog doesn't open yet.
+- **Errors:** "You don't have access to this report." on a 403; Retry on any other error.
+- **No data:** an empty report prints its summary and "No rows for this period."
+
+### E. Build
+- **web-agent:**
+  - the `/reports/print` route, outside the app shell and behind sign-in and the same permission checks;
+  - the button;
+  - the three print views on top of the existing print layout, made portrait or landscape per report;
+  - lint and build.
+
+---
+
+## Feature: Dine-in Tables & Tabs — APPROVED (v1.26)
+Status: **APPROVED** (2026-10-13, as drafted).
+
+**Goal:** an **optional** dine-in mode. Guests order in rounds at a table, the kitchen gets each round as it is sent, and the bill is paid at the end, whole or split. **Pay-as-you-order stays the default** and doesn't change.
+
+**Choices made (user, 2026-10-13):**
+- **Open tabs live on the server.** Any tablet or web terminal can see a table, add to it and settle it. Tab actions need a connection. Pay-now sales keep working offline, as today.
+- **A branch setting turns it on, and it is off by default.** When it's off, nothing changes on either client.
+- **Scope:** a table list with open tabs and kitchen rounds; transfer and merge; split bill (by item or equally); a printed bill and an optional service charge.
+- **Cancelling an item already sent to the kitchen** needs `sale.void` or a manager PIN, plus a reason. It prints a VOID kitchen ticket and is audited. Items not yet sent are only in the device's cart, so removing them needs nothing.
+
+**How it fits the existing design:**
+- **A tab is not an order.** Orders stay "paid sales" with the same statuses, numbering, shifts, reports, voids and refunds. Settling a tab **creates a normal order** (or several, when split by item). Each order links back to its tab.
+- **The cart stays client-only** (PROJECT_MEMORY decision #5). The device builds a round in its cart, and **Send** saves the round to the tab on the server. The server only holds what was sent to the kitchen.
+- **Prices are snapshotted when a round is sent.** The guest pays the price on the menu when they ordered, even if it changes before settling, and a dish taken off the menu after it was served can still be paid for.
+- **Stock depletes at settlement** through the existing sale path (one stock path). **Send** checks stock for `track_stock` products the way an online sale does. **Settlement never blocks for stock**, because the food is already served (same reasoning as decision #7).
+
+**Not in this feature:** a floor-plan editor (tables are a grouped grid), reservations, a kitchen display screen, offline tabs, waiter-only roles, moving single items between tabs (use split + merge), and tips.
+
+**Rounds:** **T1:** settings, tables admin, tabs, rounds, item cancel, whole-bill settlement, printed bill, service charge. **T2:** transfer, merge, split by item, split equally.
+
+### A. Settings and permission
+- **`BranchSettings` gains** (both are in `GET/PATCH /admin/settings` and in `GET /print-config`'s `settings`):
+
+| Field | Type | Default | PATCH rule |
+|---|---|---|---|
+| `dine_in_enabled` | boolean | `false` | `boolean` |
+| `service_charge_bps` | integer | `0` (no service charge) | `integer`, `min:0`, `max:2000` (0–20%) |
+
+- **Turning dine-in off while tabs are open** returns `409 "Close the 3 open bills first."`
+- **While dine-in is off,** every endpoint in §C and §D returns `409 "Dine-in tables are turned off in Settings."` (admin tables in §B still work, so tables can be set up first).
+- **No new permission slug:**
+  - managing tables needs `settings.manage`;
+  - tab actions need `sale.create`;
+  - cancelling a sent item needs `sale.void` or a manager PIN (§D.4).
+
+### B. Admin: tables (`settings.manage`)
+| Method | URI | Route name | Response |
+|---|---|---|---|
+| GET | `/api/v1/admin/tables` | `v1.admin.tables.index` | cursor envelope of `DiningTable`, ordered by `area`, `sort_order`, `name` (`per_page` 1–100, default 100) |
+| POST | `/api/v1/admin/tables` | `v1.admin.tables.store` | 201 `{data: DiningTable}` |
+| PATCH | `/api/v1/admin/tables/{id}` | `v1.admin.tables.update` | 200 `{data: DiningTable}` |
+| DELETE | `/api/v1/admin/tables/{id}` | `v1.admin.tables.destroy` | 204 (soft delete) |
+
+**`DiningTable`:** `{ "id": 5, "name": "5", "area": "Patio", "seats": 4, "sort_order": 0, "is_active": true, "updated_at": "…" }`
+
+**Rules:**
+- `name`: `required`, `string`, `max:10`, `regex:/^[A-Za-z0-9 -]+$/` (the `table_no` rule, so it fits `orders.table_no`), trimmed, unique among the branch's non-deleted tables (`422 "There is already a table named 5."`).
+- `area`: `nullable`, `string`, `max:30`.
+- `seats`: `required` on create, `integer`, `1–50`.
+- `sort_order`: `integer`, `0–9999`, default `0`.
+- `is_active`: `boolean`, default `true`.
+
+**Conflicts:**
+- Deleting or deactivating a table with an open tab returns `409 "Table 5 has an open bill."`
+- Renaming a table with an open tab is allowed. Orders settled earlier keep the old name in `table_no`.
+
+**Audit:** `table.created`, `table.updated` (`{from, to}`), `table.deleted`.
+
+### C. Tables view
+**`GET /api/v1/tables`** (`sale.create`) returns the branch's **active** tables in the admin order, each with its open tab summary. It uses the cursor envelope (`per_page` 1–100, default 100).
+```json
+{ "id": 5, "name": "5", "area": "Patio", "seats": 4,
+  "tab": { "ulid": "01K…", "guests": 3, "opened_at": "…", "opened_by": { "id": 3, "name": "Cara" },
+           "item_count": 7, "remaining_cents": 124500, "rounds_count": 2, "updated_at": "…" } }
+```
+- `tab` is `null` when the table is free.
+- `remaining_cents` = Σ `unit_price_cents × remaining_qty`. It is before discounts and service charge, for display only.
+- **The clients poll** every 15 seconds while the view is open, and after every tab action. There are no websockets.
+
+### D. Tabs (`sale.create`; online only)
+Every mutation takes `Idempotency-Key` (a ULID the client makes when the action starts) and replays the same response, as for orders.
+
+**Shared object `Tab`:**
+```json
+{
+  "ulid": "01K…", "status": "open",
+  "table": { "id": 5, "name": "5", "area": "Patio" },
+  "guests": 3, "customer": null, "notes": null,
+  "opened_at": "…", "opened_by": { "id": 3, "name": "Cara" },
+  "closed_at": null, "merged_into_ulid": null,
+  "rounds_count": 2,
+  "items": [ {
+    "id": 41, "round_no": 1, "product_id": 4, "product_name": "Sisig", "category_id": 2,
+    "unit_price_cents": 22500, "is_vatable": true,
+    "qty": 2, "settled_qty": 0, "cancelled_qty": 0, "remaining_qty": 2,
+    "notes": "Extra spicy", "added_at": "…", "added_by": { "id": 3, "name": "Cara" }
+  } ],
+  "orders": [ { "ulid": "01K…", "invoice_no": "INV-MAIN-00000123", "total_cents": 50000 } ],
+  "remaining_cents": 124500,
+  "updated_at": "…"
+}
+```
+`status` is one of `open`, `closed`, `merged` or `cancelled`. `items` are ordered by `round_no`, then `id`. A tab holds at most **200** item lines.
+
+| # | Method | URI | Route name | Round |
+|---|---|---|---|---|
+| 1 | POST | `/api/v1/tabs` | `v1.tabs.store` | T1 |
+| 2 | GET | `/api/v1/tabs/{ulid}` | `v1.tabs.show` | T1 |
+| 3 | PATCH | `/api/v1/tabs/{ulid}` | `v1.tabs.update` | T1 |
+| 4 | POST | `/api/v1/tabs/{ulid}/rounds` | `v1.tabs.rounds` | T1 |
+| 5 | POST | `/api/v1/tabs/{ulid}/items/{id}/cancel` | `v1.tabs.items.cancel` | T1 |
+| 6 | POST | `/api/v1/tabs/{ulid}/settle` | `v1.tabs.settle` | T1 (split in T2) |
+| 7 | POST | `/api/v1/tabs/{ulid}/close` | `v1.tabs.close` | T1 |
+| 8 | POST | `/api/v1/tabs/{ulid}/transfer` | `v1.tabs.transfer` | T2 |
+| 9 | POST | `/api/v1/tabs/{ulid}/merge` | `v1.tabs.merge` | T2 |
+
+A tab in another branch or one that doesn't exist returns `404`. Actions 3–9 on a tab that isn't `open` return `409 "This bill is already closed."`
+
+**1. Open:** body `ulid` (= the key), `table_id` (`required`, an active table in the branch), `guests` (`integer`, `1–99`, default the table's `seats`), `customer_id` (`nullable`, existing customer), `notes` (`nullable`, `max:255`).
+- When the table already has an open tab: `409 "Table 5 already has an open bill."` A unique `open_table_id` column enforces this under concurrency.
+- 201 `{data: Tab}`. Audit: `tab.opened`.
+
+**3. Update:** `guests`, `customer_id` and `notes`, all partial. 200 `{data: Tab}`.
+
+**4. Send a round:** body `ulid` and `items` (`array`, `1–100`). Each item has `product_id`, `qty` (`1–999`) and `notes` (`nullable`, `max:120`): the same rules as `POST /orders` items, with no discounts.
+- **Menu checks** are the same as `POST /orders` check 2, with the same messages.
+- **Stock check** (lock the `stock_levels` rows): for a `track_stock` product, the demand is this round's quantity **plus its `remaining_qty` on every open tab in the branch**. When that exceeds on-hand: `422` on `items.{i}.qty`: `Only <n> "<name>" left in stock.`, where `n` = on-hand − already on open tabs, never below 0.
+- **200-line cap:** `422` on `items`: `This bill has too many lines. Settle part of it first.`
+- **On success:**
+  - lines are added with `round_no` = `rounds_count + 1`, snapshotting `product_name`, `category_id`, `category_name`, `sku`, `unit_price_cents` and `is_vatable`;
+  - the response is 200 `{data: Tab, round_no}`;
+  - audit: `tab.round_sent`.
+- **The client prints the kitchen ticket** for that round only (§F), the same way a sale prints today: the tablet over TCP, the web as a `kitchen` print job.
+
+**5. Cancel a sent item:** body `qty` (`1` … `remaining_qty`), `reason` (`required`, `max:255`) and `authorization` (`nullable`; `user_id`, `pin`).
+- **Authority:** the same rules and messages as a void (Phase 7 *Permissions*). It needs `sale.void`, or an approver with `sale.void` and a PIN; the PIN goes through the shared limiter (`429`).
+- **On success:** `cancelled_qty += qty`, and a `tab_item_cancellations` row records `qty`, `reason`, `cancelled_by` and `authorized_by`. The response is 200 `{data: Tab}`, and the audit entry is `tab.item_cancelled`.
+- **The client prints a `kitchen_void` ticket** for that quantity.
+
+**6. Settle:** creates **one order** from some or all of the tab's remaining quantities.
+- **Body:** the `POST /orders` body, with these differences:
+  - `items.*` is `{ tab_item_id, qty, discount, sc_pwd }` (no `product_id` or `notes`). `qty` must be ≤ `remaining_qty`.
+  - `items` may be **omitted** to settle **everything remaining**.
+  - `customer_id`, `notes`, `discount`, `sc_pwd`, `discount_authorization` and `client_total_cents` keep their rules. In `headcount` mode, `sc_pwd.diners` defaults to the tab's `guests`.
+  - `service_charge` (`boolean`, default `true`): when `false`, no service charge is added and the order records `service_charge_waived = true`.
+  - `split_count` (`nullable`, `integer`, `2–10`, **T2**): split equally (§E).
+  - `payments`: `max:10`. Without `split_count`, at most one `cash` (as today). With `split_count`, see §E.
+- **Checks:**
+  - the same as `POST /orders` checks 1, 3, 4, 5 and 6, plus the open-shift rule;
+  - **no** menu or stock checks: the snapshots are the price, and the food was served;
+  - a `tab_item_id` not on this tab returns `422` on `items.{i}.tab_item_id`;
+  - when another device settled or cancelled the same quantity first (re-checked under a row lock on the tab), the response is `409 "This bill changed on another device. Review it again."`
+- **Pricing** uses the snapshots in Core Sale steps 1–9, then the service charge (§E).
+- **On success:** the existing `RecordOrder` path runs (numbers, lines, payments, stock movements, audit `order.completed`), plus:
+  - `orders.tab_id`, `table_no` = the table's name, and `order_items.tab_item_id`;
+  - `settled_qty` increases on each tab item;
+  - when nothing remains, the tab is set to `closed` with `closed_at` and `closed_by`, and the table is freed (audit `tab.closed`).
+- **Response:** 201 `{data: Order, tab: Tab}`.
+- **The client prints the receipt** with no kitchen ticket, because the rounds were already sent.
+
+**7. Close:** only when no remaining quantity is left (everything is cancelled, or the tab was opened by mistake).
+- The status becomes `closed` if the tab has orders, otherwise `cancelled`.
+- When quantity remains: `409 "Settle or cancel the remaining items first."`
+
+**8. Transfer (T2):** body `table_id`, an active, free table.
+- When the target table is occupied: `409 "Table 7 is occupied. Merge the bills instead."`
+- Audit: `tab.transferred` (`{from, to}`).
+
+**9. Merge (T2):** body `into_ulid`, another open tab in the branch.
+- Every remaining quantity moves to the target as new lines in the target's next round. Prices and notes are kept, and no kitchen ticket is printed.
+- `guests` are added together. The source becomes `merged` with `merged_into_ulid`.
+- Orders already settled from the source stay linked to it.
+- Response: 200 `{data: Tab}` (the target). Audit: `tab.merged` on both tabs.
+
+### E. Service charge and equal split (shared pricing in `@pos/core/sale`)
+- **Service charge** applies only to tab settlements, when `service_charge_bps > 0` and `service_charge` is not `false`:
+  - `S = rhu(T × service_charge_bps, 10000)`, where `T` is the order total after all discounts (Core Sale step 7, after SC/PWD).
+  - `total_cents = T + S`.
+  - `S` is not discounted, and for now it is **outside the VAT figures** (not vatable, not exempt). Like the SC/PWD rates, this is a one-line change if the accountant says otherwise.
+  - The checksum and the payments cover `total_cents`.
+- **Equal split (`split_count = N`):** share `k` (1-based) = `floor(total/N)`, plus 1 centavo for `k ≤ total mod N`.
+  - `payments` must have exactly `N` entries, in share order; otherwise `422` on `payments`: `Add one payment per share (3).`
+  - Each GCash payment must equal its share. Each cash payment's tendered amount must be ≥ its share, and its change is its own.
+  - Several `cash` payments are allowed **only** here.
+  - `orders.split_count = N`.
+- **Split by item** is just several settlements of different `items`. Each one is a normal order with its own invoice and receipt.
+- **Refunds** (Phase 7): a partial refund doesn't return service charge. The refund that leaves **no** refundable quantity also returns `S`. A void returns everything, as today.
+
+### F. Printed documents (`@pos/core/printing`)
+- **Kitchen ticket for a round:** the existing layout, with `TABLE 5` in double size, then `ROUND 2 · 3 guests`, the server's name, and the round's items only.
+- **Kitchen void for a cancel:** the existing `kitchen_void` layout with the table and the cancelled quantity.
+- **Bill** (new; print-job `kind: "bill"` for web terminals, sent to the receipt printer):
+  - the header lines, `BILL — NOT A RECEIPT`, the table, guests and time;
+  - the remaining items consolidated by product and price;
+  - the subtotal, the service charge (when on), and the total;
+  - optionally `Split 3 ways: ₱415.00 each`.
+- **Receipt:**
+  - a `Service charge (10%)` row before the total when `S > 0`;
+  - with `split_count`, one receipt per share, each showing the full order plus `Share 1 of 3 · ₱415.00 · Cash`.
+
+### G. Changes to existing shapes
+- **`Order`** and **`OrderSummary`** gain `tab_ulid` (nullable), `service_charge_cents` (integer, `0`) and `split_count` (nullable). They go right after `table_no`.
+- **Sales figures:**
+  - `ShiftReport`, X/Z-read, the sales report summary and the dashboard `sales` gain `service_charge_cents`, shown on its own row;
+  - product and category sales stay line-based and exclude it;
+  - `net_sales_cents` (Σ `total_cents`) already includes it, so it matches the payments and the drawer (clarified at approval);
+  - expected cash already includes it through the payments.
+- **The offline outbox is unchanged:** settlements are never queued.
+
+### H. Data model (backend)
+- **`dining_tables`:** `id`, `branch_id`, `name` (10), `area` (30, null), `seats`, `sort_order`, `is_active`, timestamps, soft deletes.
+- **`tabs`:**
+  - `id`, `ulid` (unique), `branch_id`, `table_id`;
+  - `open_table_id` (nullable, **unique**: equal to `table_id` while open, `null` otherwise);
+  - `status`, `guests`, `customer_id`, `notes`, `rounds_count`;
+  - `opened_by`, `opened_at`, `closed_by`, `closed_at`, `merged_into_tab_id`, `device_id`, timestamps.
+  - Index `(branch_id, status)`.
+- **`tab_items`:** `id`, `tab_id`, `round_no`, `product_id`, the snapshots, `qty`, `settled_qty`, `cancelled_qty`, `notes`, `added_by`, `added_at`.
+- **`tab_item_cancellations`:** `ulid`, `tab_item_id`, `qty`, `reason`, `cancelled_by`, `authorized_by`, `created_at`.
+- **New columns:**
+  - `orders`: `tab_id` (null, indexed), `service_charge_cents` (default 0), `service_charge_waived` (bool), `split_count` (null);
+  - `order_items`: `tab_item_id` (null).
+- **Settings keys:** `dine_in_enabled` and `service_charge_bps`.
+
+### I. Clients (tablet and web; the same behaviour)
+- **Settings:** a **Dine-in** card with the on/off switch and the Service charge %.
+- **Admin → Tables** (`settings.manage`): a list grouped by area, plus create, edit, delete and active. In the sidebar it shows only when dine-in is on.
+- **Sell, when dine-in is on:** a **Pay now | Tables** switch at the top. Pay now is today's screen, unchanged.
+  - **Tables view:** cards grouped by area. A card shows the name, Free or Occupied, guests, the remaining amount and the elapsed time (amber after 90 minutes).
+  - **A free table** opens the tab (asking for guests). **An occupied table** opens it.
+  - **Tab screen:** the menu and cart as on Sell, with a header `Table 5 · 3 guests`.
+    - **Send to kitchen** sends the cart as a round, prints the round's ticket and clears the cart.
+    - **Bill items** lists the sent items by round, each with **Cancel** (reason + manager PIN).
+    - The other actions are **Print bill**, **Pay** (whole bill, **By item** or **Equally** in T2), and **Transfer** / **Merge** (T2).
+  - **Pay** opens the existing checkout with the tab's lines, the service charge toggle and, for an equal split, one payment step per share.
+- **Offline:** the Tables view shows `Tables need a connection.` and its actions are disabled. Pay now still works offline.
+- **Orders:** an order from a tab shows `Table 5` (already done) and the service charge in the detail.
+- **Errors:** `401` signs out as today. `409` messages show in a dialog that reloads the tab. `422` errors show on their fields.
+
+### J. Build
+- **packages/pos-core** (owned by **frontend-agent**):
+  - contract types for §A–§G;
+  - service charge and equal-split share math in `sale/` (worked example below);
+  - the round kitchen ticket, the bill and the receipt additions in `printing/`.
+- **backend-agent:**
+  - migrations, models and policies;
+  - the actions for §B–§D, reusing `RecordOrder` for settlement;
+  - the settings keys, the print-job kind `bill` and the report fields.
+  - **Tests:** one open tab per table under concurrency; idempotent replays; the stock check across open tabs; no stock block at settlement; snapshot pricing after a price change; cancel authority; settle conflict `409`; partial settlements closing the tab; transfer and merge; worked example K; refund of `S`; dine-in off → `409`; branch isolation.
+- **frontend-agent** (`mobile/`) and **web-agent** (`web/`): §I.
+
+**Worked example K** (both sides test against it): worked example B as a tab settled whole with `service_charge_bps = 1000` → `T = 25700`, `S = 2570`, `total_cents = 28270`. With `split_count = 3`, the shares are `9424 · 9423 · 9423`.
+
+---
+
+## Feature: Dashboard Period Filter — APPROVED (v1.28)
+
+The dashboard's sales figures can be viewed for a **day**, a **month** or a **year**, and staff can step back to earlier periods. Only the `sales` section changes. Catalogue, staff, customers, activity and insights stay "right now" snapshots, as before.
+
+### §A. GET /api/v1/dashboard: new query params
+| Name | Type | Required | Rules | Notes |
+|---|---|---|---|---|
+| `period` | string | no | `in:day,month,year` | Default `day` (today's behaviour). |
+| `date` | string | no | `date_format:Y-m-d`, not after the branch's current business date | Any business date inside the wanted period. Default: the current business date. `2026-10-05` with `period=month` means October 2026. |
+
+- A `date` after the current business date → `422` on `date`: `The date can't be in the future.`
+- Invalid `period` → `422` on `period`.
+- Both params only affect `sales`. Without them the response is unchanged.
+
+### §B. The period range
+"Today" is the branch's current business date (`T`). The anchor `D` is `date` (or `T`).
+
+| `period` | `date_from` | `date_to` |
+|---|---|---|
+| `day` | `D` | `D` |
+| `month` | the 1st of `D`'s month | the month's last day, **or `T`** when the month is the current one |
+| `year` | 1 January of `D`'s year | 31 December, **or `T`** when the year is the current one |
+
+Months and years are calendar months and years of **business dates** (the `orders.business_date` column), so a sale made at 01:00 before `day_start_time` counts in the previous business day, as everywhere else.
+
+### §C. `sales` section changes
+Every existing figure is now computed over `date_from … date_to` instead of today:
+`orders_count`, `items_sold`, `gross_sales_cents`, `discounts_cents`, `net_sales_cents`, `vat_amount_cents`, `average_order_cents`, `by_payment_method`, `top_products` (max 5 over the period), `voids_count` (by the order's business day), `refunds_cents` (by the refund's business day), `net_after_refunds_cents`, the SC/PWD figures and `service_charge_cents`. The definitions do not change (shared `SalesFigures`).
+
+New fields:
+```json
+"sales": {
+  "period": "month",
+  "date_from": "2026-10-01",
+  "date_to": "2026-10-14",
+  "business_date": "2026-10-14",
+  "trend": {
+    "unit": "day",
+    "buckets": [
+      { "start": "2026-10-01", "orders_count": 31, "net_sales_cents": 1045000 },
+      { "start": "2026-10-14", "orders_count": 12, "net_sales_cents": 403000 }
+    ]
+  },
+  "...": "all existing fields, now over the period"
+}
+```
+| Field | Type | Notes |
+|---|---|---|
+| `period` | `"day" \| "month" \| "year"` | Echo of the request (default `day`). |
+| `date_from`, `date_to` | `YYYY-MM-DD` | The range from §B, inclusive. |
+| `business_date` | `YYYY-MM-DD` | Unchanged meaning: the **current** business date `T`. |
+| `trend.unit` | `"day" \| "month"` | `day` for `period=day` and `month`; `month` for `period=year`. |
+| `trend.buckets[]` | array | Oldest first, 0-filled, see below. |
+| `trend.buckets[].start` | `YYYY-MM-DD` | The bucket's first business date (for a month bucket, the 1st). |
+| `trend.buckets[].orders_count`, `net_sales_cents` | integer | Same definitions as `last_7_days`. |
+
+**Buckets**
+- `day`: the 7 business days ending on `D` (the current "last 7 days" chart, anchored on the chosen day).
+- `month`: one bucket per day from `date_from` to `date_to` (up to 31).
+- `year`: one bucket per month from January to `date_to`'s month (up to 12).
+
+`last_7_days` is **kept unchanged** (the 7 days ending on `T`) so tablets on an older build keep working. New client code reads `trend` instead. It will be removed in a later version.
+
+### §D. Clients (tablet and web, same behaviour)
+- **Filter** in the dashboard band: a segmented control `Day · Month · Year` (default Day), and a date stepper `‹ label ›`:
+  - labels: `Tue, 14 Oct 2026` · `October 2026` · `2026`; with the current period, `Today` · `This month` · `This year`.
+  - `‹` goes to the previous day/month/year; `›` is disabled on the current period.
+  - Switching the segment keeps the anchor date (e.g. 5 Oct, Month → October).
+  - The choice is not saved: the dashboard opens on Day / today.
+- **Labels follow the period:** stat cards read "Net sales", "Orders", "Average ticket" with the period label as a caption; the chart title becomes `Net sales, last 7 days` · `Net sales by day, October 2026` · `Net sales by month, 2026`; empty state `No sales on this day` · `in this month` · `in this year`.
+- **Chart:** the same green area chart, drawing `trend.buckets` (x labels: day of week for `day`, day number for `month`, month short name for `year`).
+- **Only the sales part refetches** visually; the other cards keep showing (they are in the same response, unchanged).
+- The stock-alert card and insights are not period-based and keep showing current state.
+- `401` and `422` handled as today (a `422` on `date` resets the filter to Day / today).
+
+### §E. Not in this feature
+Comparison with the previous period (the trend badge, Q-041), custom date ranges (the Reports screen already has them), and period filters on the activity or staff sections.
+
+### §F. Backend notes
+- `BuildSalesSection` takes the resolved range; the request is validated by a new `DashboardRequest`.
+- The year query uses the existing `(branch_id, business_date)` index on `orders`; the month buckets of a year group by `YEAR(business_date), MONTH(business_date)`.
+- Tests: default request unchanged; day/month/year ranges and clamping to `T`; past month full range; bucket counts (7 / days in range / months in range) and 0-fill; future date `422`; `last_7_days` still anchored on `T`; refunds and voids counted by their own business day inside the range.
+
+---
+
 
 ## Open Questions
 
@@ -3744,6 +4539,163 @@ Tags: `[FRONTEND→BACKEND]`, `[BACKEND→FRONTEND]`, `[FRONTEND→MAIN]`, `[BAC
   3. The rule is kept as a guard, and is tested with a unit stored directly at 3,000,000.
 - Resolution (2026-09-29, main session): all three as proposed and built. §D1's "adjusted value_cents" means `value_in_cents` / `value_out_cents`. There is no shape change.
 
+### Q-034 [BACKEND→MAIN] Web POS & Print Bridge (W1): print-job and agent details §C–§E leave open — RESOLVED
+- Raised by: backend-agent · Feature: Web POS & Print Bridge · Endpoints: POST /api/v1/print-jobs, POST /api/v1/print-agent/jobs/claim, POST /api/v1/print-agent/jobs/{ulid}/result, `print-agent:run`, POST /api/v1/devices/register
+- Problem:
+  1. `POST /print-jobs` with a `ulid` that already belongs to **another branch's** job: neither a replay (branch-scoped) nor a new job (the column is UNIQUE). No outcome is defined.
+  2. `payload_base64` that isn't valid base64 (or decodes to 0 bytes) has no message; only "too large" is defined.
+  3. `last_error` on the result transitions: §E sets it only for a final `failed`. Unclear for a retryable failure that goes back to `queued`, and for a later `printed`.
+  4. A dead printer "skips the rest of its group in that round", but those jobs are already claimed (`printing`, `attempts + 1`). Left unreported they sit for 60 s until the stale reclaim.
+  5. Which transport errors are retryable besides connect errors: a write that breaks mid-document may have printed part of it.
+  6. A stale `printing` job (crashed agent) is reclaimed with no attempt cap, so an agent that dies on one job reclaims it forever.
+  7. §D lists one index; the first-print dedupe looks up `(order_ulid, kind, printer_id, copy_no)` in the branch, which would scan the branch's jobs.
+  8. §C: "Admin device items (Phase 8) also show it". The Phase 8 admin device endpoints aren't built yet (the section is a DRAFT), so there's nothing to extend in W1.
+- Proposal (**implemented provisionally**; no response shape changes):
+  1. `422` on `ulid` with Laravel's standard `The ulid has already been taken.` (a `unique` rule limited to other branches). A same-branch ULID is a replay (`200`).
+  2. `422` on `payload_base64`: `The print data must be valid base64.`
+  3. Retryable → `queued`: `last_error` keeps the agent's `error` (the web app can show "retrying: …"), and `claimed_by`/`claimed_at` are cleared. `printed`: `last_error` is cleared. Final `failed`: `last_error` = `error` (it may be `null` when the agent sent none). The user retry clears `last_error`, `claimed_by` and `claimed_at`.
+  4. The agent reports each skipped job right away as `failed`, `retryable: true`, with the same connect error. That counts as an attempt (the printer was just found dead), so after 3 dead rounds the jobs are `failed` and the cashier sees **Retry**.
+  5. Only connect errors (timeout, refused, unreachable) are retryable. A broken write is reported `failed`, `retryable: false`, so a half-printed document is never re-sent automatically; the cashier can retry it.
+  6. No cap is added: the stale reclaim does `attempts + 1` (saturating at the TINYINT's 255). The 3-attempt cap applies only in the result step. Main to decide whether a stale job with `attempts ≥ 3` should be `failed` at claim instead.
+  7. Added INDEX `(branch_id, order_ulid)` to `print_jobs`, alongside the required `(branch_id, status, id)`. No column changes.
+  8. Only `POST /devices/register` returns `platform` now. The Phase 8 admin device item should gain `platform` when it's built.
+- Resolution (main, 2026-10-08): proposals **1, 2, 3, 4, 5, 7 and 8 accepted as implemented** and now part of §D–§E. **6 changed:** the claim step caps stale reclaims. A `printing` job whose `claimed_at` is older than 60 s **and** whose `attempts` is already ≥ 3 is set to `failed` with `last_error` "The print agent stopped responding." and is not returned. Below 3 attempts it is reclaimed as before (`attempts + 1`). So a job is tried at most 3 times whichever way it fails.
+
+### Q-035 [WEB→BACKEND] Open-shift gate: a cashier can't find the terminal's open shift — RESOLVED
+- Raised by: web-agent · Feature: Web POS & Print Bridge (W1 open-shift gate) · Endpoints: GET /api/v1/shifts, GET /api/v1/shifts/{ulid}
+- Problem: The tablet knows its open shift from SQLite. The web terminal has no local database, and the only list (`GET /shifts`) needs `report.zread`, which cashiers don't hold. `GET /shifts/{ulid}` works for a shift of one's own terminal, but only when the ULID is already known. If the browser's storage is cleared (or a second browser profile is used on the same terminal after a reinstall), a cashier sees **Open shift** although the terminal's shift is still open on the server; opening again auto-closes the older shift (flagged `auto_closed`, no counted cash), which splits the drawer's day.
+- Proposal: let any authenticated user read the **token device's** open shift, either (a) `GET /api/v1/shifts?device_id=<the token's device>&status=open` allowed without `report.zread` when `device_id` is the caller's own device, or (b) a new `GET /api/v1/shifts/current` → `200 { "data": Shift | null }` for the token's device (`409 "Register this tablet first."` when unbound). Either works for the web client; (b) is simpler.
+- Built meanwhile: the web terminal keeps the ULID of the shift it opened in `localStorage` (`pos.shift`, per device) and reads it with `GET /shifts/{ulid}`; a user with `report.zread` falls back to `GET /shifts?device_id=&status=open&per_page=1`; otherwise the gate shows **Open shift**. Marked `TODO(Q-035)` in `web/src/hooks/useCurrentShift.ts`.
+- Resolution (main, 2026-10-08): **(b)**. New `GET /api/v1/shifts/current` (route `v1.shifts.current`, any authenticated user) → `200 { "data": Shift | null }`: the open shift of the **token's device**, in the caller's branch, with the same `Shift` resource as `GET /shifts/{ulid}`. Unbound token → `409 "Register this tablet first."`. The web gate calls it on load and after opening a shift; the `pos.shift` localStorage fallback and the `report.zread` list fallback are removed.
+
+### Q-036 [WEB→MAIN] Stock badges on the web Sell screen: no endpoint a web terminal may read — RESOLVED
+- Raised by: web-agent · Feature: Web POS & Print Bridge §C/§F · Endpoint: GET /api/v1/sync/stock
+- Problem: `design-system/pos/pages/sell.md` asks for **Low stock** / **Out of stock** badges on the product cards. The tablet reads them from `GET /sync/stock`, but §C says web terminals never call `/sync/*`. `GET /products` carries no quantity, and the inventory endpoints need `inventory.adjust` or `report.view`, which cashiers don't hold.
+- Proposal: allow web terminals to call `GET /api/v1/sync/stock` (read-only, advisory, bounded by the catalogue; no device state changes), refreshed when the Sell screen opens and after each sale. Alternatively, state that the web Sell screen shows no stock badges.
+- Built meanwhile: no stock badges; only **Unavailable** (`is_available: false`). An online sale is still blocked by the server's stock `422`, shown on the cart line. Marked `TODO(Q-036)` in `web/src/components/sell/MenuColumn.tsx`.
+- Resolution (main, 2026-10-08): **allowed.** Web terminals may call `GET /api/v1/sync/stock` (read-only, advisory) on Sell open, after each sale and every 5 minutes; no other `/sync/*` endpoint. §C is amended. The web Sell screen shows **Low stock** / **Out of stock** badges from it exactly like the tablet; stock never blocks on the client (the server's 422 still does online).
+
+### Q-037 [WEB→MAIN] Receipt "Print sample" and printer "Test print" through the print queue — RESOLVED
+- Raised by: web-agent · Feature: Web POS & Print Bridge §D · Endpoint: POST /api/v1/print-jobs
+- Problem:
+  1. Receipt settings → **Print sample** (Printing → Screens) isn't a test page, and no print-job `kind` names it. The web app sends it as `kind: "test"` (no `order_ulid`) with the sample's bytes, to the terminal's receipt printer.
+  2. The tablet can test-print **the host being edited before saving**. A print job needs a saved `printer_id`, so the web app only test-prints saved printers (from the Printers list).
+- Proposal: confirm both as built (no API change): `kind: "test"` covers the test page and the receipt sample; the printer form has no pre-save test print on web.
+- Resolution (main, 2026-10-08): confirmed as built. `kind: "test"` covers both the printer test page and the receipt-settings sample; the web printer form has no pre-save test print (test from the Printers list after saving).
+
+### Q-038 [WEB→MAIN] Catalogue images under the web CSP (`img-src 'self'`) — RESOLVED
+- Raised by: web-agent · Feature: Web POS & Print Bridge §A/§B · Endpoints: GET /api/v1/products, GET /api/v1/categories
+- Problem: `image_url` is absolute, built from the server's `APP_URL`. The web app is served same-origin, and §B limits the CSP to `'self'`. When `APP_URL`'s host differs from the one the browser uses (e.g. `http://localhost` vs the PC's LAN IP), or images live on an S3-compatible disk in production (changelog 0.7), the images are blocked or point to the wrong host.
+- Proposal: keep `img-src 'self'` and have the web client use the same-origin path when `image_url`'s path starts with `/storage/` (local `public` disk, also proxied in dev). For an S3 disk, add its origin to the CSP `img-src` at build time (a `VITE_IMAGE_ORIGIN` key) — or confirm images stay on the local disk for the web POS.
+- Built meanwhile: the same-origin `/storage/…` path is used for local-disk images; any other origin is loaded as is (and is blocked by the CSP). Marked `TODO(Q-038)` in `web/src/components/sell/SellParts.tsx`.
+- Resolution (main, 2026-10-08): accepted. Images stay on the local `public` disk for now; the web client rewrites an `image_url` whose path starts with `/storage/` to the same-origin path. For a future S3 disk, `web/.env.example` gains `VITE_IMAGE_ORIGIN=` (empty by default), added to the CSP `img-src` at build time when set, and such URLs are used as is.
+
+### Q-039 [WEB→MAIN] Needs review: no plain-words label for the Phase 6 reason `shift_closed` — RESOLVED
+- Raised by: web-agent · Feature: Web POS & Print Bridge (W2) / Offline Sales → Review · Endpoint: GET /api/v1/orders (`review_reasons`), POST /api/v1/orders/{ulid}/review
+- Problem: Shifts & Reporting → Order changes adds the review reason **`shift_closed`** (the server flags it: `Order::REVIEW_SHIFT_CLOSED`), but `@pos/core` doesn't know it: `ReviewReason` (`src/contract/types.ts`) and `REVIEW_REASON_LABELS` (`src/sale/reviewReasons.ts`) list only the six Phase 5 reasons, so `reviewReasonLabel('shift_closed')` returns the raw slug. The task asks for the reasons "in plain words". The tablet shows the raw slug too.
+- Proposal: add `'shift_closed'` to `ReviewReason` and to `REVIEW_REASON_LABELS`, e.g. `shift_closed: 'Sold after its shift was closed'` (one editor, per the package rules).
+- Built meanwhile: the web uses `reviewReasonLabel` and, only when it returns the slug unchanged, shows a readable fallback (underscores to spaces, first letter capitalised: "Shift closed"). Marked `TODO(Q-039)` in `web/src/components/orders/OrderReviewSection.tsx`; nothing else depends on it.
+- **Resolution (main, 2026-10-09):** accepted as proposed. `'shift_closed'` was added to `ReviewReason` and `REVIEW_REASON_LABELS` (`shift_closed: 'Sold after its shift was closed'`), so the tablet and the web both show it in plain words. The web keeps its readable fallback for reasons a newer server may add; the TODO marker was removed.
+
+### Q-040 [WEB→MAIN] Roles view: no plain-words label for most permission slugs — RESOLVED
+- Raised by: web-agent · Feature: Web POS & Print Bridge (W3) / Auth & Access Control → Roles & permissions · Endpoint: GET /api/v1/admin/roles
+- Problem: the read-only Roles view lists each role's `permissions[]` (slugs). The contract words only the slugs added after Phase 0 (`customer.manage` "Delete customer records", `settings.manage`, `order.review`, the Phase 6 shift/report slugs, the Phase 7 void/refund authority, §E purchasing, `system.manage`). The Phase 0 slugs (`branch.all`, `discount.apply`, `discount.override`, `inventory.adjust`, `product.manage`, `sale.create`, `user.manage`) have no description, and `GET /admin/roles` returns slugs only. `@pos/core/permissions` has no label map either, so the tablet and the web can't share one.
+- Proposal: add a `PERMISSION_LABELS: Record<PermissionSlug, string>` to `@pos/core/permissions` (one editor), with the contract's wording for the later slugs and, e.g., `product.manage` "Manage the menu: categories, products, recipes and ingredients", `user.manage` "Manage staff accounts, roles and PINs", `sale.create` "Make sales and manage customers at the counter", `discount.apply` "Give discounts up to the role's limit", `discount.override` "Approve discounts above the limit", `inventory.adjust` "Stock in, counts, wastage and reorder levels", `branch.all` "Work across every branch". No API change.
+- Built meanwhile: the web Roles view shows every slug, plus the contract's own description where one exists (`web/src/utils/permissionLabels.ts`, marked `TODO(Q-040)`); the Phase 0 slugs show as slugs only. Nothing else depends on it.
+- **Resolution (main, 2026-10-09):** the server already words every slug in `RolesAndPermissionsSeeder::PERMISSIONS` (stored in `permissions.description`). `@pos/core/permissions` now has `PERMISSION_DESCRIPTIONS` (that wording, word for word, all 21 seeded slugs) and `permissionDescription(slug)` (`null` for an unknown slug). The web's `utils/permissionLabels.ts` was removed and the Roles page uses the shared one. `system.manage` (Phase 8, still a draft) is not seeded yet, so it has no description.
+
+### Q-041 [WEB→MAIN] Dashboard: "Sales by hour" and the stat-card trend badge have no data in the contract — RESOLVED
+- Raised by: web-agent · Feature: Web POS & Print Bridge (W5) / Dashboard · Endpoint: GET /api/v1/dashboard
+- Problem: `design-system/pos/pages/back-office.md` → Dashboard asks for a **Sales by hour** area chart and a stat-card trend badge "only when the API gives the comparison". The dashboard `sales` section has no hourly buckets (only `last_7_days` per business day) and no comparison figure (e.g. yesterday's or last week's net sales), so neither can be drawn from real data.
+- Proposal: either (a) keep the web's **Net sales, last 7 days** area chart (from `sales.last_7_days`, green) in place of Sales by hour and leave the trend badge out (no API change; update the page spec), or (b) add `sales.by_hour: [{ hour: 0–23, orders_count, net_sales_cents }]` (branch wall clock, today's business day, 0-filled) and a comparison figure to the dashboard `sales` section.
+- Built meanwhile: option (a). The chart reads only `last_7_days`; no stat card shows a trend badge. Marked `TODO(Q-041)` in `web/src/routes/DashboardPage.tsx`; nothing else depends on it.
+- **Resolution (main, 2026-10-09):** W rounds use existing endpoints only, so the web keeps the built **Net sales, last 7 days** chart (`sales.last_7_days`) and `design-system/pos/pages/back-office.md` now asks for that instead of "Sales by hour". The stat-card trend badge already shows only when the API gives a comparison, so none is shown. An hourly breakdown or a comparison period would be a backend change, drafted as its own contract feature if wanted. The TODO marker was removed.
+
+### Q-042 [WEB→MAIN] Web terminal health: whose "latest print job", the print-agent "claimed" rule, and the registration 403 — RESOLVED
+- Raised by: web-agent · Feature: Hardening & Pilot (Phase 8) §I · Endpoints: GET /api/v1/print-jobs, POST /api/v1/devices/heartbeat, POST /api/v1/devices/register
+- Problem: (1) `GET /print-jobs` answers only for `ulids[]` the caller already knows, so "each printer's latest print job" can only mean the latest job **this terminal** sent; the heartbeat `printers[].ok` and checklist item 4 are therefore per terminal, not per printer branch-wide. (2) Checklist item 5 says "the print agent has claimed a job in the last 10 min, or no job is waiting", but `PrintJob` has no `claimed_at`, so the claim time can't be read; only the §I rule "`queued` jobs older than 2 min mean the agent is down" can be applied. (3) §I says the login page shows the 403 message when registration returns 403 after a retired terminal's re-login, but not whether the user stays signed in.
+- Built meanwhile (conservative): (1) the web keeps a short local log (`localStorage` `pos.printJobLog`, newest 50) of the jobs it sent and their last seen status, and reports each printer's latest finished job from it (`printed` = ok, `failed` = not ok, none = left out); (2) the agent check is ✗ only when one of this terminal's jobs has been `queued` for over 2 min, otherwise ✓ ("No print job is waiting", plus the last printed time); (3) a 403 from `POST /devices/register` logs out (`POST /auth/logout`, token and session cleared) and the login page shows the server's message. A retired terminal's 401 also shows its own message ("This tablet has been retired.") instead of "Your session has ended".
+- Proposal: confirm (1)–(3) as the intended behaviour, or, for (1)/(2), add `claimed_at` to the `PrintJob` resource and/or a small `GET /print-jobs/agent-status` (oldest `queued` job age and last claim time for the branch); the web would then switch to it.
+- **Resolution (main, 2026-10-12):** (1)–(3) are confirmed as built. No API change: `claimed_at` and an agent-status endpoint stay out of Phase 8. §I is updated to match: printer health and the print-agent check use this terminal's own jobs, and checklist item 5 is "no job of this terminal has been `queued` for over 2 min".
+
+### Q-043 [FRONTEND→BACKEND] Admin Devices: no single-device read for the detail screen — RESOLVED
+- Raised by: frontend-agent · Feature: Hardening & Pilot (Phase 8) §C/§E · Endpoints: GET /api/v1/admin/devices, PATCH /api/v1/admin/devices/{id}
+- Problem: §E asks for a device **detail** with the heartbeat fields, but §C defines no `GET /api/v1/admin/devices/{id}`. The tablet can only show a device it has in a loaded list page (or the `AdminDevice` returned by rename / retire / restore). A detail opened after the list cache is gone (app restart on that screen, a future deep link from the `device_unsynced` insight) has nothing to load.
+- Built meanwhile (conservative): the detail route `/(app)/(admin)/devices/[id]` reads the device from the Devices list cache and the rename / retire / restore answers; with nothing cached it shows "Open this device from the Devices list." with Back. The `device_unsynced` insight opens the list, not a detail. No endpoint was invented.
+- Proposal: add `GET /api/v1/admin/devices/{id}` → 200 `{ data: AdminDevice }` (`system.manage`, branch-scoped, retired devices included, 404 otherwise); the tablet would then load the detail from it.
+- **Resolution (main, 2026-10-12):** accepted. §C now has `GET /api/v1/admin/devices/{id}` → 200 `{ data: AdminDevice }`. It needs `system.manage`, includes retired devices, and returns 404 for a device outside the branch (unless `branch.all`). backend-agent adds it. The tablet and the web load the device detail from it, seeded from the list cache.
+
+### Q-044 [BACKEND→MAIN] Phase 8 backend: details §B/§C leave open, and how they were built — RESOLVED
+- Raised by: backend-agent · Feature: Hardening & Pilot (Phase 8) §B/§C · Endpoints: POST /client-errors, GET /admin/error-log, POST /admin/devices/{id}/retire, GET /dashboard
+- Problem and what was built meanwhile (each is the conservative reading; please confirm or correct):
+  1. **`device_unsynced` with several tablets.** The contract words one tablet only. Built: **one** insight; `count` = the number of tablets; title "T02 has 5 unsynced sales (last seen 2 h ago)" for one tablet (`1 unsynced sale` singular; age rounded down as `N min` / `N h` / `N d ago`), "3 tablets have unsynced sales" for several; message "Bring these tablets online so their sales sync before anything is lost." Web terminals are never counted.
+  2. **`health` and `errors_pending`.** §C lists `errors_pending > 0` only for web terminals ("only the last-seen rule and `errors_pending > 0` apply to them"). Built: `errors_pending > 0` → `attention` for tablets too. A device never seen is `offline`; "pending sales older than 30 min" = `oldest_pending_at` over 30 min ago (with `outbox_pending` > 0 or absent).
+  3. **`meta.summary`.** Built over the groups the caller can see, ignoring the list filters: `open` (status open), `open_fatal` (open and fatal), `last_24h` (groups with `last_seen_at` in the last 24 h, any status).
+  4. **Visibility details.** An app group is visible when it has an event in the caller's branch or with no branch (all groups with `branch.all`). `latest` and the detail's `events` use only the events the caller can see; `occurrences`, `app_versions` and the seen times stay group-wide. An invisible group is a 404.
+  5. **`from` / `to`** on the error log are calendar days in the branch's timezone.
+  6. **Repeated actions.** Retiring a retired device, restoring an active one, resolving a resolved group or reopening an open one answers 200 with the current state and writes no second audit entry. The 409 message says `1 unsynced sale` for one.
+  7. **Rename vs re-registration.** `POST /devices/register` (Phase 5) still overwrites `name` with what the app sends, so an admin rename lasts until the tablet registers again (next login). Proposal: keep an existing device's name on register; not changed here, since it alters Phase 5.
+  8. **`POST /client-errors` edge cases.** `occurred_at` before 2000 or more than a day ahead (an unset tablet clock) is stored as the receive time instead of rejecting the batch; group `first_seen_at` / `last_seen_at` follow `occurred_at`; `app_versions` is newest first; unknown context keys are dropped, `extra` keeps its first 20 scalar entries (keys max 60); a non-ULID `install_id` is a 422. A token of a deactivated user or a retired device is ignored (the error is recorded without user or device), never a 401, since auth is optional there.
+  9. **5xx capture.** Recorded for any unhandled exception rendered with a 5xx, except a deliberate HTTP exception whose status isn't 500 (e.g. `abort(503)`). Message `Class: message`; a database error keeps only its SQLSTATE and the SQL with `?` placeholders (bound values may be input); the stack lists file:line and function per frame, never arguments; `context.extra` = `{ route, method, status }`; the event's branch is the user's.
+- Proposal: confirm 1–9 (and decide 7). The answers would only change wording or a rule inside the server; no response shape changes.
+- **Resolution (main, 2026-10-12):** 1–6, 8 and 9 are confirmed as built. **7: an existing device keeps its name on `POST /devices/register`.** `name` is only used when the device is created, so an admin rename lasts; `app_version` and `last_seen_at` are still updated. §C records this. No response shape changes.
+
+### Q-045 [WEB→MAIN] Purchase Request & Order PDF: three readings of §C/§D/§G — RESOLVED
+- Raised by: web-agent · Feature: Purchase Request & Order PDF (v1.24) §C, §D, §G · Endpoints: GET /purchase-requests, GET /purchase-requests/{ulid}, GET /purchase-orders/{ulid} (no change)
+- Problem and what was built meanwhile:
+  1. **"Needs my decision" view.** §G lists the PR filters to carry as "All / Mine, status, search", but the web list also has a **Needs my decision** view (`needs_decision=true`). Built: the print view carries it too (`?needs_decision=true`, "Requests: Needs my decision"), so the register always matches what the list shows.
+  2. **NOT APPROVED band on a PR.** §C.6 says "when the status is not approved". Built literally: the band shows for every status except `approved`, including `partially_approved`, `declined` and `cancelled`.
+  3. **PO status chips.** §D.1 says "a status chip with the receiving status". Built: two outline chips, the PO status and the receiving status, for every PO (pending and declined ones read "Not Received").
+- Proposal: confirm 1–3, or say which to change. Web-only wording/visibility; no shape changes.
+
+- **Resolution (main, 2026-10-12):** 1–3 are confirmed as built. (1 no longer applies: the register was removed the same day.) The register carried "Needs my decision", the NOT APPROVED band shows for every status except `approved`, and a PO shows both chips.
+
+### Q-046 [BACKEND→MAIN] Dine-in Tables & Tabs (T1 + T2): details §A–§E leave open, and how they were built — RESOLVED
+- Raised by: backend-agent · Feature: Dine-in Tables & Tabs (v1.26) · Endpoints: `PATCH /admin/settings`, `/admin/tables`, `/tables`, `/tabs/*`, `POST /orders/{ulid}/refunds`, `POST /print-jobs` (no shape changes)
+- Problem and what was built meanwhile:
+  1. **Settle quantity above `remaining_qty`.** §D.6 lists `qty ≤ remaining_qty` as a body rule but also says a quantity another device settled or cancelled first is a `409`. The server can't tell the two apart, so built: any quantity (summed per `tab_item_id` when a line is sent more than once) above `remaining_qty` is `409 "This bill changed on another device. Review it again."`, before pricing and again under the tab's lock. `items` omitted with nothing remaining is the same `409`. A `tab_item_id` not on the tab is `422` on `items.{i}.tab_item_id`: `This item isn't on this bill.` (no text in the contract).
+  2. **Equal-split payment messages** (none in §E). Built: a GCash share that isn't exact → `422` on `payments.{i}.amount_cents`: `This GCash payment must be exactly ₱94.23.`; a cash share that's short → `422` on `payments.{i}.amount_cents`: `The payment is short by ₱4.23.` (the sale wording). Each cash share is stored with `amount_cents` = its share, `tendered_cents` = the amount sent and its own change.
+  3. **Refund of `S` and the Phase 7 invariant.** The refund that leaves nothing refundable adds `S` to `amount_cents` (and so to `orders.refunded_cents`), outside its VAT split; no `refund_items` line carries it. So the Phase 7 invariant "`refunded_cents` = Σ items.refunded_cents" becomes "Σ items.refunded_cents + `S` when the order is `refunded`". The app's checksum (`client_refund_cents`) must include `S` on that last refund.
+  4. **Merge.** Built: the moved quantity leaves the source line (its `qty` drops to `settled_qty + cancelled_qty`, so the merged source shows `remaining_qty` 0 and `remaining_cents` 0); the new target lines keep the snapshots, notes, `added_by` and `added_at`; `guests` are summed without a cap (they can exceed 99). A target that would pass 200 lines → `422` on `into_ulid`: `This bill has too many lines. Settle part of it first.`. `into_ulid` that isn't another open tab of the branch → `422` (`The selected into ulid is invalid.`); a merged/closed **source** → `409 "This bill is already closed."`.
+  5. **`Close the N open bills first.`** is built literally, also for N = 1 (`Close the 1 open bills first.`). Say if N = 1 should read `Close the 1 open bill first.`.
+  6. **Print jobs of tabs.** `kind: "bill"` was added; `order_ulid` stays required for it. Built nothing else: the first-print de-duplication on `(order_ulid, kind, printer_id, copy_no)` still applies, so the web client must send a **fresh ULID per print** as `order_ulid` for `bill`, and a per-round ULID (e.g. the round's `ulid`) for a round's `kitchen` ticket and per-cancel for `kitchen_void`; otherwise a second bill or round 2's ticket would be de-duplicated away. Please confirm, or define which ULID these jobs carry.
+  7. **Audit payloads** (not defined): `tab.opened` `{ulid, table, guests}`; `tab.updated` `{field: {from, to}}` (added for PATCH); `tab.round_sent` `{round_no, items: [{product_id, qty}]}`; `tab.item_cancelled` `{tab_item_id, product_name, qty, reason, authorized_by}`; `tab.closed` `{status}`; `tab.transferred` `{from, to}` (table names); `tab.merged` `{into_ulid | from_ulid, items}`.
+  8. **Data model additions:** `dining_tables.area_sort` (generated `COALESCE(area, '')`, as `customers.last_name_sort`) so the cursor lists can page past tables with no area; `tab_items.category_name` and `sku` snapshots (the settlement's order lines need them); `tab_item_cancellations.ulid` = the cancel request's `Idempotency-Key`. Tab settlements use the token's device, as `POST /orders`; no device is required.
+- Proposal: confirm 1–8 as built, or say which to change.
+- **Resolution (main session, 2026-10-13): RESOLVED.** 1–4 and 6–8 confirmed as built. 5: the count is pluralised: `Close the 1 open bill first.` for N = 1, `Close the N open bills first.` otherwise. 6: see Q-047 for split receipts.
+
+### Q-047 [WEB→MAIN] Dine-in print jobs on web terminals: which `order_ulid` / `copy_no` the tab documents carry, and split receipts vs the first-print de-duplication — RESOLVED
+- Raised by: web-agent · Feature: Dine-in Tables & Tabs (v1.26) §F, Web POS & Print Bridge §D · Endpoint: `POST /print-jobs` (no shape change)
+- Problem and what was built meanwhile:
+  1. **Round, cancel and bill jobs** (same reading as Q-046.6). Built: a round's `kitchen` tickets carry the **round's `ulid`** (its `Idempotency-Key`) as `order_ulid`; a cancel's `kitchen_void` tickets carry the **cancel's `Idempotency-Key`**; each **Print bill** (`kind: "bill"`) carries a **new ULID per print**, `copy_no` 1, `is_reprint: false`. `// TODO(Q-047)` in `web/src/printing/printActions.ts`.
+  2. **Equal-split receipts.** §F prints one receipt per share (up to 10), all for the same order. The first-print de-duplication keys on `(order_ulid, kind, printer_id, copy_no)` and `copy_no` is 1–3, so shares 2…N of one order would be de-duplicated into share 1's job. Built meanwhile: share 1 is sent as a normal first print (`copy_no` 1); shares 2…N are sent with `copy_no` 1 and **`is_reprint: true`** only to skip the de-duplication (the printed bytes are not marked REPRINT). One receipt per share, so `receipt_copies` is not applied to split receipts.
+  3. With auto-print off, **Print receipt** after a split prints all shares the same way.
+- Proposal: either allow `copy_no` 1–10 (share `k` → `copy_no` k, `is_reprint: false`), or add an optional `share_no` to the print job and to the de-duplication key. Say which, and whether `receipt_copies` should repeat per share.
+- **Resolution (main session, 2026-10-13): RESOLVED.** 1 confirmed as built. 2: `POST /print-jobs` accepts `copy_no` **1–10 for `kind: "receipt"`** (other kinds keep 1–3). Equal-split share `k` is sent as `copy_no = k`, `is_reprint: false`, so the existing de-duplication key keeps each share; remove the `is_reprint` stopgap. `receipt_copies` is not repeated per share (one receipt per share). 3 confirmed.
+
+### Q-048 [FRONTEND→MAIN] Dine-in on the tablet: the receipt's service-charge rate, split receipts and the refund of `S` — RESOLVED
+- Raised by: frontend-agent · Feature: Dine-in Tables & Tabs (v1.26) §E, §F, §G · Endpoints: none changed (`Order`, `POST /orders/{ulid}/refunds`)
+- Problem and what was built meanwhile:
+  1. **`Service charge (10%)` on a receipt.** `Order` has `service_charge_cents` but not the rate it was charged at, and a reprint may happen after the setting changed. Built: the receipt (and Order detail) prints the branch's **current** `service_charge_bps` only when `rhu((total − S) × bps, 10000) = S`; otherwise the row reads `Service charge` with no rate. `@pos/core` `buildReceipt` takes the rate as an option (`serviceChargeBps`).
+  2. **Split receipts on the tablet** (the tablet's own queue, not the print-job API of Q-047): one receipt per share, share `k` stored as `copy_no = k` of `N` (the local de-duplication key allows it), with `receipt_copies` not repeated per share. With auto-print off, **Print receipt** prints every share; a reprint also prints every share.
+  3. **Refund of `S`** (§E, as Q-046.3 reads it): `@pos/core` `priceRefund` gains an optional 5th argument `serviceChargeCents`; the refund that leaves nothing refundable adds `S` to `amount_cents` (and so to `client_refund_cents`), outside the VAT split, and returns it as `service_charge_cents`. The tablet passes `order.service_charge_cents`; the web refund screen must pass it too, or its last refund of a tab order fails the checksum.
+  4. **Discounts on a tab settlement**: a round takes none (its line editor says "Discounts are given when the bill is paid."); Pay offers the order discount (with manager approval above the limit) and SC/PWD, not line discounts, so `items[].discount` is `null`. `items` is always sent (never omitted), so the checksum covers exactly what the cashier saw.
+- Proposal: confirm 1–4, or say which to change (1 has an alternative: add `service_charge_bps` to `Order`).
+- **Resolution (main session, 2026-10-13): RESOLVED.** 1–4 confirmed as built (no `service_charge_bps` on `Order`). 3: the web refund screen must pass `order.service_charge_cents` to `priceRefund` too.
+
+### Q-049 [WEB→MAIN] Finished print job wording: "Sent" (contract) vs "Printed" (MASTER §6 toasts) — RESOLVED
+- Raised by: web-agent · Feature: Printing → Screens (Sale complete, print status rows) and design-system/pos/MASTER.md §6 Toasts · Endpoints: none (`PrintJob.status = printed`)
+- Problem: this contract says the app shows **"Sent", never "Printed"**, because port 9100 gives no confirmation. MASTER §6 lists a **"Printed"** toast, and the web restyle task asked to rename the finished-job row label from "Sent" to "Printed" to match the tablet. The tablet itself is split: its rows say "Sent" (`mobile/src/components/printing/PrintJobRows.tsx`), its toast says "Printed" (`mobile/src/printing/queue.ts`).
+- Built meanwhile (web): the row keeps **"Sent"** and the one-time toast reads **"Sent: {document} to {printer}"**, following this contract.
+- Proposal: keep "Sent" everywhere (rows and toasts) and change MASTER §6's toast list to "Sent to printer", or amend this contract to allow "Printed". The tablet and the web should then use the same word.
+- **Resolution (main session, 2026-10-14): RESOLVED.** Keep **"Sent"** everywhere, as Printing → Screens says (port 9100 gives no confirmation). The web toast reads "Sent: {document} to {printer}"; the tablet's "Printed" toast changes to "Sent" too. The main session's round-3 instruction to use "Printed" was wrong and is withdrawn.
+
+### Q-050 [WEB→MAIN] Dashboard Period Filter: wording of the other period-based sales cards — RESOLVED
+- Raised by: web-agent · Feature: Dashboard Period Filter (v1.28) §C/§D · Endpoint: GET /api/v1/dashboard
+- Problem: §D gives the period wording for the stat cards, the chart title and the chart's empty state only. The other sales cards (Top products, Payment methods, and the web's "Today's figures" breakdown card) are now computed over the period too (§C), but their old captions say "Today" ("Today, by quantity sold.", "Today's takings…", "No sales yet today."), which would be wrong for a past day, a month or a year.
+- Built meanwhile (web, provisional): they follow the period label from the response (`Today` · `Tue, 14 Oct 2026` · `This month` · `October 2026` · `This year` · `2026`): Top products "{label}, by quantity sold.", Payment methods "{label}, takings net of change." (the stacked bar's row label is the period label), the figures card "Today's figures" on the running day and "Sales figures" / "{label}, sales that are not voided." otherwise. Their empty states keep "No sales yet today." / "No payments yet today." on the running day and use §D's `No sales on this day` · `in this month` · `in this year` otherwise. Day chart's description: "The 7 business days ending {today | Tue, 14 Oct 2026}, in pesos."
+- Proposal: confirm this wording (or give another) so the tablet uses the same captions. No API change.
+- **Resolution (main, 2026-10-14):** the web's provisional wording is adopted for **both** clients. On the running day the empty states keep `No sales yet today.` / `No payments yet today.` (this overrides §D's `No sales on this day` for the current day only); past days, months and years use §D's wording. Top products `{label}, by quantity sold.`, Payment methods `{label}, takings net of change.`, the Day chart description `The 7 business days ending {Today | date}, in pesos.` No API change.
 ---
 
 ## Changelog
@@ -3795,3 +4747,24 @@ Tags: `[FRONTEND→BACKEND]`, `[BACKEND→FRONTEND]`, `[FRONTEND→MAIN]`, `[BAC
 | 1.20.1 | 2026-09-30 | The purchase request item picker and the recipe component picker show active ingredients only (app change; API unchanged). |
 | 1.20.2 | 2026-09-30 | `purchase.approve` is owner-only: only the Owner decides PR items and approves or declines POs (user decision). Seeder change; re-run `RolesAndPermissionsSeeder`. No shape change. |
 | 1.20.3 | 2026-10-01 | VAT display hidden in the app and on the printed receipt and refund slip (app flag `SHOW_VAT_BREAKDOWN = false`) until BIR accreditation: the receipt is a temporary internal receipt. The server still computes and stores every VAT field, and the SC/PWD "VAT exempted" deduction still shows. No API change. |
+| 1.20.4 | 2026-10-07 | Every database table is prefixed `tbl_` through the connection prefix (user decision; one database for mobile and the upcoming web POS). Storage-only change: no endpoint, field, or validation message changes. Dev database rebuilt with `migrate:fresh --seed`. |
+| 1.21 | 2026-10-07 | Drafted Web POS & Print Bridge: `web/` served same-origin at `/pos` (no CORS); `devices.platform` with `W` codes for web terminals; `print_jobs` queue (`POST/GET /print-jobs`, retry) with client-built ESC/POS bytes; token-protected print-agent endpoints (ping, claim with `SKIP LOCKED`, result) and `print-agent:run` / `print-jobs:prune` commands; web client rules; build rounds W1–W5. |
+| 1.21.1 | 2026-10-08 | Web POS & Print Bridge **approved** by the user. W1 gains the open-shift gate (a sale needs an open shift). |
+| 1.21.2 | 2026-10-08 | Q-034 resolved: cross-branch ULID → 422, invalid base64 → 422, `last_error` rules, skipped jobs reported as retryable failures, only connect errors retry, extra index `(branch_id, order_ulid)`; a stale job with ≥ 3 attempts fails at claim ("The print agent stopped responding."). |
+| 1.21.3 | 2026-10-08 | Q-035–Q-038 resolved: new `GET /shifts/current` (token device's open shift or null); web may read `GET /sync/stock` for badges; `kind: "test"` covers receipt samples; same-origin `/storage/` images plus optional `VITE_IMAGE_ORIGIN`. |
+| 1.21.4 | 2026-10-09 | Repo structure: the rules and printed documents both clients use moved to `packages/pos-core` (`@pos/core`), linked into `mobile/` and `web/`; contract types live in `packages/pos-core/src/contract/types.ts`. No API change. |
+| 1.21.5 | 2026-10-09 | Web round W2 (shifts, voids and refunds, Needs review) built on existing endpoints; no API change. Q-039 resolved: the review reason `shift_closed` gets a plain-words label in `@pos/core`. The refund formula, the reversal gates and the review wording moved from `mobile/` to `packages/pos-core/src/sale/`. |
+| 1.21.6 | 2026-10-09 | Web round W3 (categories, products and images, recipes, staff and roles, customers) built on existing endpoints; no API change. Q-040 resolved: the seeded permission descriptions are shared in `@pos/core/permissions`. `quantity`, `units` and `recipe` moved from `mobile/src/utils/` to `packages/pos-core/src/`. |
+| 1.21.7 | 2026-10-09 | Web round W4 (product and ingredient inventory, set cost, units read-only, suppliers, purchase requests, purchase orders, receiving) built on existing endpoints; no API change, no Open Questions. |
+| 1.21.8 | 2026-10-09 | Web round W5 (dashboard with Recharts charts and insight links; sales, inventory and purchasing reports with CSV export) built on existing endpoints; no API change. Q-041 resolved (the dashboard trend is the last 7 days; the design spec was updated). `numbers` moved from `mobile/src/utils/` to `packages/pos-core/src/`. All Web POS rounds W1–W5 are built. |
+| 1.23 | 2026-10-12 | Hardening & Pilot (Phase 8) draft revised for the Web POS: web terminals get error capture, heartbeat and a "This terminal" page (§I); admin devices gain `platform` (filter + item) and web health rules; the admin Devices and Error log screens are built on both the tablet and the web; shared `@pos/core/errors`; version gating stays tablet-only; runbook covers the web build and print agent; one build round (§J). |
+| 1.24 | 2026-10-12 | Purchase Request & Order PDF (web only, no API change): Print / PDF of one request or order (A4 portrait, all items, signature lines, per-supplier PO copy) from a print button on each list row and on the detail page. The whole-list printout was dropped at the user's request. |
+| 1.26 | 2026-10-13 | Drafted Dine-in Tables & Tabs (optional, off by default): `dine_in_enabled` + `service_charge_bps` settings; admin tables; `GET /tables`; server-side tabs with kitchen rounds, sent-item cancel (void authority), settle into normal orders (snapshot prices, no stock block), close, transfer, merge; split by item or equally; service charge; bill printout; `Order` gains `tab_ulid`, `service_charge_cents`, `split_count`. |
+| 1.26.1 | 2026-10-13 | Dine-in Tables & Tabs **approved** by the user as drafted. |
+| 1.26.2 | 2026-10-13 | Q-046–Q-048 resolved: `Close the 1 open bill first.` pluralisation; receipt print jobs accept `copy_no` 1–10 (equal-split share `k` = `copy_no k`); the refund that empties a tab order returns `S` (in `client_refund_cents`); receipts show the current service-charge rate only when it reproduces `S`. |
+| 1.27 | 2026-10-13 | Drafted Purchase Request & Order PDF revision 2 (tablet): `expo-print` (new Dev Client build); PDF buttons on PR/PO/Receiving detail, PO row keeps Open plus PDF; print model moves to `@pos/core/purchasing/printModel`, HTML document in `@pos/core/purchasing/printHtml`; preview with Print/Save as PDF and Share; online only. |
+| 1.27.1 | 2026-10-13 | Purchase Request & Order PDF revision 2 (tablet) **approved** by the user as drafted. |
+| 1.27.2 | 2026-10-14 | Q-049 resolved: print jobs and their toasts say "Sent", never "Printed", on both clients (no API change). |
+| 1.28 | 2026-10-14 | Drafted Dashboard Period Filter: `GET /dashboard` takes `period` (day/month/year) and `date`; the `sales` section is computed over the period and gains `period`, `date_from`, `date_to` and `trend` (day or month buckets); `last_7_days` kept for older builds; Day · Month · Year filter with a date stepper on both clients. |
+| 1.28.1 | 2026-10-14 | Dashboard Period Filter **approved** by the user as drafted. |
+| 1.28.2 | 2026-10-14 | Q-050 resolved: period wording of the other dashboard sales cards (web wording adopted on both clients; running day keeps "No sales yet today."). No API change. |

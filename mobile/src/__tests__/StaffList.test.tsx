@@ -194,7 +194,6 @@ describe('Staff list', () => {
     ['phone portrait', REFERENCE_SIZES.phonePortrait, 1],
     ['phone landscape', REFERENCE_SIZES.phoneLandscape, 2],
     ['tablet portrait', REFERENCE_SIZES.tabletPortrait, 2],
-    ['tablet landscape', REFERENCE_SIZES.tabletLandscape, 3],
   ])('lays the grid out for %s with the expected columns', async (_label, size, columns) => {
     setWindowSize(size.width, size.height);
     routeFetch([
@@ -206,5 +205,19 @@ describe('Staff list', () => {
     await screen.findByTestId('staff-card-1');
 
     expect(renderedColumns('staff-card-1')).toBe(columns);
+  });
+
+  it('tablet landscape: the data table (MASTER §6), with the same row names', async () => {
+    setWindowSize(REFERENCE_SIZES.tabletLandscape.width, REFERENCE_SIZES.tabletLandscape.height);
+    routeFetch([
+      rolesRoute,
+      { method: 'GET', path: '/api/v1/admin/users', reply: () => mockResponse(200, page([ownerStaff, managerStaff, cashier])) },
+    ]);
+
+    await renderWithQuery(<StaffIndexRoute />);
+    await screen.findByTestId('staff-card-1');
+
+    expect(screen.getByTestId('staff-grid-header')).toHaveTextContent(/Name.*Role.*Status.*PIN.*Last login/);
+    expect(screen.getByTestId('staff-grid-more-count')).toHaveTextContent('Showing 3');
   });
 });

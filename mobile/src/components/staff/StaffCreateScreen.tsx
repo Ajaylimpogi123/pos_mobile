@@ -2,20 +2,28 @@ import { useRef } from 'react';
 import { StyleSheet, Text, type TextInput } from 'react-native';
 
 import { RolePickerField } from '@/components/staff/RolePickerField';
+import { FormFooter } from '@/components/shared/FormFooter';
 import { FormLayout } from '@/components/shared/FormLayout';
 import { FormSection } from '@/components/shared/FormSection';
-import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { SwitchRow } from '@/components/ui/SwitchRow';
+import { focusField } from '@/components/ui/ErrorSummary';
 import { ROUTES } from '@/constants/routes';
 import { colors, spacing, typography } from '@/constants/theme';
 import { PASSWORD_POLICY_HINT, sanitizePinInput, STAFF_LIMITS } from '@/hooks/staff/staffRules';
 import { useStaffCreateForm } from '@/hooks/staff/useStaffForms';
 import { goBackOr } from '@/utils/navigation';
+import { showToast } from '@/stores/toast';
 
 function backToList() {
   goBackOr(ROUTES.staff);
+}
+
+/** MASTER §6: save success is a toast. */
+function savedAndBack() {
+  showToast('Staff created.');
+  backToList();
 }
 
 /**
@@ -28,8 +36,9 @@ function backToList() {
  * so rotating keeps what was typed.
  */
 export function StaffCreateScreen() {
-  const form = useStaffCreateForm({ onSaved: backToList });
+  const form = useStaffCreateForm({ onSaved: savedAndBack });
   // Keyboard "Next" moves through the fields.
+  const staffNameRef = useRef<TextInput>(null);
   const staffEmailRef = useRef<TextInput>(null);
   const staffPasswordRef = useRef<TextInput>(null);
   const { values, setField, fieldErrors, busy } = form;
@@ -55,6 +64,7 @@ export function StaffCreateScreen() {
             returnKeyType="next"
             submitBehavior="submit"
             onSubmitEditing={() => staffEmailRef.current?.focus()}
+            ref={staffNameRef}
             testID="staff-name"
           />
           <Input
@@ -127,15 +137,18 @@ export function StaffCreateScreen() {
         </FormSection>
       }
       asidePlacement="end"
+      fieldErrors={fieldErrors}
+      onSelectError={(field) => focusField(field, { name: staffNameRef, email: staffEmailRef, password: staffPasswordRef })}
       footer={
-        <Button
-          title="Create staff"
-          leftIcon="person-add-outline"
-          size="lg"
-          onPress={form.submit}
-          loading={form.submitting}
-          disabled={busy}
-          testID="staff-save"
+        <FormFooter
+          onCancel={backToList}
+          cancelDisabled={form.submitting}
+          saveTitle="Create staff"
+          saveIcon="person-add-outline"
+          onSave={form.submit}
+          saving={form.submitting}
+          saveDisabled={busy}
+          saveTestID="staff-save"
         />
       }
     />

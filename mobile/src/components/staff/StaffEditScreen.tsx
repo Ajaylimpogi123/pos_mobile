@@ -4,13 +4,14 @@ import { StyleSheet, Text, type TextInput } from 'react-native';
 import { RolePickerField } from '@/components/staff/RolePickerField';
 import { StaffSecurityCard } from '@/components/staff/StaffSecurityCard';
 import { StaffSecurityDialogs } from '@/components/staff/StaffSecurityDialogs';
+import { FormFooter } from '@/components/shared/FormFooter';
 import { FormLayout } from '@/components/shared/FormLayout';
 import { FormSection } from '@/components/shared/FormSection';
-import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Input } from '@/components/ui/Input';
 import { SwitchRow } from '@/components/ui/SwitchRow';
+import { focusField } from '@/components/ui/ErrorSummary';
 import { ROUTES } from '@/constants/routes';
 import { colors, spacing, typography } from '@/constants/theme';
 import { STAFF_LIMITS } from '@/hooks/staff/staffRules';
@@ -20,6 +21,7 @@ import type { StaffUpdateRequest, StaffUser } from '@/services/types';
 import { updateSessionProfile } from '@/services/session';
 import { formatLastLogin } from '@/utils/dates';
 import { goBackOr } from '@/utils/navigation';
+import { showToast } from '@/stores/toast';
 
 type StaffEditScreenProps = {
   staff: StaffUser;
@@ -52,12 +54,15 @@ export function StaffEditScreen({ staff, isSelf }: StaffEditScreenProps) {
       if (isSelf && (changes.name !== undefined || changes.email !== undefined)) {
         void updateSessionProfile({ name: user.name, email: user.email });
       }
+      // MASTER §6: save success is a toast.
+      showToast('Staff saved.');
       backToList();
     },
     onDeleted: backToList,
   });
   const user = form.saved ?? staff;
   // Keyboard "Next" moves through the fields.
+  const staffNameRef = useRef<TextInput>(null);
   const staffEmailRef = useRef<TextInput>(null);
   const security = useStaffSecurity({
     staff: user,
@@ -75,6 +80,19 @@ export function StaffEditScreen({ staff, isSelf }: StaffEditScreenProps) {
       subtitle={user.name}
       onBack={backToList}
       banner={form.bannerError}
+      fieldErrors={fieldErrors}
+      onSelectError={(field) => focusField(field, { name: staffNameRef, email: staffEmailRef })}
+      footer={
+          <FormFooter
+            onCancel={backToList}
+            cancelDisabled={form.submitting}
+            saveTitle={"Save changes"}
+            onSave={form.submit}
+            saving={form.submitting}
+            saveDisabled={working}
+            saveTestID="staff-save"
+          />
+      }
       notice={security.notice}
       testID="staff-edit-screen"
       main={
@@ -93,6 +111,7 @@ export function StaffEditScreen({ staff, isSelf }: StaffEditScreenProps) {
               returnKeyType="next"
               submitBehavior="submit"
               onSubmitEditing={() => staffEmailRef.current?.focus()}
+              ref={staffNameRef}
               testID="staff-name"
             />
             <Input
@@ -132,15 +151,6 @@ export function StaffEditScreen({ staff, isSelf }: StaffEditScreenProps) {
               Last login: {formatLastLogin(user.last_login_at)}
             </Text>
           </FormSection>
-          <Button
-            title="Save changes"
-            leftIcon="checkmark"
-            size="lg"
-            onPress={form.submit}
-            loading={form.submitting}
-            disabled={working}
-            testID="staff-save"
-          />
         </>
       }
       aside={

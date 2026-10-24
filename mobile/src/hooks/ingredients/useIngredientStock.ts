@@ -29,8 +29,8 @@ import type {
   IngredientMovementType,
   StockStatusFilter,
 } from '@/services/types';
-import { formatQtyUnit, parseQtyInput, qtyProblemMessage } from '@/utils/quantity';
-import { ingredientUnitChoices, type UnitChoices } from '@/utils/units';
+import { formatQtyUnit, parseQtyInput, qtyProblemMessage } from '@pos/core/quantity';
+import { ingredientUnitChoices, type UnitChoices } from '@pos/core/units';
 
 /** Ingredients per page on the stock list and the history. */
 export const INGREDIENT_STOCK_PAGE_SIZE = 25;

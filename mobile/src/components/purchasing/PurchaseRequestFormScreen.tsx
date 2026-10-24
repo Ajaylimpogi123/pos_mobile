@@ -4,8 +4,10 @@ import { StyleSheet, Text, View, type TextInput } from 'react-native';
 import { ItemPickerField, SupplierPickerField } from '@/components/purchasing/PurchasePickers';
 import { PURCHASING_OFFLINE_MESSAGE } from '@/components/purchasing/purchasingLabels';
 import { DateField } from '@/components/shared/DateField';
+import { FormFooter } from '@/components/shared/FormFooter';
 import { FormLayout } from '@/components/shared/FormLayout';
 import { FormSection } from '@/components/shared/FormSection';
+import { useFieldInputs } from '@/components/ui/ErrorSummary';
 import { QtyUnitField } from '@/components/units/QtyUnitField';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
@@ -15,8 +17,8 @@ import { colors, numeric, radius, spacing, typography } from '@/constants/theme'
 import { PR_LIMITS, usePurchaseRequestForm, type PrItemDraft, type PurchaseRequestFormState } from '@/hooks/purchasing/usePurchaseRequestForm';
 import { useIsOnline } from '@/hooks/useIsOnline';
 import type { PurchaseRequest } from '@/services/types';
-import { formatPeso, parsePesoInput } from '@/utils/money';
-import { lineTotalCents, parseQtyInput } from '@/utils/quantity';
+import { formatPeso, parsePesoInput } from '@pos/core/money';
+import { lineTotalCents, parseQtyInput } from '@pos/core/quantity';
 
 /** `Est. ₱2,400.00` from the typed price × qty (`round_half_up`, integer centavos); `null` until both read. */
 function estimateText(draft: PrItemDraft): string | null {
@@ -27,7 +29,16 @@ function estimateText(draft: PrItemDraft): string | null {
   return total === null ? null : `Est. ${formatPeso(total)} for ${qty.value} ${draft.unit}`;
 }
 
-function ItemEditor({ form, draft, index, disabled }: { form: PurchaseRequestFormState; draft: PrItemDraft; index: number; disabled: boolean }) {
+type ItemEditorProps = {
+  form: PurchaseRequestFormState;
+  draft: PrItemDraft;
+  index: number;
+  disabled: boolean;
+  /** The error summary focuses a line's quantity through this (`items.<n>.qty`). */
+  register: (field: string) => (input: TextInput | null) => void;
+};
+
+function ItemEditor({ form, draft, index, disabled, register }: ItemEditorProps) {
   const at = `items.${index}`;
   const choices = form.choicesOf(draft);
   const estimate = estimateText(draft);
@@ -81,6 +92,7 @@ function ItemEditor({ form, draft, index, disabled }: { form: PurchaseRequestFor
           returnKeyType="next"
           submitBehavior="submit"
           onSubmitEditing={() => priceRef.current?.focus()}
+          inputRef={register(`${at}.qty`)}
           testID={testID}
         />
       ) : (
@@ -139,8 +151,27 @@ type PurchaseRequestFormScreenProps = {
  * the items; otherwise one column. Save disables while in flight; a
  * network error keeps the ULID and Save becomes **Retry**. Needs a connection.
  */
+const PR_FIELD_LABELS: Readonly<Record<string, string>> = {
+  items: 'Items',
+  date_needed: 'Date needed',
+  remarks: 'Remarks',
+  item_id: 'Item',
+  supplier_id: 'Supplier',
+  qty: 'Quantity',
+  unit: 'Unit',
+  estimated_unit_price_cents: 'Estimated price',
+};
+
+/** The summary label of a PR field: `items.1.qty` → "Line 2: Quantity". */
+export function prFieldLabel(field: string): string | undefined {
+  const line = /^items\.(\d+)\.(.+)$/.exec(field);
+  if (line) return `Line ${Number(line[1]) + 1}: ${PR_FIELD_LABELS[line[2]] ?? line[2]}`;
+  return PR_FIELD_LABELS[field];
+}
+
 export function PurchaseRequestFormScreen({ request, onBack, onSaved }: PurchaseRequestFormScreenProps) {
   const form = usePurchaseRequestForm({ initial: request, onSaved });
+  const fields = useFieldInputs();
   const online = useIsOnline();
   const disabled = form.busy || form.locked || !online;
 
@@ -153,6 +184,20 @@ export function PurchaseRequestFormScreen({ request, onBack, onSaved }: Purchase
       subtitle={request?.pr_no ?? null}
       onBack={onBack}
       banner={form.banner}
+      fieldErrors={form.errors}
+      fieldLabels={prFieldLabel}
+      onSelectError={fields.focus}
+      footer={
+          <FormFooter
+            onCancel={onBack}
+            cancelDisabled={form.busy}
+            saveTitle={saveLabel}
+            onSave={form.submit}
+            saving={form.busy}
+            saveDisabled={form.busy || !online}
+            saveTestID="pr-save"
+          />
+      }
       asidePlacement="start"
       testID="pr-form-screen"
       aside={
@@ -176,7 +221,7 @@ export function PurchaseRequestFormScreen({ request, onBack, onSaved }: Purchase
           {online ? null : <Banner variant="warning" message={PURCHASING_OFFLINE_MESSAGE} testID="pr-form-offline" />}
           {form.errors.items ? <Banner message={form.errors.items} testID="pr-items-error" /> : null}
           {form.values.items.map((draft, index) => (
-            <ItemEditor key={draft.key} form={form} draft={draft} index={index} disabled={disabled} />
+            <ItemEditor key={draft.key} form={form} draft={draft} index={index} disabled={disabled} register={fields.register} />
           ))}
           <Button
             title="Add item"
@@ -185,15 +230,6 @@ export function PurchaseRequestFormScreen({ request, onBack, onSaved }: Purchase
             onPress={form.addItem}
             disabled={disabled || form.values.items.length >= PR_LIMITS.items}
             testID="pr-add-item"
-          />
-          <Button
-            title={saveLabel}
-            leftIcon={form.locked ? 'refresh' : 'checkmark'}
-            size="lg"
-            onPress={form.submit}
-            loading={form.busy}
-            disabled={form.busy || !online}
-            testID="pr-save"
           />
         </>
       }

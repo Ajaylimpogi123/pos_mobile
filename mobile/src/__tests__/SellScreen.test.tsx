@@ -107,12 +107,16 @@ describe('before the first sync', () => {
 });
 
 describe('the menu', () => {
-  it('tablet landscape: a category rail beside 4 tiles per row, in menu order (sort_order, then name), with prices', async () => {
+  it('tablet landscape: category tab tiles above 4 product cards per row, in menu order (sort_order, then name), with prices', async () => {
     await storeMenu();
     await renderSell();
 
-    expect(screen.getByTestId('sell-category-rail')).toBeOnTheScreen();
-    expect(screen.getByTestId('sell-category-1')).toHaveTextContent(/Breakfast.*2/);
+    expect(screen.getByTestId('sell-categorys')).toBeOnTheScreen();
+    expect(screen.getByTestId('sell-category-all')).toHaveTextContent(/All/);
+    expect(screen.getByTestId('sell-category-all').props.accessibilityRole).toBe('tab');
+    expect(screen.getByTestId('sell-category-1')).toHaveTextContent(/Breakfast.*2 items/);
+    // The search sits on the band, with its visible label.
+    expect(screen.getByTestId('sell-search-group-label')).toHaveTextContent('Search');
     // Every seed product has sort_order 0, so they are ordered by name.
     expect(tileIds()).toEqual(['product-tile-5', 'product-tile-1', 'product-tile-3', 'product-tile-2', 'product-tile-4']);
     expect(screen.getByTestId('product-tile-1')).toHaveTextContent(/Egg with Rice/);
@@ -176,12 +180,11 @@ describe('the menu', () => {
     expect(screen.getByTestId('sell-category-1')).toHaveTextContent(/Breakfast.*1/);
   });
 
-  it('phone portrait: a category chip row above 2 tiles per row; rotating keeps the search text', async () => {
+  it('phone portrait: the category tiles above 2 cards per row; rotating keeps the search text', async () => {
     setWindowSize(REFERENCE_SIZES.phonePortrait.width, REFERENCE_SIZES.phonePortrait.height);
     await storeMenu();
     await renderSell();
 
-    expect(screen.queryByTestId('sell-category-rail')).toBeNull();
     expect(screen.getByTestId('sell-categorys')).toBeOnTheScreen();
     // 5 tiles in rows of 2.
     expect(screen.getAllByTestId('sell-tile-cell')).toHaveLength(6);
@@ -190,7 +193,7 @@ describe('the menu', () => {
     await waitFor(() => expect(tileIds()).toEqual(['product-tile-4']));
 
     await act(async () => setWindowSize(REFERENCE_SIZES.tabletLandscape.width, REFERENCE_SIZES.tabletLandscape.height));
-    expect(screen.getByTestId('sell-category-rail')).toBeOnTheScreen();
+    expect(screen.getByTestId('sell-categorys')).toBeOnTheScreen();
     expect(screen.getByTestId('sell-search').props.value).toBe('tea');
     expect(tileIds()).toEqual(['product-tile-4']);
   });

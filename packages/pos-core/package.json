@@ -1,0 +1,10 @@
+{
+  "name": "@pos/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Platform-free POS rules shared by the tablet app (mobile/) and the web POS (web/): contract types, money, pricing, discounts, SC/PWD, payments, order numbers and the ESC/POS printed documents.",
+  "sideEffects": false,
+  "exports": {
+    "./*": "./src/*.ts"
+  }
+}

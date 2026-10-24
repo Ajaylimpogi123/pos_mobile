@@ -17,8 +17,8 @@ type DialogFrameProps = {
 export const SUPPORTED_ORIENTATIONS = ['portrait', 'portrait-upside-down', 'landscape', 'landscape-left', 'landscape-right'] as const;
 
 /**
- * The shared modal shell for dialogs: a dimmed backdrop and a centred white
- * card (max 440 wide) with large radii. It scrolls when a short landscape
+ * The shared modal shell for dialogs (MASTER §3): a 50 % black backdrop and a
+ * centred white card (max 440 wide, radius 16). It scrolls when a short landscape
  * screen can't fit it, and a KeyboardAvoidingView keeps inputs above the
  * keyboard (`padding` on iOS; Android resizes the window itself).
  */

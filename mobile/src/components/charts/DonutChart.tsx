@@ -5,7 +5,7 @@ import Svg, { Path } from 'react-native-svg';
 import { ChartFrame, ChartTooltip, Legend, type LegendItem, type TableData } from '@/components/charts/ChartParts';
 import { donutSlices, sliceAt } from '@/components/charts/chartMath';
 import { chart, colors, opacity, typography } from '@/constants/theme';
-import { formatCount } from '@/utils/numbers';
+import { formatCount } from '@pos/core/numbers';
 
 export type DonutDatum = {
   key: string;

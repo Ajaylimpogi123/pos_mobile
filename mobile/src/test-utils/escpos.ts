@@ -7,7 +7,7 @@
  * - `printedLines(bytes)`: just the printed lines (commands removed), for layout checks.
  * Unknown bytes below 0x20 throw, so a stray control character fails the test.
  */
-import { decodeCp437Byte } from '@/printing/escpos/cp437';
+import { decodeCp437Byte } from '@pos/core/printing/escpos/cp437';
 
 const ALIGN = ['[LEFT]', '[CENTER]', '[RIGHT]'];
 

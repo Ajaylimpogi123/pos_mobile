@@ -75,6 +75,8 @@ it('gives a cashier the full config of their branch, disabled printers included'
             'auto_print_receipt' => true,
             'receipt_copies' => 1,
             'print_kitchen_tickets' => true,
+            'dine_in_enabled' => false,
+            'service_charge_bps' => 0,
             'updated_at' => null,
         ],
         'printers' => [

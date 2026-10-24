@@ -1,11 +1,16 @@
 import { Fragment } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import logo from '@/assets/images/logo.png';
 import { SidebarItem } from '@/components/shell/SidebarItem';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import type { ModuleDefinition, ModuleGroup, ModuleKey } from '@/constants/modules';
-import { hitTarget, iconSizes, pressedScale, radius, sidebar, sizes, spacing, typography } from '@/constants/theme';
+import { colors, hitTarget, iconSizes, pressedScale, radius, sidebar, sizes, spacing, typography } from '@/constants/theme';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import type { AuthUser } from '@/services/types';
+
+/** The restaurant's name beside / under the logo. */
+export const BRAND_NAME = "Mama Bing's";
 
 export type SidebarChevron = {
   icon: IconName;
@@ -22,9 +27,9 @@ type SidebarProps = {
   onSelect: (module: ModuleDefinition) => void;
   /** The small round chevron near the top (collapse / expand / close). */
   chevron: SidebarChevron | null;
-  /** Opens the PIN quick-switch (another staff member takes over this device). */
-  onSwitchUser: () => void;
   onLogout: () => void;
+  /** The dark **New sale** button under the logo (icon-only in the rail). Omit to hide it. */
+  onNewSale?: () => void;
   /** Short heights: a smaller logo mark. */
   compact?: boolean;
   testID?: string;
@@ -41,6 +46,7 @@ function initialsOf(name: string): string {
 }
 
 function Chevron({ chevron }: { chevron: SidebarChevron }) {
+  const reduceMotion = useReducedMotion();
   return (
     <Pressable
       accessibilityRole="button"
@@ -51,7 +57,7 @@ function Chevron({ chevron }: { chevron: SidebarChevron }) {
       style={({ pressed }) => [
         styles.chevron,
         { backgroundColor: pressed ? sidebar.colors.chevronPressed : sidebar.colors.chevron },
-        pressed && styles.pressed,
+        pressed && !reduceMotion && styles.pressed,
       ]}
     >
       <Icon name={chevron.icon} size={iconSizes.sm} color={sidebar.colors.text} />
@@ -69,6 +75,7 @@ type FooterActionProps = {
 };
 
 function FooterAction({ icon, label, hint, rail, onPress, testID }: FooterActionProps) {
+  const reduceMotion = useReducedMotion();
   return (
     <Pressable
       accessibilityRole="button"
@@ -79,7 +86,7 @@ function FooterAction({ icon, label, hint, rail, onPress, testID }: FooterAction
       style={({ pressed }) => [
         rail ? styles.footerRound : styles.footerAction,
         { backgroundColor: pressed ? sidebar.colors.footerActionPressed : sidebar.colors.footerAction },
-        pressed && styles.pressed,
+        pressed && !reduceMotion && styles.pressed,
       ]}
     >
       <Icon name={icon} size={iconSizes.md} color={sidebar.colors.itemText} />
@@ -92,14 +99,41 @@ function FooterAction({ icon, label, hint, rail, onPress, testID }: FooterAction
   );
 }
 
+/** The dark neutral **New sale** button (MASTER §3 dark button): icon-only in the rail. */
+function NewSaleButton({ rail, onPress }: { rail: boolean; onPress: () => void }) {
+  const reduceMotion = useReducedMotion();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="New sale"
+      onPress={onPress}
+      testID="sidebar-new-sale"
+      style={({ pressed }) => [
+        rail ? styles.newSaleRail : styles.newSale,
+        { backgroundColor: pressed ? colors.darkPressed : colors.dark },
+        pressed && !reduceMotion && styles.pressed,
+      ]}
+    >
+      <Icon name="add" size={iconSizes.md} color={colors.onDark} />
+      {rail ? null : (
+        <Text style={styles.newSaleText} numberOfLines={1}>
+          New sale
+        </Text>
+      )}
+    </Pressable>
+  );
+}
+
 /**
- * The app-shell sidebar panel (Sidebar board): flat and white with a hairline
- * right border, the brand block on top (emerald logo tile, name, branch), a
- * small round chevron, the permitted modules under uppercase group labels
- * (Main, Catalogue, People, Insights, System), and the user block at the
- * bottom (avatar, name, role, Switch user, Log out). The active module is a
- * soft-green pill. The rail centres icon-only buttons with dividers between
- * groups. Everything scrolls on short heights (e.g. phone landscape).
+ * The app-shell sidebar (MASTER §2.1 / §2.2 / §6), on the `sidebar` background:
+ * - the round Mama Bing's logo (64 in the panel, 40 in the rail) and a small
+ *   round chevron (open / close the labelled panel);
+ * - the dark **New sale** button (icon-only in the rail);
+ * - the permitted modules in the §6 groups (the first group has no heading),
+ *   the active one on the `accent` fill; the rail shows icon-only 48 dp
+ *   buttons (each with its label for screen readers) and dividers between groups;
+ * - the user tile (avatar, name, role) and Log out at the bottom.
+ * Everything scrolls on short heights (e.g. phone landscape).
  */
 export function Sidebar({
   variant,
@@ -108,8 +142,8 @@ export function Sidebar({
   user,
   onSelect,
   chevron,
-  onSwitchUser,
   onLogout,
+  onNewSale,
   compact = false,
   testID = 'sidebar',
 }: SidebarProps) {
@@ -126,19 +160,18 @@ export function Sidebar({
         accessibilityLabel="Navigation"
       >
         <View style={[styles.brand, rail && styles.brandRail]}>
-          <View
+          <Image
+            source={logo}
             style={[styles.logo, { width: logoSize, height: logoSize }]}
             accessible
             accessibilityRole="image"
-            accessibilityLabel="Restaurant POS"
+            accessibilityLabel={BRAND_NAME}
             testID={`${testID}-logo`}
-          >
-            <Icon name="leaf-outline" size={iconSizes.md} color={sidebar.colors.logoText} />
-          </View>
+          />
           {rail ? null : (
             <View style={styles.brandText}>
               <Text style={styles.brandTitle} numberOfLines={1}>
-                Restaurant POS
+                {BRAND_NAME}
               </Text>
               <Text style={styles.brandSubtitle} numberOfLines={1}>
                 {user.branch.name}
@@ -147,12 +180,13 @@ export function Sidebar({
           )}
           {chevron ? <Chevron chevron={chevron} /> : null}
         </View>
+        {onNewSale ? <NewSaleButton rail={rail} onPress={onNewSale} /> : null}
 
         {groups.map((group, index) => (
           <Fragment key={group.key}>
             {rail && index > 0 ? <View style={styles.divider} /> : null}
             <View style={styles.group} testID={`sidebar-group-${group.key}`}>
-              {rail ? null : (
+              {rail || group.label === '' ? null : (
                 <Text style={styles.groupLabel} accessibilityRole="header">
                   {group.label}
                 </Text>
@@ -193,14 +227,6 @@ export function Sidebar({
               </View>
             </View>
           )}
-          <FooterAction
-            icon="people-circle-outline"
-            label="Switch user"
-            hint="Another staff member signs in on this device with their PIN"
-            rail={rail}
-            onPress={onSwitchUser}
-            testID="sidebar-switch-user"
-          />
           <FooterAction icon="log-out-outline" label="Log out" rail={rail} onPress={onLogout} testID="sidebar-logout" />
         </View>
       </ScrollView>
@@ -239,10 +265,31 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   logo: {
+    borderRadius: radius.pill,
+  },
+  newSale: {
+    minHeight: hitTarget.min,
     borderRadius: radius.md,
-    backgroundColor: sidebar.colors.logo,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  newSaleRail: {
+    width: sidebar.railItemSize,
+    height: sidebar.railItemSize,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: spacing.xs,
+  },
+  newSaleText: {
+    ...typography.label,
+    color: colors.onDark,
+    flexShrink: 1,
   },
   brandText: {
     flex: 1,
@@ -270,7 +317,6 @@ const styles = StyleSheet.create({
   groupLabel: {
     ...typography.overline,
     color: sidebar.colors.groupLabel,
-    textTransform: 'uppercase',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.xs,

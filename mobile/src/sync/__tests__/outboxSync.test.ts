@@ -74,7 +74,7 @@ function deps(overrides: Partial<OutboxSyncDeps> = {}): OutboxSyncDeps & { send:
   return {
     repository: offlineRepository,
     send: jest.fn(async (body: SyncOrdersRequest) => acceptAll(body)),
-    register: jest.fn(async () => ({ id: 1, code: 'T01', name: 'Tab' })),
+    register: jest.fn(async () => ({ id: 1, code: 'T01', name: 'Tab', platform: 'android' as const })),
     isOnline: async () => true,
     isSignedIn: () => true,
     prepareDatabase: async () => true,

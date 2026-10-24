@@ -7,7 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * The POST /api/v1/devices/register body (Phase 5): `{ id, code, name }`.
+ * The POST /api/v1/devices/register body (Phase 5): `{ id, code, name, platform }`
+ * (`platform` since Web POS → C).
  *
  * @mixin Device
  */
@@ -25,6 +26,7 @@ class DeviceResource extends JsonResource
             'id' => $device->id,
             'code' => $device->code,
             'name' => $device->name,
+            'platform' => $device->platform,
         ];
     }
 }

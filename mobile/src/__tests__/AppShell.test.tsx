@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { router, usePathname } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Text } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { AppShell } from '@/components/shell/AppShell';
 import { MenuButton } from '@/components/shell/MenuButton';
@@ -65,7 +65,8 @@ describe('sidebar modes per size', () => {
     ['phone landscape', REFERENCE_SIZES.phoneLandscape, 'rail'],
     ['small phone landscape', REFERENCE_SIZES.phoneLandscapeSmall, 'rail'],
     ['tablet portrait', REFERENCE_SIZES.tabletPortrait, 'rail'],
-    ['tablet landscape', REFERENCE_SIZES.tabletLandscape, 'expanded'],
+    // MASTER §6: the tablet keeps the 64 dp rail in landscape too.
+    ['tablet landscape', REFERENCE_SIZES.tabletLandscape, 'rail'],
   ])('%s → %s', async (_label, size, mode) => {
     expect(getResponsive(size.width, size.height).sidebarMode).toBe(mode);
 
@@ -82,28 +83,41 @@ describe('sidebar modes per size', () => {
     }
   });
 
-  it('tablet landscape: the chevron collapses to the rail and back, and the choice is remembered', async () => {
-    const store = secureStoreMock();
+  it('tablet landscape: a 64 dp rail with the logo, and its chevron opens the 256 dp labelled panel as an overlay', async () => {
     await renderShell();
 
-    await fireEvent.press(screen.getByTestId('sidebar-chevron'));
-    expect(screen.getByTestId('sidebar-rail')).toBeOnTheScreen();
-    expect(store.setItemAsync).toHaveBeenCalledWith('pos.ui.sidebar_collapsed', '1');
+    const rail = screen.getByTestId('sidebar-rail');
+    expect(StyleSheet.flatten(rail.props.style).width).toBe(64);
+    expect(screen.getByTestId('sidebar-logo').props.accessibilityLabel).toBe("Mama Bing's");
+    // The rail is icon-only: each item keeps its label for screen readers.
+    expect(screen.getByTestId('sidebar-item-customers').props.accessibilityLabel).toBe('Customers');
+    expect(screen.queryByTestId('nav-overlay')).toBeNull();
 
     await fireEvent.press(screen.getByTestId('sidebar-chevron'));
-    expect(screen.getByTestId('sidebar-expanded')).toBeOnTheScreen();
-    expect(store.setItemAsync).toHaveBeenLastCalledWith('pos.ui.sidebar_collapsed', '0');
+    const overlay = screen.getByTestId('nav-overlay');
+    expect(within(overlay).getByTestId('sidebar-item-customers')).toHaveTextContent(/Customers$/);
+    expect(StyleSheet.flatten(screen.getByTestId('nav-overlay-panel').props.style).width).toBe(256);
   });
 
-  it('starts collapsed when that was the saved preference, and falls back to expanded if storage fails', async () => {
-    await secureStoreMock().setItemAsync('pos.ui.sidebar_collapsed', '1');
-    const first = await renderShell();
-    expect(await screen.findByTestId('sidebar-rail')).toBeOnTheScreen();
-    await first.unmount();
-
-    secureStoreMock().getItemAsync.mockRejectedValueOnce(new Error('keystore unavailable'));
+  it('the content sits in the inset panel (8 dp margin, radius 12) beside the rail; full-bleed in drawer mode', async () => {
     await renderShell();
-    expect(screen.getByTestId('sidebar-expanded')).toBeOnTheScreen();
+    const inset = StyleSheet.flatten(screen.getByTestId('app-content').props.style);
+    expect(inset).toMatchObject({ margin: 8, borderRadius: 12 });
+
+    await act(async () => setSize(REFERENCE_SIZES.phonePortrait));
+    expect(StyleSheet.flatten(screen.getByTestId('app-content').props.style).margin).toBeUndefined();
+  });
+
+  it('the dark New sale button under the logo opens Sell, for users who can sell', async () => {
+    await renderShell();
+    const newSale = screen.getByTestId('sidebar-new-sale');
+    expect(newSale.props.accessibilityLabel).toBe('New sale');
+    await fireEvent.press(newSale);
+    expect(router.navigate).toHaveBeenCalledWith('/sell');
+
+    useSessionStore.getState().setSignedIn({ ...cashierUser, permissions: [] }, FUTURE);
+    await renderShell();
+    expect(screen.queryByTestId('sidebar-new-sale')).toBeNull();
   });
 
   it('tablet portrait: the rail chevron opens the expanded panel as an overlay; the scrim closes it', async () => {
@@ -153,7 +167,7 @@ describe('sidebar modes per size', () => {
     expect(screen.getByTestId('content-counter')).toHaveTextContent('Taps: 2');
 
     await act(async () => setSize(REFERENCE_SIZES.phonePortrait));
-    expect(screen.queryByTestId('sidebar-expanded')).toBeNull();
+    expect(screen.queryByTestId('sidebar-rail')).toBeNull();
     expect(screen.getByTestId('content-counter')).toHaveTextContent('Taps: 2');
 
     await act(async () => setSize(REFERENCE_SIZES.tabletPortrait));
@@ -168,35 +182,42 @@ describe('sidebar modules', () => {
 
     const ids = screen.getAllByTestId(/^sidebar-item-[a-z_]+$/).map((item) => item.props.testID);
     expect(ids).toEqual([
+      // MASTER §6: (no heading) Dashboard, POS, Order History, Shifts …
       'sidebar-item-dashboard',
       'sidebar-item-sell',
       'sidebar-item-orders',
       'sidebar-item-shifts',
-      'sidebar-item-menu',
-      // Ingredients, Recipes & Purchasing: Ingredients in Catalogue, and the Purchasing group.
+      // Catalogue: Products, Categories, Ingredients
+      'sidebar-item-products',
+      'sidebar-item-categories',
       'sidebar-item-ingredients',
+      // Stock: Inventory, Purchasing (requests, orders, receiving), Suppliers
       'sidebar-item-inventory',
       'sidebar-item-purchase_requests',
       'sidebar-item-purchase_orders',
       'sidebar-item-receiving',
       'sidebar-item-suppliers',
+      // People & reports
       'sidebar-item-customers',
       'sidebar-item-staff',
       'sidebar-item-reports',
+      // Settings: Printers, Settings, This tablet (Devices and Error log need `system.manage`), Sync queue
       'sidebar-item-printers',
       'sidebar-item-settings',
+      'sidebar-item-device',
       'sidebar-item-sync',
     ]);
-    for (const group of ['main', 'catalogue', 'purchasing', 'people', 'insights', 'system']) {
+    for (const group of ['main', 'catalogue', 'stock', 'people', 'settings']) {
       expect(screen.getByTestId(`sidebar-group-${group}`)).toBeOnTheScreen();
     }
+    expect(visibleModuleGroups(managerUser).map((group) => group.label)).toEqual(['', 'Catalogue', 'Stock', 'People & reports', 'Settings']);
   });
 
   it('hides Menu, Inventory and Staff from a cashier, who still sees Sell, Orders and Customers (not Shifts or Reports)', async () => {
     useSessionStore.getState().setSignedIn(cashierUser, FUTURE);
     await renderShell();
 
-    expect(screen.queryByTestId('sidebar-item-menu')).toBeNull();
+    expect(screen.queryByTestId('sidebar-item-products')).toBeNull();
     expect(screen.queryByTestId('sidebar-item-staff')).toBeNull();
     expect(screen.getByTestId('sidebar-item-customers')).toBeOnTheScreen();
     // Sell is ready for every signed-in user since Phase 2; Orders since Phase 3 (the cashier has `sale.create`).
@@ -212,7 +233,7 @@ describe('sidebar modules', () => {
     // The catalogue group (Menu, Ingredients, Inventory) and Purchasing are empty for a cashier, so they are dropped.
     expect(screen.queryByTestId('sidebar-item-ingredients')).toBeNull();
     expect(screen.queryByTestId('sidebar-item-purchase_requests')).toBeNull();
-    expect(visibleModuleGroups(cashierUser).map((group) => group.key)).toEqual(['main', 'people', 'system']);
+    expect(visibleModuleGroups(cashierUser).map((group) => group.key)).toEqual(['main', 'people', 'settings']);
   });
 
   it('Inventory is ready: it navigates to /inventory for report.view alone too, and marks /inventory/9 active', async () => {
@@ -238,7 +259,8 @@ describe('sidebar modules', () => {
     expect(screen.getByTestId('sidebar-item-staff')).toBeSelected();
     expect(screen.getByTestId('sidebar-item-dashboard')).not.toBeSelected();
     expect(activeModuleKey('/')).toBe('dashboard');
-    expect(activeModuleKey('/menu/categories/2')).toBe('menu');
+    expect(activeModuleKey('/menu/categories/2')).toBe('categories');
+    expect(activeModuleKey('/menu/products/new')).toBe('products');
     expect(activeModuleKey('/customers')).toBe('customers');
     expect(activeModuleKey('/sell')).toBe('sell');
     expect(activeModuleKey('/menu-something')).toBe('dashboard');
@@ -247,8 +269,10 @@ describe('sidebar modules', () => {
   it('navigates to a ready module; pressing the active root module does nothing', async () => {
     await renderShell();
 
-    await fireEvent.press(screen.getByTestId('sidebar-item-menu'));
+    await fireEvent.press(screen.getByTestId('sidebar-item-products'));
     expect(router.navigate).toHaveBeenLastCalledWith('/menu/products');
+    await fireEvent.press(screen.getByTestId('sidebar-item-categories'));
+    expect(router.navigate).toHaveBeenLastCalledWith('/menu/categories');
     await fireEvent.press(screen.getByTestId('sidebar-item-staff'));
     expect(router.navigate).toHaveBeenLastCalledWith('/staff');
     await fireEvent.press(screen.getByTestId('sidebar-item-sell'));
@@ -259,18 +283,18 @@ describe('sidebar modules', () => {
     expect(router.navigate).not.toHaveBeenCalled();
   });
 
-  it('every item is at least 44×44', async () => {
+  it('every rail item is 48×48 and every panel row at least 44 high', async () => {
     await renderShell();
     const flatten = (style: unknown): Record<string, number> =>
       Array.isArray(style) ? Object.assign({}, ...style.map(flatten)) : ((style ?? {}) as Record<string, number>);
 
-    const pill = flatten(screen.getByTestId('sidebar-item-customers').props.style);
-    expect(pill.minHeight).toBeGreaterThanOrEqual(44);
+    const round = flatten(screen.getByTestId('sidebar-item-customers').props.style);
+    expect(round.width).toBeGreaterThanOrEqual(48);
+    expect(round.height).toBeGreaterThanOrEqual(48);
 
     await fireEvent.press(screen.getByTestId('sidebar-chevron'));
-    const round = flatten(screen.getByTestId('sidebar-item-customers').props.style);
-    expect(round.width).toBeGreaterThanOrEqual(44);
-    expect(round.height).toBeGreaterThanOrEqual(44);
+    const pill = flatten(within(screen.getByTestId('nav-overlay')).getByTestId('sidebar-item-customers').props.style);
+    expect(pill.minHeight).toBeGreaterThanOrEqual(44);
   });
 
   it('shows the user and role in the footer, and logs out after confirmation', async () => {
@@ -278,8 +302,14 @@ describe('sidebar modules', () => {
     fetchMock.mockResolvedValueOnce(mockResponse(204));
     await renderShell();
 
-    expect(screen.getByTestId('sidebar-user')).toHaveTextContent(/Mia Manager/);
-    expect(screen.getByTestId('sidebar-role')).toHaveTextContent(/Manager$/);
+    // The rail shows the initials; the labelled panel shows the name and the role.
+    expect(screen.getByTestId('sidebar-user').props.accessibilityLabel).toMatch(/^Mia Manager, /);
+    await fireEvent.press(screen.getByTestId('sidebar-chevron'));
+    const overlay = screen.getByTestId('nav-overlay');
+    expect(within(overlay).getByTestId('sidebar-user')).toHaveTextContent(/Mia Manager/);
+    expect(within(overlay).getByTestId('sidebar-role')).toHaveTextContent(/Manager$/);
+    await fireEvent.press(screen.getByTestId('nav-overlay-scrim', { includeHiddenElements: true }));
+    await waitFor(() => expect(screen.queryByTestId('nav-overlay')).toBeNull());
 
     await fireEvent.press(screen.getByTestId('sidebar-logout'));
     expect(screen.getByTestId('logout-dialog')).toHaveTextContent(/email and password/);

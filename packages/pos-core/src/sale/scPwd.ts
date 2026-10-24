@@ -12,9 +12,9 @@
  *
  * Pure functions; the amounts are in `@/sale/pricing`.
  */
-import { SC_PWD_RATE_BPS, type PricingScPwd } from '@/sale/pricing';
-import type { SaleDiscount, ScPwdMode, ScPwdPerson, ScPwdPersonType, ScPwdRequest } from '@/services/types';
-import { formatPercentValue } from '@/sale/discountRules';
+import { SC_PWD_RATE_BPS, type PricingScPwd } from './pricing';
+import type { SaleDiscount, ScPwdMode, ScPwdPerson, ScPwdPersonType, ScPwdRequest } from '../contract/types';
+import { formatPercentValue } from './discountRules';
 
 /** Contract limits: 1–10 persons, ID numbers max 30, diners up to 100. */
 export const SC_PWD_LIMITS = { maxPersons: 10, idNoMax: 30, maxDiners: 100 } as const;

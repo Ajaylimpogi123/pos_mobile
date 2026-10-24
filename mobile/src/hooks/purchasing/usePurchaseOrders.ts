@@ -22,9 +22,9 @@ import type {
   PurchaseOrderStatus,
   SupplierRef,
 } from '@/services/types';
-import { centsToInputText, parsePesoInput } from '@/utils/money';
-import { isWholeQty, parseQtyInput, PRODUCT_WHOLE_MESSAGE, qtyProblemMessage, toScaled } from '@/utils/quantity';
-import { findUnit, itemUnitChoices, type UnitChoices } from '@/utils/units';
+import { centsToInputText, parsePesoInput } from '@pos/core/money';
+import { isWholeQty, parseQtyInput, PRODUCT_WHOLE_MESSAGE, qtyProblemMessage, toScaled } from '@pos/core/quantity';
+import { findUnit, itemUnitChoices, type UnitChoices } from '@pos/core/units';
 
 /** Contract: a decline reason is required, max 255; remarks have no stated limit (255 is a UI cap). */
 export const PO_LIMITS = { reason: 255, remarks: 255 } as const;

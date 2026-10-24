@@ -9,7 +9,8 @@ use Illuminate\Database\Seeder;
 /**
  * Roles and permissions: identical in every environment. Idempotent: re-running it on
  * an existing database adds new permissions (e.g. `customer.manage`, `settings.manage`, `order.review`,
- * and the purchasing slugs `purchase.*` / `supplier.manage`) and re-syncs
+ * the purchasing slugs `purchase.*` / `supplier.manage`, and `system.manage` for Owner and
+ * Manager since Hardening & Pilot) and re-syncs
  * each role's grants, which also revokes grants a role no longer has (e.g. the
  * Manager's `purchase.approve`, owner-only since contract v1.20.2).
  */
@@ -39,6 +40,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'shift.close' => 'Close a cash shift',
         'shift.open' => 'Open a cash shift',
         'supplier.manage' => 'Manage suppliers',
+        'system.manage' => 'Manage tablets and the error log',
         'user.manage' => 'Manage staff accounts',
     ];
 

@@ -15,10 +15,9 @@ import { colors, hitTarget, iconSizes, radius, shadows, sizes, spacing, typograp
 type InputProps = Omit<TextInputProps, 'style' | 'placeholderTextColor'> & {
   label: string;
   /**
-   * `field`: a labelled form field. `search`: a light filled pill with no
-   * border and no visible label (the label stays the accessibility label).
-   * `searchSurface`: the same search in white with a hairline border (radius 12), for a
-   * search that sits on the page background.
+   * `field`: a labelled form field. `search` / `searchSurface`: a white
+   * search input with a hairline border (radius 8) and no visible label (the
+   * label stays the accessibility label; MASTER §4 allows that for search).
    */
   variant?: 'field' | 'search' | 'searchSurface';
   /** Validation message shown under the field (e.g. the first 422 message). */
@@ -34,8 +33,8 @@ type InputProps = Omit<TextInputProps, 'style' | 'placeholderTextColor'> & {
 type FocusEvent = NativeSyntheticEvent<TargetedEvent>;
 
 /**
- * Text input, 52 dp, radius 12: optional left icon and right accessory. Focus
- * shows a 2 px emerald border with a 4 px soft ring; an error shows a 2 px
+ * Text input, 48 dp, radius 8: optional left icon and right accessory. Focus
+ * shows a 2 px green border and the 2 px focus ring (MASTER §1.1); an error shows a 2 px
  * red border and the message under the field.
  */
 export function Input({
@@ -146,10 +145,10 @@ const styles = StyleSheet.create({
   },
   fieldSearch: {
     minHeight: hitTarget.primary,
-    borderRadius: radius.pill,
-    borderColor: colors.surfaceMuted,
-    backgroundColor: colors.surfaceMuted,
-    paddingLeft: spacing.lg,
+    borderRadius: radius.md,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingLeft: spacing.md,
   },
   fieldSearchSurface: {
     borderRadius: radius.md,

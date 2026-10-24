@@ -411,7 +411,7 @@ class RecipeStock
         $expression = ($relative ? "`{$column}` + " : '')."CASE `id`{$cases} END";
 
         DB::update(
-            "UPDATE `{$table}` SET `{$column}` = {$expression}, `updated_at` = ? WHERE `id` IN ({$placeholders})",
+            'UPDATE '.DB::getQueryGrammar()->wrapTable($table)." SET `{$column}` = {$expression}, `updated_at` = ? WHERE `id` IN ({$placeholders})",
             [...$bindings, $now, ...$ids],
         );
     }

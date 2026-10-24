@@ -8,9 +8,9 @@ import { menuKeys } from '@/hooks/menu/queryKeys';
 import { ingredientKeys, ingredientStockKeys } from '@/hooks/purchasing/queryKeys';
 import { setIngredientCost } from '@/services/ingredients';
 import type { DecimalValue, Ingredient, IngredientCostRequest } from '@/services/types';
-import { formatPeso, parsePesoInput } from '@/utils/money';
-import { costDisplayUnit, costForBaseUnits, costPerBaseUnit, formatCostRate, stockValueCents } from '@/utils/quantity';
-import { findUnit, type UnitChoices } from '@/utils/units';
+import { formatPeso, parsePesoInput } from '@pos/core/money';
+import { costDisplayUnit, costForBaseUnits, costPerBaseUnit, formatCostRate, stockValueCents } from '@pos/core/quantity';
+import { findUnit, type UnitChoices } from '@pos/core/units';
 
 /** §D1: `cost_cents` is an integer, 1 to 100,000,000 (₱1,000,000.00). */
 export const COST_CENTS_MAX = 100_000_000;

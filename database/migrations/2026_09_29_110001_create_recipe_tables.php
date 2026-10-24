@@ -67,9 +67,10 @@ return new class extends Migration
             $table->index(['branch_id', 'ingredient_id', 'occurred_at']);
         });
 
-        DB::statement('ALTER TABLE recipe_lines ADD CONSTRAINT recipe_lines_one_component_check CHECK ((ingredient_id IS NULL) <> (component_product_id IS NULL))');
-        DB::statement('ALTER TABLE order_item_components ADD CONSTRAINT order_item_components_one_component_check CHECK ((ingredient_id IS NULL) <> (product_id IS NULL))');
-        DB::statement('ALTER TABLE refund_item_components ADD CONSTRAINT refund_item_components_one_component_check CHECK ((ingredient_id IS NULL) <> (product_id IS NULL))');
+        foreach (['recipe_lines' => 'component_product_id', 'order_item_components' => 'product_id', 'refund_item_components' => 'product_id'] as $table => $product) {
+            DB::statement('ALTER TABLE '.DB::getQueryGrammar()->wrapTable($table)
+                ." ADD CONSTRAINT {$table}_one_component_check CHECK ((ingredient_id IS NULL) <> ({$product} IS NULL))");
+        }
     }
 
     /**

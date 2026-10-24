@@ -181,7 +181,7 @@ it('answers every group_by over a year of sales, voids and refunds in under 500 
         ->and(DB::table('refund_items')->count())->toBe($seeded['refunds']);
 
     // Committed data: refresh the optimizer statistics, as production tables have them.
-    DB::statement('ANALYZE TABLE orders, order_items, payments, users, refunds, refund_items, refund_payments');
+    analyzeTables('orders', 'order_items', 'payments', 'users', 'refunds', 'refund_items', 'refund_payments');
 
     $token = tokenFor($this->owner);
     $query = 'from=2025-09-27&to=2026-09-26&group_by=';
@@ -202,7 +202,7 @@ it('answers every group_by over a year of sales, voids and refunds in under 500 
         $log = DB::getQueryLog();
         DB::disableQueryLog();
 
-        $reportQueries = array_values(array_filter($log, fn (array $q) => str_contains($q['query'], '`orders`')));
+        $reportQueries = array_values(array_filter($log, fn (array $q) => str_contains($q['query'], DB::getQueryGrammar()->wrapTable('orders'))));
 
         $results[$group] = [
             'ms' => round($ms, 1),

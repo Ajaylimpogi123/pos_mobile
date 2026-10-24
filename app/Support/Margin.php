@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Facades\DB;
+
 /**
  * Product margin in integer basis points (5500 = 55.00%).
  *
@@ -41,11 +43,14 @@ final class Margin
 
     /**
      * SQL condition: the product has a margin (price and cost both above zero).
-     * `$table` is a trusted table name or alias, never user input.
+     * `$table` is a trusted table name or alias, never user input; it is qualified through
+     * the query grammar, so it gets the connection's table prefix.
      */
     public static function qualifiesSql(string $table = 'products'): string
     {
-        return "({$table}.price_cents > 0 AND {$table}.cost_cents > 0)";
+        [$price, $cost] = self::columns($table);
+
+        return "({$price} > 0 AND {$cost} > 0)";
     }
 
     /**
@@ -56,7 +61,21 @@ final class Margin
      */
     public static function bpsSql(string $table = 'products'): string
     {
-        return "(((CAST({$table}.price_cents AS SIGNED) - CAST({$table}.cost_cents AS SIGNED)) * 10000)"
-            ." DIV CAST({$table}.price_cents AS SIGNED))";
+        [$price, $cost] = self::columns($table);
+
+        return "(((CAST({$price} AS SIGNED) - CAST({$cost} AS SIGNED)) * 10000)"
+            ." DIV CAST({$price} AS SIGNED))";
+    }
+
+    /**
+     * The wrapped `price_cents` and `cost_cents` of `$table`.
+     *
+     * @return array{string, string}
+     */
+    private static function columns(string $table): array
+    {
+        $grammar = DB::getQueryGrammar();
+
+        return [$grammar->wrap("{$table}.price_cents"), $grammar->wrap("{$table}.cost_cents")];
     }
 }

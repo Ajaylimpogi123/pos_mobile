@@ -126,7 +126,7 @@ class BuildPurchasingReportAction
             ->when($receivingStatus !== null, fn (Builder $q) => in_array($receivingStatus, PurchaseOrder::RECEIVING_STATUSES, true)
                 ? $q->where('po.receiving_status', $receivingStatus)
                 : $q->where('pol.receiving_status', $receivingStatus))
-            ->when($supplierId !== null, fn (Builder $q) => $q->whereRaw('COALESCE(pol.supplier_id, pri.supplier_id) = ?', [$supplierId]))
+            ->when($supplierId !== null, fn (Builder $q) => $q->whereRaw($this->supplierOf().' = ?', [$supplierId]))
             ->when($itemType !== null && $itemId !== null, fn (Builder $q) => $q->where(
                 $itemType === PurchaseRequestItem::ITEM_INGREDIENT ? 'pri.ingredient_id' : 'pri.product_id',
                 $itemId,
@@ -171,7 +171,7 @@ class BuildPurchasingReportAction
             ->leftJoin('users as decider', 'decider.id', '=', 'pri.decided_by')
             ->leftJoin('ingredients as ingredient', 'ingredient.id', '=', 'pri.ingredient_id')
             ->leftJoin('products as product', 'product.id', '=', 'pri.product_id')
-            ->join('suppliers as supplier', 'supplier.id', '=', DB::raw('COALESCE(pol.supplier_id, pri.supplier_id)'))
+            ->join('suppliers as supplier', 'supplier.id', '=', DB::raw($this->supplierOf()))
             ->select([
                 'pr.pr_no', 'page.pr_created_at',
                 'pri.ingredient_id', 'pri.qty as requested_qty', 'pri.unit', 'pri.decision', 'pri.decision_reason',
@@ -180,8 +180,9 @@ class BuildPurchasingReportAction
                 'pol.receiving_status as line_receiving_status', 'pol.unit_price_cents',
                 'pol.line_total_cents as ordered_cents', 'pol.received_cents', 'pol.last_received_at',
             ])
-            ->selectRaw('requester.name AS requested_by_name, decider.name AS decided_by_name')
-            ->selectRaw('COALESCE(ingredient.name, product.name) AS item_name, supplier.name AS supplier_name')
+            ->addSelect(['requester.name as requested_by_name', 'decider.name as decided_by_name'])
+            ->selectRaw("COALESCE({$this->col('ingredient.name')}, {$this->col('product.name')}) AS item_name")
+            ->addSelect('supplier.name as supplier_name')
             ->orderBy('page.pr_created_at')
             ->orderBy('page.pr_id')
             ->orderBy('page.item_id')
@@ -204,35 +205,35 @@ class BuildPurchasingReportAction
             ->groupBy('pri.requested_at', 'pri.purchase_request_id')
             ->select('pri.purchase_request_id AS pr_id')
             ->selectRaw('COUNT(*) AS items')
-            ->selectRaw("SUM(pri.decision = 'approved') AS approved")
-            ->selectRaw("SUM(pri.decision = 'declined') AS declined")
-            ->selectRaw($poFilter ? 'MAX(po.status) AS po_status' : 'COUNT(pol.id) AS line_count')
-            ->selectRaw('SUM(pol.line_total_cents) AS ordered')
-            ->selectRaw('SUM(pol.received_cents) AS received')
-            ->selectRaw('SUM(GREATEST(CAST(pol.line_total_cents AS SIGNED) - pol.received_cents, 0)) AS remaining');
+            ->selectRaw("SUM({$this->col('pri.decision')} = 'approved') AS approved")
+            ->selectRaw("SUM({$this->col('pri.decision')} = 'declined') AS declined")
+            ->selectRaw($poFilter ? "MAX({$this->col('po.status')}) AS po_status" : "COUNT({$this->col('pol.id')}) AS line_count")
+            ->selectRaw("SUM({$this->col('pol.line_total_cents')}) AS ordered")
+            ->selectRaw("SUM({$this->col('pol.received_cents')}) AS received")
+            ->selectRaw("SUM(GREATEST(CAST({$this->col('pol.line_total_cents')} AS SIGNED) - {$this->col('pol.received_cents')}, 0)) AS remaining");
 
         $query = DB::query()->fromSub($perRequest, 'g');
 
         if ($poFilter) {
-            $status = 'g.po_status';
+            $status = $this->col('g.po_status');
         } else {
             $query->leftJoin('purchase_orders as po', 'po.purchase_request_id', '=', 'g.pr_id');
-            $status = '(CASE WHEN g.line_count > 0 THEN po.status END)';
+            $status = "(CASE WHEN {$this->col('g.line_count')} > 0 THEN {$this->col('po.status')} END)";
         }
 
         $approved = "{$status} = '".PurchaseOrder::STATUS_APPROVED."'";
 
         $row = $query
             ->selectRaw('COUNT(*) AS prs')
-            ->selectRaw('COALESCE(SUM(g.items), 0) AS items')
-            ->selectRaw('COALESCE(SUM(g.approved), 0) AS approved')
-            ->selectRaw('COALESCE(SUM(g.declined), 0) AS declined')
+            ->selectRaw("COALESCE(SUM({$this->col('g.items')}), 0) AS items")
+            ->selectRaw("COALESCE(SUM({$this->col('g.approved')}), 0) AS approved")
+            ->selectRaw("COALESCE(SUM({$this->col('g.declined')}), 0) AS declined")
             ->selectRaw("COALESCE(SUM({$status} = 'pending_approval'), 0) AS pos_pending")
             ->selectRaw("COALESCE(SUM({$approved}), 0) AS pos_approved")
             ->selectRaw("COALESCE(SUM({$status} = 'declined'), 0) AS pos_declined")
-            ->selectRaw("CAST(COALESCE(SUM(CASE WHEN {$approved} THEN g.ordered ELSE 0 END), 0) AS SIGNED) AS ordered_cents")
-            ->selectRaw("CAST(COALESCE(SUM(CASE WHEN {$approved} THEN g.received ELSE 0 END), 0) AS SIGNED) AS received_cents")
-            ->selectRaw("CAST(COALESCE(SUM(CASE WHEN {$approved} THEN g.remaining ELSE 0 END), 0) AS SIGNED) AS remaining_cents")
+            ->selectRaw("CAST(COALESCE(SUM(CASE WHEN {$approved} THEN {$this->col('g.ordered')} ELSE 0 END), 0) AS SIGNED) AS ordered_cents")
+            ->selectRaw("CAST(COALESCE(SUM(CASE WHEN {$approved} THEN {$this->col('g.received')} ELSE 0 END), 0) AS SIGNED) AS received_cents")
+            ->selectRaw("CAST(COALESCE(SUM(CASE WHEN {$approved} THEN {$this->col('g.remaining')} ELSE 0 END), 0) AS SIGNED) AS remaining_cents")
             ->first();
 
         $items = (int) ($row->items ?? 0);
@@ -254,6 +255,23 @@ class BuildPurchasingReportAction
             'received_cents' => (int) ($row->received_cents ?? 0),
             'remaining_cents' => (int) ($row->remaining_cents ?? 0),
         ];
+    }
+
+    /**
+     * The row's supplier: its PO line's, else the requested one.
+     */
+    private function supplierOf(): string
+    {
+        return "COALESCE({$this->col('pol.supplier_id')}, {$this->col('pri.supplier_id')})";
+    }
+
+    /**
+     * A qualified column for a raw expression, wrapped by the query grammar so its table alias
+     * gets the connection's table prefix, as the builder's own columns do.
+     */
+    private function col(string $column): string
+    {
+        return DB::getQueryGrammar()->wrap($column);
     }
 
     /**

@@ -37,9 +37,16 @@ class IngredientInventoryQuery
     public function items(int $branchId): Builder
     {
         $lastMovement = DB::table('stock_movements')
-            ->selectRaw('MAX(stock_movements.occurred_at)')
+            ->selectRaw('MAX('.$this->col('stock_movements.occurred_at').')')
             ->where('stock_movements.branch_id', $branchId)
             ->whereColumn('stock_movements.ingredient_id', 'ingredients.id');
+
+        // `base_unit_locked` (Q-025): the ingredient is in use (IngredientUsage::isInUse), in any
+        // branch: a movement, a PR item, a PO line or (Round B) a recipe line.
+        $inUse = implode(' OR ', array_map(
+            fn (string $table): string => 'EXISTS ('.DB::table($table)->selectRaw('1')->whereColumn("{$table}.ingredient_id", 'ingredients.id')->toSql().')',
+            ['stock_movements', 'purchase_request_items', 'purchase_order_lines', 'recipe_lines'],
+        ));
 
         $query = Ingredient::query();
 
@@ -53,12 +60,7 @@ class IngredientInventoryQuery
                 self::AVG_COST.' as level_avg_cost',
             ])
             ->selectSub($lastMovement, 'last_movement_at')
-            // `base_unit_locked` (Q-025): the ingredient is in use (IngredientUsage::isInUse), in any
-            // branch: a movement, a PR item, a PO line or (Round B) a recipe line.
-            ->selectRaw('(EXISTS (SELECT 1 FROM stock_movements WHERE stock_movements.ingredient_id = ingredients.id)'
-                .' OR EXISTS (SELECT 1 FROM purchase_request_items WHERE purchase_request_items.ingredient_id = ingredients.id)'
-                .' OR EXISTS (SELECT 1 FROM purchase_order_lines WHERE purchase_order_lines.ingredient_id = ingredients.id)'
-                .' OR EXISTS (SELECT 1 FROM recipe_lines WHERE recipe_lines.ingredient_id = ingredients.id)) AS base_unit_locked')
+            ->selectRaw("({$inUse}) AS base_unit_locked")
             ->withCasts(['last_movement_at' => 'datetime', 'base_unit_locked' => 'boolean']);
     }
 
@@ -110,7 +112,7 @@ class IngredientInventoryQuery
 
     public function statusSql(): string
     {
-        return StockStatus::sql(self::QTY, self::REORDER_LEVEL);
+        return StockStatus::sql($this->col(self::QTY), $this->col(self::REORDER_LEVEL));
     }
 
     /**
@@ -118,7 +120,16 @@ class IngredientInventoryQuery
      */
     public function stockValueSql(): string
     {
-        return 'ROUND(GREATEST(COALESCE('.self::QTY.', 0), 0) * COALESCE('.self::AVG_COST.', 0), 0)';
+        return 'ROUND(GREATEST(COALESCE('.$this->col(self::QTY).', 0), 0) * COALESCE('.$this->col(self::AVG_COST).', 0), 0)';
+    }
+
+    /**
+     * A qualified column for a raw expression, wrapped by the query grammar so its table gets
+     * the connection's table prefix, as the builder's own columns do.
+     */
+    public function col(string $column): string
+    {
+        return DB::getQueryGrammar()->wrap($column);
     }
 
     /**

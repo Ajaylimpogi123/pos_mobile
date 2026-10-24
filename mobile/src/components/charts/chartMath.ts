@@ -234,3 +234,11 @@ export function linePath(points: readonly Point[]): string {
   return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
 }
 
+/** The closed area under a line, down to `baseY` (empty for fewer than 2 points). */
+export function areaPath(points: readonly Point[], baseY: number): string {
+  if (points.length < 2) return '';
+  const first = points[0];
+  const last = points[points.length - 1];
+  return `${linePath(points)} L ${last.x} ${baseY} L ${first.x} ${baseY} Z`;
+}
+

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { usePrinterReachability } from '@/hooks/printing/usePrinterReachability';
 import { chooseReceiptPrinterForTablet, probePrinters, testPrint, type DirectPrintResult } from '@/printing/printActions';
-import { chooseReceiptPrinter, sortPrinters } from '@/printing/routing';
+import { chooseReceiptPrinter, sortPrinters } from '@pos/core/printing/routing';
 import { getPrintTransport } from '@/printing/transport';
 import { ApiError } from '@/services/api';
 import type { Printer } from '@/services/types';

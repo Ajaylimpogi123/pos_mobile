@@ -277,7 +277,6 @@ describe('AdminProductsScreen', () => {
     ['phone portrait', REFERENCE_SIZES.phonePortrait, 1],
     ['phone landscape', REFERENCE_SIZES.phoneLandscape, 2],
     ['tablet portrait', REFERENCE_SIZES.tabletPortrait, 2],
-    ['tablet landscape', REFERENCE_SIZES.tabletLandscape, 3],
   ])('lays the grid out for %s with the expected columns', async (_label, size, columns) => {
     setWindowSize(size.width, size.height);
     routeFetch([
@@ -291,7 +290,7 @@ describe('AdminProductsScreen', () => {
     expect(renderedColumns('product-card-7')).toBe(columns);
   });
 
-  it('re-flows from 2 to 3 columns on rotation and keeps the search text', async () => {
+  it('tablet portrait cards become the table in landscape (MASTER §6), keeping the search text', async () => {
     setWindowSize(REFERENCE_SIZES.tabletPortrait.width, REFERENCE_SIZES.tabletPortrait.height);
     routeFetch([
       categoriesRoute,
@@ -307,7 +306,8 @@ describe('AdminProductsScreen', () => {
       setWindowSize(REFERENCE_SIZES.tabletLandscape.width, REFERENCE_SIZES.tabletLandscape.height);
     });
 
-    expect(renderedColumns('product-card-7')).toBe(3);
+    expect(screen.getByTestId('products-grid-header')).toHaveTextContent(/Product.*Price.*Cost.*Stock.*Available/);
+    expect(screen.getByTestId('product-card-7-switch')).toBeOnTheScreen();
     expect(screen.getByTestId('product-search').props.value).toBe('egg');
   });
 });

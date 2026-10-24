@@ -7,8 +7,8 @@ import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { colors, numeric, pressedScale, radius, sizes, spacing, typography } from '@/constants/theme';
 import type { Ingredient } from '@/services/types';
-import { formatPeso } from '@/utils/money';
-import { formatQty, friendlyQty } from '@/utils/quantity';
+import { formatPeso } from '@pos/core/money';
+import { formatQty, friendlyQty } from '@pos/core/quantity';
 
 type IngredientCardProps = {
   ingredient: Ingredient;

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/Input';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SwitchRow } from '@/components/ui/SwitchRow';
 import { colors, spacing, typography } from '@/constants/theme';
-import { DISCOUNT_TYPES, type DiscountDraft } from '@/sale/discountRules';
+import { DISCOUNT_TYPES, type DiscountDraft } from '@pos/core/sale/discountRules';
 import type { DiscountKind } from '@/services/types';
 
 type DiscountFieldsProps = {

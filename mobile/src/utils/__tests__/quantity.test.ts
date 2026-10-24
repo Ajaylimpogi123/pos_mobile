@@ -16,8 +16,8 @@ import {
   parseFactorInput,
   parseQtyInput,
   toBaseQty,
-} from '@/utils/quantity';
-import { ingredientUnitChoices, itemUnitChoices, reservedUnitCode, unitFactor } from '@/utils/units';
+} from '@pos/core/quantity';
+import { ingredientUnitChoices, itemUnitChoices, reservedUnitCode, unitFactor } from '@pos/core/units';
 
 const flour = ingredientUnitChoices(makeIngredient(), UNIT_CATALOG);
 const milk = ingredientUnitChoices(makeMilk(), UNIT_CATALOG);

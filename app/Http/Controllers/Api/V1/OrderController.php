@@ -53,7 +53,7 @@ class OrderController extends Controller
 
         $orders = Order::query()
             ->visibleTo($caller)
-            ->with(['cashier:id,name', 'customer:id,first_name,last_name', 'reviewer:id,name', 'payments:id,order_id,method'])
+            ->with(['cashier:id,name', 'customer:id,first_name,last_name', 'reviewer:id,name', 'payments:id,order_id,method', 'tab:id,ulid'])
             ->withSum('items', 'qty')
             ->when($businessDate !== null, fn ($query) => $query->where('business_date', $businessDate))
             ->when($cashierId !== null, fn ($query) => $query->where('user_id', $cashierId))

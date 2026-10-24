@@ -10,8 +10,8 @@ import { colors, spacing, typography } from '@/constants/theme';
 import type { ShiftEventRecord } from '@/db/offlineRepository';
 import type { CashMovementRequest, ShiftCloseRequest, ShiftOpenRequest } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
-import { formatBranchDateTime } from '@/utils/businessDay';
-import { formatPeso } from '@/utils/money';
+import { formatBranchDateTime } from '@pos/core/businessDay';
+import { formatPeso } from '@pos/core/money';
 
 type ShiftEventCardProps = {
   event: ShiftEventRecord;

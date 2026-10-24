@@ -10,7 +10,7 @@ import { colors, spacing, typography } from '@/constants/theme';
 import { parseQty, type CartEditors } from '@/hooks/sell/useCartEditors';
 import { useResponsive } from '@/hooks/useResponsive';
 import { CART_LIMITS } from '@/stores/cart';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 
 type LineEditorDialogProps = {
   editors: CartEditors;
@@ -69,7 +69,7 @@ export function LineEditorDialog({ editors }: LineEditorDialogProps) {
 
           {draft.discountLock ? (
             // Senior Citizen / PWD Discount: no double discount on this line.
-            <Chip label={draft.discountLock} variant="info" icon="id-card-outline" testID="line-editor-sc-pwd-lock" />
+            <Chip label={draft.discountLock} variant="neutral" icon="id-card-outline" testID="line-editor-sc-pwd-lock" />
           ) : (
             <DiscountFields
               draft={draft.discount}

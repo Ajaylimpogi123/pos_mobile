@@ -41,8 +41,8 @@ const COMPACT_SLOP_Y = (hitTarget.min - sizes.segmentedCompact) / 2 + COMPACT_PA
 const COMPACT_SLOP = { top: COMPACT_SLOP_Y, bottom: COMPACT_SLOP_Y, left: 0, right: 0 };
 
 /**
- * A row of equal-width segments on a 48 dp soft grey track (radius 12); the
- * selected one is raised in white with dark-emerald bold text. Labels
+ * A row of equal-width segments on a 48 dp #F5F5F5 track (radius 8; MASTER §3
+ * status tabs); the selected one is the white tab with dark semibold text. Labels
  * truncate instead of overflowing.
  */
 export function SegmentedControl<T extends string>({
@@ -65,7 +65,7 @@ export function SegmentedControl<T extends string>({
     >
       {options.map((option) => {
         const selected = option.value === value;
-        const textColor = selected ? colors.primaryDark : colors.textSecondary;
+        const textColor = selected ? colors.text : colors.textSecondary;
         return (
           <Pressable
             key={option.value}

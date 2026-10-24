@@ -8,7 +8,7 @@ import { colors, layout, numeric, spacing, typography } from '@/constants/theme'
 import { INGREDIENT_LIMITS, type IngredientFormState } from '@/hooks/ingredients/useIngredientForm';
 import { useResponsive } from '@/hooks/useResponsive';
 import type { BaseUnit } from '@/services/types';
-import { formatBaseQty, parseFactorInput } from '@/utils/quantity';
+import { formatBaseQty, parseFactorInput } from '@pos/core/quantity';
 
 type UnitsEditorProps = {
   editor: IngredientFormState['unitsEditor'];

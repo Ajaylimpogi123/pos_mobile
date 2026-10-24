@@ -13,7 +13,7 @@ type CardProps = {
   testID?: string;
 };
 
-/** White surface: 16 px radius, a hairline border and a very soft shadow. Padding follows `useResponsive().cardPadding`. */
+/** White surface (MASTER §3): 12 px radius, a hairline border and the card shadow. Padding follows `useResponsive().cardPadding`. */
 export function Card({ children, style, flush = false, elevation = 'sm', testID }: CardProps) {
   const { cardPadding } = useResponsive();
 

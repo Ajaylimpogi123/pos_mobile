@@ -128,7 +128,7 @@ return new class extends Migration
         });
 
         foreach (['purchase_request_items', 'purchase_order_lines'] as $table) {
-            DB::statement("ALTER TABLE {$table} ADD CONSTRAINT {$table}_one_item_check CHECK ((product_id IS NULL) <> (ingredient_id IS NULL))");
+            DB::statement('ALTER TABLE '.DB::getQueryGrammar()->wrapTable($table)." ADD CONSTRAINT {$table}_one_item_check CHECK ((product_id IS NULL) <> (ingredient_id IS NULL))");
         }
     }
 

@@ -33,6 +33,10 @@ use LogicException;
  * @property int $queue_no
  * @property string $items_qty Σ qty of the lines (decimal string; Phase 6, for the sales reports)
  * @property string|null $table_no Free label typed by the cashier (Core Sale revision 2)
+ * @property int|null $tab_id The tab this order settled (Dine-in Tables & Tabs); null for pay-now sales
+ * @property int $service_charge_cents The service charge `S` (Dine-in), part of `total_cents`
+ * @property bool $service_charge_waived Dine-in: the settlement waived the service charge
+ * @property int|null $split_count Dine-in: the equal-split share count (2–10), or null
  * @property string $business_date
  * @property string $status
  * @property string $source `online` or `offline` (Phase 5)
@@ -136,6 +140,8 @@ class Order extends Model
         'sc_pwd_vat_exempt' => false,
         'sc_pwd_vat_relief_cents' => 0,
         'sc_pwd_discount_cents' => 0,
+        'service_charge_cents' => 0,
+        'service_charge_waived' => false,
     ];
 
     protected static function booted(): void
@@ -157,6 +163,10 @@ class Order extends Model
             'customer_id' => 'integer',
             'authorized_by' => 'integer',
             'queue_no' => 'integer',
+            'tab_id' => 'integer',
+            'service_charge_cents' => 'integer',
+            'service_charge_waived' => 'boolean',
+            'split_count' => 'integer',
             'subtotal_cents' => 'integer',
             'line_discounts_cents' => 'integer',
             'discount_value' => 'integer',
@@ -287,6 +297,16 @@ class Order extends Model
     public function device(): BelongsTo
     {
         return $this->belongsTo(Device::class)->withTrashed();
+    }
+
+    /**
+     * The tab this order settled (Dine-in Tables & Tabs), or null.
+     *
+     * @return BelongsTo<Tab, $this>
+     */
+    public function tab(): BelongsTo
+    {
+        return $this->belongsTo(Tab::class);
     }
 
     /**

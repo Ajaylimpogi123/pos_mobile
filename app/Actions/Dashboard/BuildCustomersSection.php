@@ -21,8 +21,8 @@ class BuildCustomersSection
         $row = Customer::query()
             ->toBase()
             ->selectRaw('COUNT(*) AS total')
-            ->selectRaw('SUM(customers.created_at >= ?) AS last_7', [$now->subDays(7)->toDateTimeString()])
-            ->selectRaw('SUM(customers.created_at >= ?) AS last_30', [$now->subDays(30)->toDateTimeString()])
+            ->selectRaw('SUM(created_at >= ?) AS last_7', [$now->subDays(7)->toDateTimeString()])
+            ->selectRaw('SUM(created_at >= ?) AS last_30', [$now->subDays(30)->toDateTimeString()])
             ->first();
 
         return [

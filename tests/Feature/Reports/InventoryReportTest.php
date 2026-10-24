@@ -185,8 +185,8 @@ describe('GET /reports/inventory', function () {
 
         $this->withToken($token)->getJson('/api/v1/reports/inventory?from=2026-09-01&to=2026-09-30')->assertOk();
 
-        $movementQueries = array_filter(DB::getQueryLog(), fn (array $q) => str_contains($q['query'], '`stock_movements`'));
-        $levelQueries = array_filter(DB::getQueryLog(), fn (array $q) => str_contains($q['query'], '`stock_levels`'));
+        $movementQueries = array_filter(DB::getQueryLog(), fn (array $q) => str_contains($q['query'], DB::getQueryGrammar()->wrapTable('stock_movements')));
+        $levelQueries = array_filter(DB::getQueryLog(), fn (array $q) => str_contains($q['query'], DB::getQueryGrammar()->wrapTable('stock_levels')));
         DB::disableQueryLog();
 
         expect($movementQueries)->toHaveCount(1)

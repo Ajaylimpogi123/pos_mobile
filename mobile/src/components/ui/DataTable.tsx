@@ -1,11 +1,12 @@
 /**
  * DataTable: a generic, typed, Stripe-style table for list and report screens.
  *
- * Look: one white card (radius 16, hairline border) with a muted column-header
- * row (12 / 700 uppercase, secondary text), ~52 dp rows split by hairline
- * dividers, right-aligned tabular numbers, an optional bold totals footer on
- * the muted background, and a selected row drawn with a soft green fill and a
- * 3 dp primary bar on its left edge.
+ * Look (MASTER §3 data table): one white card (radius 12, hairline border)
+ * with a 40 dp column-header row (13 / 500, `muted-text`, not uppercase),
+ * ~52 dp rows split by `border` rules (12 px padding), right-aligned tabular
+ * numbers, a #FAFAFA pressed row, an optional bold totals footer, an optional
+ * row-actions (⋯) column, and a selected row on the `accent` fill with a
+ * 3 dp green bar on its left edge.
  *
  * It is also the screen's scroll container: a virtualised `FlatList`
  * (`keyExtractor`, `getItemLayout` for fixed-height rows, a modest
@@ -27,14 +28,17 @@
  * - `rowAccessible?`: default true. `false` keeps a non-pressable row from grouping its
  *   cells into one element, so inline buttons (e.g. Approve / Decline) stay reachable; the
  *   label then goes on the first cell instead.
- * - `rowAccessibilityHint?`: e.g. "Opens the receipt" (pressable rows).
+ * - `rowAccessibilityHint?`: e.g. "Opens the receipt" (pressable rows), or one per row.
  * - `rowTestID?(row)`: a row's test ID; when pressable, the pressable is `<id>-open`.
  * - `selectedKey?`: the key of the selected row (soft fill + left primary bar).
  * - `footer?`: the totals row, `{ [columnKey]: node }` (strings are drawn bold; cells get `<testID>-footer-<key>`).
  * - `loading?`: first load: skeleton rows under the column headers (never a spinner).
  * - `empty?`: shown instead of the rows when there are none and not loading (e.g. an `<EmptyState>`).
  * - `renderCard?(row, index)`: on phones (`useResponsive().isPhone`) rows render as these cards instead.
+ * - `cardsInPortrait?`: back-office lists (MASTER §6): the cards in portrait on tablets too; the table only in landscape.
  * - `renderFooterCard?()`: on phones (with `renderCard`), the totals card drawn after the cards.
+ * - `rowActions?(row)`: the last cell, e.g. a ⋯ `IconButton` with an `accessibilityLabel` that names the row.
+ * - `pagination?`: the cursor footer ("Showing n" and **Load more**; see `LoadMoreFooter`), after the table.
  * - `rowHeight?`: `number` (default 52) for fixed-height rows (enables `getItemLayout`),
  *   or `'auto'` for rows whose height varies (multi-line cells).
  * - List pass-throughs: `ListHeaderComponent`, `ListFooterComponent`,
@@ -58,11 +62,13 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { LoadMoreFooter, type LoadMoreState } from '@/components/ui/LoadMoreFooter';
 import { Skeleton, SkeletonPulse } from '@/components/ui/Skeleton';
 import {
   colors,
   fontFamilies,
   hitTarget,
+  layout,
   numeric,
   radius,
   sizes,
@@ -70,14 +76,14 @@ import {
   typography,
 } from '@/constants/theme';
 import { useResponsive } from '@/hooks/useResponsive';
-import { NO_VALUE } from '@/utils/numbers';
+import { NO_VALUE } from '@pos/core/numbers';
 
 export type DataTableAlign = 'left' | 'right';
 
 export type DataTableColumn<T> = {
   /** Unique within the table; also the default field read from the row. */
   key: string;
-  /** Column header (drawn uppercase). */
+  /** Column header. */
   header: string;
   /** Share of the width left after fixed columns (default 1). Ignored with `width`. */
   flex?: number;
@@ -100,7 +106,7 @@ export type DataTableProps<T> = {
   rowAccessibilityLabel?: (row: T) => string;
   /** `false`: a non-pressable row doesn't group its cells, so inner buttons stay reachable (default true). */
   rowAccessible?: boolean;
-  rowAccessibilityHint?: string;
+  rowAccessibilityHint?: string | ((row: T) => string);
   rowTestID?: (row: T) => string;
   selectedKey?: string | null;
   footer?: DataTableFooter | null;
@@ -109,8 +115,14 @@ export type DataTableProps<T> = {
   loadingRows?: number;
   empty?: ReactElement | null;
   renderCard?: (row: T, index: number) => ReactElement;
+  /** MASTER §6 lists: cards in portrait (tablets too), the table in landscape. */
+  cardsInPortrait?: boolean;
   /** Phones (card layout): the totals card after the cards (the tablet `footer` row isn't drawn there). */
   renderFooterCard?: () => ReactElement | null;
+  /** The row-actions (⋯) cell at the end of each row (tablet table only). */
+  rowActions?: (row: T) => ReactNode;
+  /** The cursor footer: "Showing n" and **Load more**. */
+  pagination?: LoadMoreState | null;
   rowHeight?: number | 'auto';
   ListHeaderComponent?: ReactElement | null;
   ListFooterComponent?: ReactElement | null;
@@ -196,7 +208,7 @@ function CellContent({ content, align, footer, testID }: { content: ReactNode; a
 // Rows
 // ---------------------------------------------------------------------------
 
-function HeaderRow<T>({ columns, testID }: { columns: readonly DataTableColumn<T>[]; testID?: string }) {
+function HeaderRow<T>({ columns, actions, testID }: { columns: readonly DataTableColumn<T>[]; actions: boolean; testID?: string }) {
   return (
     <View style={[styles.frame, styles.headerRow]} testID={testID}>
       {columns.map((column) => (
@@ -210,6 +222,7 @@ function HeaderRow<T>({ columns, testID }: { columns: readonly DataTableColumn<T
           </Text>
         </View>
       ))}
+      {actions ? <View style={styles.actionsCell} accessibilityLabel="Actions" /> : null}
     </View>
   );
 }
@@ -226,6 +239,7 @@ type RowProps<T> = {
   accessibilityHint?: string;
   /** false: the (non-pressable) row doesn't group its cells; the label goes on the first cell. */
   grouped: boolean;
+  actions: ((row: T) => ReactNode) | null;
   testID?: string;
 };
 
@@ -240,6 +254,7 @@ function DataTableRow<T>({
   accessibilityLabel,
   accessibilityHint,
   grouped,
+  actions,
   testID,
 }: RowProps<T>) {
   const labelFirstCell = !onPress && !grouped && accessibilityLabel !== undefined;
@@ -269,6 +284,7 @@ function DataTableRow<T>({
           testID={testID ? `${testID}-open` : undefined}
           style={({ pressed }) => [
             styles.cells,
+            actions && styles.cellsWithActions,
             { minHeight },
             last && styles.lastRowInner,
             pressed && (selected ? styles.selectedPressed : styles.pressed),
@@ -278,13 +294,14 @@ function DataTableRow<T>({
         </Pressable>
       ) : (
         <View
-          style={[styles.cells, { minHeight }]}
+          style={[styles.cells, actions && styles.cellsWithActions, { minHeight }]}
           accessible={grouped && accessibilityLabel !== undefined}
           accessibilityLabel={grouped ? accessibilityLabel : undefined}
         >
           {cells}
         </View>
       )}
+      {actions ? <View style={styles.actionsOverlay}>{actions(row)}</View> : null}
       {selected ? <View style={styles.selectedBar} /> : null}
     </View>
   );
@@ -292,9 +309,9 @@ function DataTableRow<T>({
 
 const MemoRow = memo(DataTableRow) as typeof DataTableRow;
 
-function FooterRow<T>({ columns, footer, testID }: { columns: readonly DataTableColumn<T>[]; footer: DataTableFooter; testID?: string }) {
+function FooterRow<T>({ columns, footer, actions, testID }: { columns: readonly DataTableColumn<T>[]; footer: DataTableFooter; actions: boolean; testID?: string }) {
   return (
-    <View style={[styles.frame, styles.footerRow]} testID={testID}>
+    <View style={[styles.frame, styles.footerRow, actions && styles.cellsWithActions]} testID={testID}>
       {columns.map((column) => (
         <View key={column.key} style={[styles.cell, columnStyle(column), column.align === 'right' && styles.cellRight]}>
           <CellContent
@@ -363,7 +380,10 @@ export function DataTable<T>({
   loadingRows = LOADING_ROWS,
   empty = null,
   renderCard,
+  cardsInPortrait = false,
   renderFooterCard,
+  rowActions,
+  pagination = null,
   rowHeight = DATA_TABLE_ROW_HEIGHT,
   ListHeaderComponent = null,
   ListFooterComponent = null,
@@ -375,8 +395,8 @@ export function DataTable<T>({
   extraData,
   testID,
 }: DataTableProps<T>) {
-  const { isPhone, gutter } = useResponsive();
-  const cards = renderCard !== undefined && isPhone;
+  const { isPhone, isPortrait, gutter } = useResponsive();
+  const cards = renderCard !== undefined && (isPhone || (cardsInPortrait && isPortrait));
   const fixed = rowHeight !== 'auto' && !cards;
   const minHeight = rowHeight === 'auto' ? DATA_TABLE_ROW_HEIGHT : rowHeight;
   const hasRows = rows.length > 0;
@@ -390,6 +410,12 @@ export function DataTable<T>({
   });
   const handlePress = useCallback((row: T) => pressRef.current?.(row), []);
   const pressable = onRowPress !== undefined;
+  const actionsRef = useRef(rowActions);
+  useLayoutEffect(() => {
+    actionsRef.current = rowActions;
+  });
+  const hasActions = rowActions !== undefined && !cards;
+  const renderActions = useCallback((row: T) => actionsRef.current?.(row) ?? null, []);
 
   // The first row's offset: the measured header (filters, totals, column headers) plus the top padding.
   const headerEnd = useRef(0);
@@ -425,8 +451,9 @@ export function DataTable<T>({
           selected={selectedKey !== null && keyExtractor(item, index) === selectedKey}
           onPress={pressable ? handlePress : null}
           accessibilityLabel={rowAccessibilityLabel?.(item)}
-          accessibilityHint={pressable ? rowAccessibilityHint : undefined}
+          accessibilityHint={pressable ? (typeof rowAccessibilityHint === 'function' ? rowAccessibilityHint(item) : rowAccessibilityHint) : undefined}
           grouped={rowAccessible}
+          actions={hasActions ? renderActions : null}
           testID={rowTestID?.(item)}
         />
       );
@@ -447,6 +474,8 @@ export function DataTable<T>({
       rowAccessible,
       rowAccessibilityHint,
       rowTestID,
+      hasActions,
+      renderActions,
     ],
   );
 
@@ -456,7 +485,7 @@ export function DataTable<T>({
   const header = (
     <View onLayout={onHeaderLayout}>
       {ListHeaderComponent ? <View style={showColumns || !hasRows ? cardGap : null}>{ListHeaderComponent}</View> : null}
-      {showColumns ? <HeaderRow columns={columns} testID={testID ? `${testID}-header` : undefined} /> : null}
+      {showColumns ? <HeaderRow columns={columns} actions={hasActions} testID={testID ? `${testID}-header` : undefined} /> : null}
     </View>
   );
 
@@ -472,11 +501,15 @@ export function DataTable<T>({
 
   const footerRow = hasRows && footer && !cards;
   const footerCard = hasRows && cards && renderFooterCard ? renderFooterCard() : null;
+  const pager = pagination && hasRows ? <LoadMoreFooter {...pagination} testID={testID ? `${testID}-more` : 'data-table-more'} /> : null;
   const listFooter =
-    footerRow || footerCard || ListFooterComponent ? (
+    footerRow || footerCard || ListFooterComponent || pager ? (
       <>
-        {footerRow ? <FooterRow columns={columns} footer={footer} testID={testID ? `${testID}-footer` : undefined} /> : null}
+        {footerRow ? (
+          <FooterRow columns={columns} footer={footer} actions={hasActions} testID={testID ? `${testID}-footer` : undefined} />
+        ) : null}
         {footerCard}
+        {pager}
         {ListFooterComponent}
       </>
     ) : null;
@@ -521,7 +554,7 @@ const textStyles = StyleSheet.create({
   },
   total: {
     ...typography.controlStrong,
-    fontFamily: fontFamilies.heavy,
+    fontFamily: fontFamilies.bold,
     color: colors.text,
   },
   right: {
@@ -544,10 +577,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    minHeight: hitTarget.min,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.background,
+    minHeight: sizes.tableHeader,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.surface,
     borderTopWidth: sizes.borderWidth,
     borderBottomWidth: sizes.borderWidth,
     borderTopLeftRadius: radius.lg,
@@ -587,14 +620,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
+  /** Room for the row-actions cell drawn over the row's right end. */
+  cellsWithActions: {
+    paddingRight: layout.rowActionsWidth + spacing.md,
+  },
+  actionsCell: {
+    width: layout.rowActionsWidth,
+  },
+  actionsOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: spacing.xs,
+    width: layout.rowActionsWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pressed: {
-    backgroundColor: colors.surfaceMuted,
+    backgroundColor: colors.rowHover,
   },
   selectedPressed: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.accent,
   },
   cell: {
     minWidth: 0,
@@ -620,9 +669,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     minHeight: hitTarget.primary,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.background,
+    backgroundColor: colors.subtle,
     borderBottomWidth: sizes.borderWidth,
     borderBottomLeftRadius: radius.lg,
     borderBottomRightRadius: radius.lg,

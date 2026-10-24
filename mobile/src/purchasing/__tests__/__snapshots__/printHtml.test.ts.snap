@@ -1,0 +1,133 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`snapshots matches the purchase order document (two suppliers, partially received) 1`] = `
+"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PO-MAIN-2026-00001</title>
+<style>@page{size:A4 portrait;margin:14mm;@bottom-center{content:"Printed 12 Oct 2026, 3:04 PM by Ana · PO-MAIN-2026-00001 · Page " counter(page) " of " counter(pages);font-size:8pt;}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#ffffff;color:#000000}
+body{font-family:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:12px;line-height:1.375;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+p{margin:0}
+.doc{display:flex;flex-direction:column;gap:20px}
+.tabular{font-variant-numeric:tabular-nums}
+.head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;border-bottom:2px solid #15803d;padding-bottom:12px}
+.letterhead{min-width:0}
+.letterhead .l0{font-size:15px;font-weight:700}
+.letterhead .ln{font-size:11px}
+.title{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right;flex-shrink:0}
+.title h1{margin:0;font-size:18px;font-weight:700;letter-spacing:.025em;color:#15803d}
+.title .number{font-size:13px;font-weight:600}
+.chips{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px}
+.chip{border:1px solid #000000;border-radius:9999px;padding:2px 8px;font-size:10px;font-weight:600;text-transform:uppercase}
+.band{border:2px solid #000000;padding:6px 12px;text-align:center}
+.band .t{font-size:12px;font-weight:700;letter-spacing:.025em}
+.band .r{font-size:11px}
+.details{display:grid;grid-template-columns:1fr 1fr;column-gap:32px;row-gap:8px;margin:0}
+.details .entry{display:flex;gap:8px}
+.details .full{grid-column:1 / span 2}
+.details dt{width:128px;flex-shrink:0;font-weight:600}
+.details dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.note{font-weight:600}
+table{width:100%;border-collapse:collapse}
+thead{display:table-header-group}
+tr,.avoid{break-inside:avoid;page-break-inside:avoid}
+th{border-bottom:2px solid #000000;padding:4px 6px;text-align:left;vertical-align:bottom;font-size:10px;font-weight:700;text-transform:uppercase}
+td{border-bottom:1px solid rgba(0,0,0,.2);padding:4px 6px;vertical-align:top;overflow-wrap:anywhere}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.declined td{color:#4b5563}
+.reason{display:block;font-style:italic}
+.group{display:flex;flex-direction:column;gap:8px}
+.group-break{break-before:page;page-break-before:always}
+.supplier{border-left:4px solid #15803d;padding-left:12px}
+.supplier .k{font-size:11px;font-weight:600;text-transform:uppercase;color:#15803d}
+.supplier .n{font-size:14px;font-weight:700}
+.totals{margin-left:auto;display:flex;flex-direction:column;gap:4px;width:320px;max-width:100%}
+.totals .row{display:flex;justify-content:space-between;gap:16px}
+.totals .strong{border-top:2px solid #000000;padding-top:4px;font-size:13px;font-weight:700}
+.signatures{display:grid;gap:32px;margin-top:24px}
+.sign{display:flex;flex-direction:column;gap:4px}
+.sign .role{font-weight:600}
+.sign .line{border-bottom:1px solid #000000;margin-top:32px}
+.sign .line.date{margin-top:20px}
+.sign .name{min-height:16px;font-size:11px}
+.sign .hint{font-size:10px}
+.doc-footer{border-top:1px solid rgba(0,0,0,.2);padding-top:8px;font-size:10px}
+html.margin-boxes .doc-footer{display:none}
+</style>
+<script>(function(){var m=/Chrom(?:e|ium)\\/(\\d+)/.exec(navigator.userAgent);if(m&&Number(m[1])>=131){document.documentElement.className+=" margin-boxes";}})();</script>
+</head>
+<body>
+<article class="doc"><header class="head"><div class="letterhead"><p class="l0">Mama Bing&#39;s</p><p class="ln">12 Lacson St</p></div><div class="title"><h1>PURCHASE ORDER</h1><p class="number tabular">PO-MAIN-2026-00001</p><div class="chips"><span class="chip">Approved · Ready for Receiving</span><span class="chip">Partially Received</span></div></div></header><dl class="details avoid"><div class="entry"><dt>PO date</dt><dd>28 Sep 2026, 10:00 AM</dd></div><div class="entry"><dt>From request</dt><dd>PR-MAIN-2026-00001</dd></div><div class="entry"><dt>Created by</dt><dd>Mia Manager</dd></div><div class="entry"><dt>Approved by</dt><dd>Owen Owner · 28 Sep 2026, 11:00 AM</dd></div><div class="entry"><dt>Expected delivery</dt><dd>—</dd></div><div class="entry full"><dt>Remarks</dt><dd>—</dd></div></dl><section class="group"><div class="supplier avoid"><p class="k">Supplier</p><p class="n">Golden Mills Trading</p><p>Attn: Ana Reyes</p><p>0917 123 4567 · orders@goldenmills.test</p><p>12 Rizal St, Bacolod</p></div><table aria-label="Lines for Golden Mills Trading"><thead><tr><th>#</th><th>Item</th><th class="num">Qty</th><th>Unit</th><th class="num">Unit price</th><th class="num">Amount</th><th class="num">Received</th><th class="num">Remaining</th></tr></thead><tbody><tr><td class="tabular">1</td><td>Flour</td><td class="num">2</td><td>sack</td><td class="num">₱1,200.00</td><td class="num">₱2,400.00</td><td class="num">1</td><td class="num">1</td></tr></tbody></table><div class="totals avoid"><div class="row"><span>Subtotal · Golden Mills Trading</span><span class="tabular">₱2,400.00</span></div></div></section><section class="group group-break"><div class="supplier avoid"><p class="k">Supplier</p><p class="n">Bakery Supply Co</p></div><table aria-label="Lines for Bakery Supply Co"><thead><tr><th>#</th><th>Item</th><th class="num">Qty</th><th>Unit</th><th class="num">Unit price</th><th class="num">Amount</th><th class="num">Received</th><th class="num">Remaining</th></tr></thead><tbody><tr><td class="tabular">1</td><td>Flour</td><td class="num">2</td><td>sack</td><td class="num">₱1,200.00</td><td class="num">₱500.00</td><td class="num">0</td><td class="num">2</td></tr></tbody></table><div class="totals avoid"><div class="row"><span>Subtotal · Bakery Supply Co</span><span class="tabular">₱500.00</span></div></div></section><div class="totals avoid"><div class="row strong"><span>Grand total</span><span class="tabular">₱2,900.00</span></div></div><div class="signatures avoid" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="sign"><p class="role">Prepared by</p><div class="line"></div><p class="name">Mia Manager</p><p class="hint">Signature over printed name</p><div class="line date"></div><p class="hint">Date</p></div><div class="sign"><p class="role">Approved by</p><div class="line"></div><p class="name">Owen Owner</p><p class="hint">Signature over printed name</p><div class="line date"></div><p class="hint">Date</p></div><div class="sign"><p class="role">Received by</p><div class="line"></div><p class="name"></p><p class="hint">Signature over printed name</p><div class="line date"></div><p class="hint">Date</p></div></div><p class="doc-footer">Printed 12 Oct 2026, 3:04 PM by Ana · PO-MAIN-2026-00001</p></article>
+</body>
+</html>"
+`;
+
+exports[`snapshots matches the purchase request document 1`] = `
+"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PR-MAIN-2026-00001</title>
+<style>@page{size:A4 portrait;margin:14mm;@bottom-center{content:"Printed 12 Oct 2026, 3:04 PM by Ana · PR-MAIN-2026-00001 · Page " counter(page) " of " counter(pages);font-size:8pt;}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#ffffff;color:#000000}
+body{font-family:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:12px;line-height:1.375;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+p{margin:0}
+.doc{display:flex;flex-direction:column;gap:20px}
+.tabular{font-variant-numeric:tabular-nums}
+.head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;border-bottom:2px solid #15803d;padding-bottom:12px}
+.letterhead{min-width:0}
+.letterhead .l0{font-size:15px;font-weight:700}
+.letterhead .ln{font-size:11px}
+.title{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right;flex-shrink:0}
+.title h1{margin:0;font-size:18px;font-weight:700;letter-spacing:.025em;color:#15803d}
+.title .number{font-size:13px;font-weight:600}
+.chips{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px}
+.chip{border:1px solid #000000;border-radius:9999px;padding:2px 8px;font-size:10px;font-weight:600;text-transform:uppercase}
+.band{border:2px solid #000000;padding:6px 12px;text-align:center}
+.band .t{font-size:12px;font-weight:700;letter-spacing:.025em}
+.band .r{font-size:11px}
+.details{display:grid;grid-template-columns:1fr 1fr;column-gap:32px;row-gap:8px;margin:0}
+.details .entry{display:flex;gap:8px}
+.details .full{grid-column:1 / span 2}
+.details dt{width:128px;flex-shrink:0;font-weight:600}
+.details dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.note{font-weight:600}
+table{width:100%;border-collapse:collapse}
+thead{display:table-header-group}
+tr,.avoid{break-inside:avoid;page-break-inside:avoid}
+th{border-bottom:2px solid #000000;padding:4px 6px;text-align:left;vertical-align:bottom;font-size:10px;font-weight:700;text-transform:uppercase}
+td{border-bottom:1px solid rgba(0,0,0,.2);padding:4px 6px;vertical-align:top;overflow-wrap:anywhere}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.declined td{color:#4b5563}
+.reason{display:block;font-style:italic}
+.group{display:flex;flex-direction:column;gap:8px}
+.group-break{break-before:page;page-break-before:always}
+.supplier{border-left:4px solid #15803d;padding-left:12px}
+.supplier .k{font-size:11px;font-weight:600;text-transform:uppercase;color:#15803d}
+.supplier .n{font-size:14px;font-weight:700}
+.totals{margin-left:auto;display:flex;flex-direction:column;gap:4px;width:320px;max-width:100%}
+.totals .row{display:flex;justify-content:space-between;gap:16px}
+.totals .strong{border-top:2px solid #000000;padding-top:4px;font-size:13px;font-weight:700}
+.signatures{display:grid;gap:32px;margin-top:24px}
+.sign{display:flex;flex-direction:column;gap:4px}
+.sign .role{font-weight:600}
+.sign .line{border-bottom:1px solid #000000;margin-top:32px}
+.sign .line.date{margin-top:20px}
+.sign .name{min-height:16px;font-size:11px}
+.sign .hint{font-size:10px}
+.doc-footer{border-top:1px solid rgba(0,0,0,.2);padding-top:8px;font-size:10px}
+html.margin-boxes .doc-footer{display:none}
+</style>
+<script>(function(){var m=/Chrom(?:e|ium)\\/(\\d+)/.exec(navigator.userAgent);if(m&&Number(m[1])>=131){document.documentElement.className+=" margin-boxes";}})();</script>
+</head>
+<body>
+<article class="doc"><header class="head"><div class="letterhead"><p class="l0">Mama Bing&#39;s</p><p class="ln">12 Lacson St</p></div><div class="title"><h1>PURCHASE REQUEST</h1><p class="number tabular">PR-MAIN-2026-00001</p><div class="chips"><span class="chip">Pending Approval</span></div></div></header><div class="band avoid" role="note"><p class="t">NOT APPROVED — FOR REVIEW ONLY</p></div><dl class="details avoid"><div class="entry"><dt>Requested by</dt><dd>Carla Cashier</dd></div><div class="entry"><dt>Date requested</dt><dd>28 Sep 2026, 9:00 AM</dd></div><div class="entry"><dt>Date needed</dt><dd>Thu, 1 Oct 2026</dd></div><div class="entry"><dt>Status</dt><dd>Pending Approval</dd></div><div class="entry"><dt>Purchase order</dt><dd>—</dd></div><div class="entry full"><dt>Remarks</dt><dd>For the weekend</dd></div></dl><table aria-label="Requested items"><thead><tr><th>#</th><th>Item</th><th>Supplier</th><th class="num">Qty</th><th>Unit</th><th class="num">Est. unit price</th><th class="num">Est. amount</th><th>Decision</th><th>Remarks</th></tr></thead><tbody><tr><td class="tabular">1</td><td>Flour</td><td>Golden Mills Trading</td><td class="num">2</td><td>sack</td><td class="num">₱1,200.00</td><td class="num">₱2,400.00</td><td>Pending</td><td>—</td></tr><tr><td class="tabular">2</td><td>Iced Tea</td><td>Golden Mills Trading</td><td class="num">24</td><td>pc</td><td class="num">—</td><td class="num">—</td><td>Pending</td><td>—</td></tr></tbody></table><div class="totals avoid"><div class="row"><span>Estimated total (all items)</span><span class="tabular">₱2,400.00</span></div><div class="row strong"><span>Estimated total (approved items)</span><span class="tabular">₱0.00</span></div><div class="row"><span>Items without a price</span><span class="tabular">1</span></div></div><div class="signatures avoid" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div class="sign"><p class="role">Requested by</p><div class="line"></div><p class="name">Carla Cashier</p><p class="hint">Signature over printed name</p><div class="line date"></div><p class="hint">Date</p></div><div class="sign"><p class="role">Approved by</p><div class="line"></div><p class="name"></p><p class="hint">Signature over printed name</p><div class="line date"></div><p class="hint">Date</p></div></div><p class="doc-footer">Printed 12 Oct 2026, 3:04 PM by Ana · PR-MAIN-2026-00001</p></article>
+</body>
+</html>"
+`;

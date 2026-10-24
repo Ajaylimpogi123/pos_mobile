@@ -16,7 +16,7 @@ import { mockResponse, secureStoreMock } from '@/test-utils';
 import { deferred, managerUser, renderWithQuery, routeFetch } from '@/test-utils/catalog';
 import { writtenFiles } from '@/test-utils/fileSystem';
 import { makeReportRow, makeSalesReport } from '@/test-utils/shifts';
-import { businessDateAt } from '@/utils/businessDay';
+import { businessDateAt } from '@pos/core/businessDay';
 import { EXPORT_NEEDS_BUILD_MESSAGE, EXPORT_WEB_MESSAGE, shareCsv } from '@/utils/csvShare';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -139,7 +139,7 @@ describe('the report', () => {
     routeFetch([{ method: 'GET', path: REPORT, reply: () => reply.promise }]);
     await renderWithQuery(<ReportsRoute />);
     expect(screen.getByTestId('report-loading')).toBeOnTheScreen();
-    const empty = makeSalesReport({ totals: { orders_count: 0, items_sold: 0, gross_sales_cents: 0, discounts_cents: 0, net_sales_cents: 0, vat_amount_cents: 0, voids_count: 0, voids_cents: 0, refunds_count: 0, refunds_cents: 0, net_after_refunds_cents: 0, sc_pwd_orders_count: 0, sc_pwd_vat_relief_cents: 0, sc_pwd_discount_cents: 0 }, rows: [] });
+    const empty = makeSalesReport({ totals: { orders_count: 0, items_sold: 0, gross_sales_cents: 0, discounts_cents: 0, net_sales_cents: 0, vat_amount_cents: 0, voids_count: 0, voids_cents: 0, refunds_count: 0, refunds_cents: 0, net_after_refunds_cents: 0, sc_pwd_orders_count: 0, sc_pwd_vat_relief_cents: 0, sc_pwd_discount_cents: 0, service_charge_cents: 0 }, rows: [] });
     await act(async () => reply.resolve(mockResponse(200, { data: empty })));
     expect(await screen.findByTestId('report-empty')).toBeOnTheScreen();
     expect(screen.getByTestId('report-filters')).toBeOnTheScreen();

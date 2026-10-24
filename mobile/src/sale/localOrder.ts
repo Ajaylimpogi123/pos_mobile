@@ -16,8 +16,8 @@
  *
  * Pure functions: integer centavos only, no clock or storage.
  */
-import { buildOrderRequest } from '@/sale/order';
-import type { SalePricing } from '@/sale/pricing';
+import { buildOrderRequest } from '@pos/core/sale/order';
+import type { SalePricing } from '@pos/core/sale/pricing';
 import type {
   OfflineOrder,
   OrderItem,
@@ -30,8 +30,16 @@ import type {
 } from '@/services/types';
 import type { CartCustomer, CartLine } from '@/stores/cart';
 
-/** The contract's `order_no` rule. */
-export const ORDER_NO_PATTERN = /^[A-Z0-9]{1,8}-\d{8}-\d{4,6}$/;
+// Order-number helpers live in @pos/core (shared with the web POS); re-exported for existing imports.
+export {
+  ORDER_NO_PATTERN,
+  orderNumberLabel,
+  parseOrderNo,
+  shortOrderNumber,
+  ticketNumberLabel,
+  type ParsedOrderNo,
+} from '@pos/core/sale/orderNumbers';
+
 
 /** A device code as the contract allows it in `order_no`. */
 export const DEVICE_CODE_PATTERN = /^[A-Z0-9]{1,8}$/;
@@ -49,44 +57,12 @@ export function formatOrderNo(deviceCode: string, businessDate: string, sequence
   return `${deviceCode}-${businessDate.replace(/-/g, '')}-${String(sequence).padStart(4, '0')}`;
 }
 
-export type ParsedOrderNo = { deviceCode: string; date: string; sequence: number };
-
-/** `T01-20260926-0005` → `{ deviceCode: 'T01', date: '2026-09-26', sequence: 5 }`; `null` when malformed. */
-export function parseOrderNo(orderNo: string): ParsedOrderNo | null {
-  if (!ORDER_NO_PATTERN.test(orderNo)) return null;
-  const [deviceCode, ymd, sequence] = orderNo.split('-');
-  return {
-    deviceCode,
-    date: `${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6, 8)}`,
-    sequence: Number(sequence),
-  };
-}
-
-/** The kitchen's short number of an offline sale: `T01-20260926-0005` → `T01-5` (code + sequence). */
-export function shortOrderNumber(orderNo: string): string {
-  const parsed = parseOrderNo(orderNo);
-  return parsed ? `${parsed.deviceCode}-${parsed.sequence}` : orderNo;
-}
 
 /** A sale saved on this device and not yet given an invoice number by the server. */
 export function isLocalOrder(order: Pick<PrintableOrder, 'invoice_no'>): boolean {
   return order.invoice_no === null;
 }
 
-/**
- * The number an order is known by on screen and on paper: the invoice number,
- * or, for a local order, `T01-20260926-0005 (offline)`.
- */
-export function orderNumberLabel(order: Pick<PrintableOrder, 'invoice_no' | 'order_no'>): string {
-  if (order.invoice_no !== null) return order.invoice_no;
-  return order.order_no ? `${order.order_no} (offline)` : '(offline)';
-}
-
-/** The big number on a kitchen ticket: `#17`, or `T01-5` for a local order. */
-export function ticketNumberLabel(order: Pick<PrintableOrder, 'invoice_no' | 'order_no' | 'queue_no'>): string {
-  if (order.invoice_no === null && order.order_no) return shortOrderNumber(order.order_no);
-  return `#${order.queue_no}`;
-}
 
 /** An ISO 8601 UTC time without milliseconds, like the contract's examples. */
 export function isoSeconds(time: number): string {
@@ -201,6 +177,10 @@ export function buildLocalOrder(input: LocalSaleInput): PrintableOrder {
     invoice_no: null,
     queue_no: input.sequence,
     table_no: input.tableNo,
+    // Dine-in: an offline sale is always pay-now (settlements are never queued).
+    tab_ulid: null,
+    service_charge_cents: 0,
+    split_count: null,
     business_date: input.businessDate,
     status: 'completed',
     placed_at: input.placedAt,

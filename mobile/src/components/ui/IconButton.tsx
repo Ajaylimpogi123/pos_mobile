@@ -3,12 +3,13 @@ import { Pressable, StyleSheet, type Insets, type StyleProp, type ViewStyle } fr
 
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { colors, hitTarget, iconSizes, opacity, pressedScale, radius, sizes } from '@/constants/theme';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 /**
- * - `accent`: the round dark-emerald button (e.g. "+" New).
- * - `primary`: solid emerald.
- * - `soft`: pale green tint with a dark-emerald glyph (steppers, secondary actions).
- * - `bar`: soft grey, for the top bar's back / menu buttons.
+ * - `accent`: the round green button (e.g. "+" New): a primary action.
+ * - `primary`: solid green.
+ * - `soft`: the neutral `accent` fill with a dark glyph (secondary actions).
+ * - `bar`: a quiet grey, for the header's back / menu buttons.
  * - `ghost`: no fill until pressed.
  */
 export type IconButtonVariant = 'accent' | 'primary' | 'soft' | 'bar' | 'ghost';
@@ -30,11 +31,11 @@ type IconButtonProps = {
 };
 
 const palettes = {
-  accent: { background: colors.primaryDark, pressed: colors.primaryDarkPressed, icon: colors.onPrimary },
-  primary: { background: colors.primary, pressed: colors.primaryPressed, icon: colors.onPrimary },
-  soft: { background: colors.primarySoft, pressed: colors.primarySoftPressed, icon: colors.primaryDark },
-  bar: { background: colors.surfaceMuted, pressed: colors.surfacePressed, icon: colors.text },
-  ghost: { background: colors.transparent, pressed: colors.surfaceMuted, icon: colors.textSecondary },
+  accent: { background: colors.green, pressed: colors.greenHover, icon: colors.onPrimary },
+  primary: { background: colors.green, pressed: colors.greenHover, icon: colors.onPrimary },
+  soft: { background: colors.accent, pressed: colors.borderStrong, icon: colors.text },
+  bar: { background: colors.transparent, pressed: colors.accent, icon: colors.text },
+  ghost: { background: colors.transparent, pressed: colors.accent, icon: colors.textSecondary },
 } as const;
 
 /** Grows a 44 dp button's touch area to 48. */
@@ -55,6 +56,7 @@ export const IconButton = memo(function IconButton({
   accessibilityHint,
 }: IconButtonProps) {
   const palette = palettes[variant];
+  const reduceMotion = useReducedMotion();
 
   return (
     <Pressable
@@ -70,7 +72,7 @@ export const IconButton = memo(function IconButton({
         styles.base,
         size === 'lg' ? styles.large : styles.medium,
         { backgroundColor: pressed ? palette.pressed : palette.background },
-        pressed && styles.pressed,
+        pressed && !reduceMotion && styles.pressed,
         disabled && styles.disabled,
         style,
       ]}

@@ -4,10 +4,10 @@
  * approval, and the text ⇄ value conversions of the discount editors.
  * Integer arithmetic only.
  */
-import type { SalePricing } from '@/sale/pricing';
-import type { AuthUser, DiscountKind, DiscountType, PinUser, SaleDiscount } from '@/services/types';
-import { formatPeso, parsePesoInput } from '@/utils/money';
-import { hasPermission, PERMISSIONS } from '@/utils/permissions';
+import type { SalePricing } from './pricing';
+import type { AuthUser, DiscountKind, DiscountType, PinUser, SaleDiscount } from '../contract/types';
+import { formatPeso, parsePesoInput } from '../money';
+import { hasPermission, PERMISSIONS } from '../permissions';
 
 /** The discount types of this phase, in the order the editors show them. */
 export const DISCOUNT_TYPES: readonly { value: DiscountType; label: string }[] = [

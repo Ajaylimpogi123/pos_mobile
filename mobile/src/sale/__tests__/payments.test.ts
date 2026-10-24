@@ -6,7 +6,7 @@ import {
   summarizePayments,
   validateTender,
   type TenderDraft,
-} from '@/sale/payments';
+} from '@pos/core/sale/payments';
 
 function tender(cash: string, gcash: { amount: string; reference: string }[] = []): TenderDraft {
   return { cash, gcash: gcash.map((row, index) => ({ key: `g${index}`, ...row })) };

@@ -1,6 +1,8 @@
 <?php
 
+use App\Actions\Errors\RecordServerErrorAction;
 use App\Http\Middleware\EnsureIdempotentRequest;
+use App\Http\Middleware\EnsurePrintAgentToken;
 use App\Http\Middleware\EnsureSessionIsActive;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -23,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'session.active' => EnsureSessionIsActive::class,
             'idempotent' => EnsureIdempotentRequest::class,
+            'print.agent' => EnsurePrintAgentToken::class,
         ]);
 
         // Check the session right after authentication and before route model binding,
@@ -65,7 +68,18 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Any 500 on api/* gets the contract body, in every environment. The exception is
         // still reported to the log; the response never carries its message or trace.
+        // Hardening & Pilot → B: every unhandled exception that yields a 5xx is recorded in the
+        // error log (source `server`), without request input, headers or the query string.
+        // Recording fails silently and never changes the response.
         $exceptions->respond(function (Response $response, Throwable $e, Request $request) {
+            if ($response->getStatusCode() >= 500) {
+                try {
+                    app(RecordServerErrorAction::class)->execute($e, $request, $response->getStatusCode());
+                } catch (Throwable) {
+                    // Never changes the response.
+                }
+            }
+
             if ($request->is('api/*') && $response->getStatusCode() === 500) {
                 return response()->json(['message' => 'Server Error.'], 500);
             }

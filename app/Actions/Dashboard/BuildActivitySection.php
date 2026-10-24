@@ -42,16 +42,20 @@ class BuildActivitySection
             ->where('audit_logs.created_at', '>=', $this->sqlTime($days[0]['start']))
             ->where('audit_logs.created_at', '<', $this->sqlTime($days[self::DAYS - 1]['end']));
 
+        // Qualified through the grammar, so the table gets the connection's prefix.
+        $action = DB::getQueryGrammar()->wrap('audit_logs.action');
+        $createdAt = DB::getQueryGrammar()->wrap('audit_logs.created_at');
+
         foreach ($days as $i => $day) {
             $range = [$this->sqlTime($day['start']), $this->sqlTime($day['end'])];
 
             $counts->selectRaw(
-                "SUM(audit_logs.action = 'auth.login' AND audit_logs.created_at >= ? AND audit_logs.created_at < ?) AS logins_{$i}",
+                "SUM({$action} = 'auth.login' AND {$createdAt} >= ? AND {$createdAt} < ?) AS logins_{$i}",
                 $range,
             )->selectRaw(
-                "SUM(audit_logs.action NOT LIKE 'auth.%' AND audit_logs.action NOT LIKE 'order.%' AND audit_logs.action NOT LIKE 'shift.%'"
-                ." AND audit_logs.action NOT LIKE 'pr.%' AND audit_logs.action NOT LIKE 'po.%'"
-                ." AND audit_logs.created_at >= ? AND audit_logs.created_at < ?) AS changes_{$i}",
+                "SUM({$action} NOT LIKE 'auth.%' AND {$action} NOT LIKE 'order.%' AND {$action} NOT LIKE 'shift.%'"
+                ." AND {$action} NOT LIKE 'pr.%' AND {$action} NOT LIKE 'po.%'"
+                ." AND {$createdAt} >= ? AND {$createdAt} < ?) AS changes_{$i}",
                 $range,
             );
         }

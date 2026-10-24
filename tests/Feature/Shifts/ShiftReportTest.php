@@ -303,7 +303,7 @@ describe('orders and their shift', function () {
 
                 syncOrders($this->token, $batch)->assertOk();
 
-                return count(array_filter($sql, fn (string $s) => str_contains($s, 'from `shifts`')));
+                return count(array_filter($sql, fn (string $s) => str_contains($s, 'from '.DB::getQueryGrammar()->wrapTable('shifts'))));
             };
 
             expect($countShiftQueries(1))->toBe(1)

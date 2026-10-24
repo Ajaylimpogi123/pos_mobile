@@ -25,7 +25,7 @@ return new class extends Migration
         DB::table('order_items')
             ->join('products', 'products.id', '=', 'order_items.product_id')
             ->whereNull('order_items.category_id')
-            ->update(['order_items.category_id' => DB::raw('products.category_id')]);
+            ->update(['order_items.category_id' => DB::raw(DB::getQueryGrammar()->wrap('products.category_id'))]);
 
         Schema::table('order_items', function (Blueprint $table) {
             $table->unsignedBigInteger('category_id')->nullable(false)->change();

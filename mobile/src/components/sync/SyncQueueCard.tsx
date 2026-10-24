@@ -8,7 +8,7 @@ import { colors, numeric, pressedScale, radius, spacing, typography } from '@/co
 import type { LocalOrderRecord } from '@/db/offlineRepository';
 import { orderNumberLabel, ticketNumberLabel } from '@/sale/localOrder';
 import { formatBusinessDate, formatClockTime } from '@/utils/dates';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 
 type SyncQueueCardProps = {
   record: LocalOrderRecord;

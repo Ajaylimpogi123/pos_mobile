@@ -2,7 +2,7 @@
  * Test-only: turn the display feature flags (`constants/features.ts`) on or
  * off for one test. Never import from app code.
  */
-import * as features from '@/constants/features';
+import * as features from '@pos/core/features';
 
 /**
  * Makes `showVatBreakdown()` return `on` until the returned spy is restored

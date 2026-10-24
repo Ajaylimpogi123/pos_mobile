@@ -736,14 +736,16 @@ function lookupQueries(int $orders): array
     expect(array_unique(array_column($response->json('data'), 'status')))->toBe(['accepted']);
 
     $count = fn (string $pattern) => count(array_filter($sql, fn (string $s) => preg_match($pattern, $s) === 1));
+    // The physical (prefixed) table name, as it appears in the SQL.
+    $table = fn (string $name) => preg_quote(DB::getQueryGrammar()->wrapTable($name), '/');
 
     return [
-        'cashier' => $count('/from `users` where .*`is_active`/'),
-        'roles' => $count('/from `roles`/'),
-        'permissions' => $count('/from `permissions`/'),
-        'products' => $count('/from `products`/'),
-        'categories' => $count('/from `categories`/'),
-        'customer' => $count('/exists\(select \* from `customers`/'),
+        'cashier' => $count("/from {$table('users')} where .*`is_active`/"),
+        'roles' => $count("/from {$table('roles')}/"),
+        'permissions' => $count("/from {$table('permissions')}/"),
+        'products' => $count("/from {$table('products')}/"),
+        'categories' => $count("/from {$table('categories')}/"),
+        'customer' => $count("/exists\(select \* from {$table('customers')}/"),
     ];
 }
 

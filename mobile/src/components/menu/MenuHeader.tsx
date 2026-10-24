@@ -32,7 +32,7 @@ type MenuHeaderProps = {
  */
 export function MenuHeader({ section, newLabel, onNew }: MenuHeaderProps) {
   return (
-    <ListHeader title="Menu" newLabel={newLabel} onNew={onNew} testIDPrefix="menu">
+    <ListHeader band title={section === 'products' ? 'Products' : 'Categories'} newLabel={newLabel} onNew={onNew} testIDPrefix="menu">
       <SegmentedControl
         options={SECTIONS}
         value={section}

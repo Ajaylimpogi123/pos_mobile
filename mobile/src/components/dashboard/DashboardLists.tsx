@@ -8,8 +8,8 @@ import { editProductRoute } from '@/constants/routes';
 import { colors, hitTarget, iconSizes, sizes, spacing, typography } from '@/constants/theme';
 import type { DashboardLowMarginProduct, DashboardRecentChange, DashboardRecentLogin } from '@/services/types';
 import { formatRelativeTime } from '@/utils/dates';
-import { formatPeso } from '@/utils/money';
-import { formatPercentBps } from '@/utils/numbers';
+import { formatPeso } from '@pos/core/money';
+import { formatPercentBps } from '@pos/core/numbers';
 
 function EmptyLine({ text, testID }: { text: string; testID: string }) {
   return (

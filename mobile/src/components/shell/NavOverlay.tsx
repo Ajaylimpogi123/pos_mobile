@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Animated, BackHandler, Easing, Pressable, StyleSheet } from 'react-native';
 
 import { motion, sidebar } from '@/constants/theme';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 type NavOverlayProps = {
   visible: boolean;
@@ -21,6 +22,7 @@ type NavOverlayProps = {
 export function NavOverlay({ visible, onClose, width, children, testID = 'nav-overlay' }: NavOverlayProps) {
   const [progress] = useState(() => new Animated.Value(0));
   const [mounted, setMounted] = useState(visible);
+  const reduceMotion = useReducedMotion();
 
   // Mount as soon as it should show (state derived during render, not in an effect).
   if (visible && !mounted) setMounted(true);
@@ -29,7 +31,8 @@ export function NavOverlay({ visible, onClose, width, children, testID = 'nav-ov
     if (!mounted) return;
     const animation = Animated.timing(progress, {
       toValue: visible ? 1 : 0,
-      duration: motion.drawerMs,
+      // MASTER §1.7: no slide under reduce-motion.
+      duration: reduceMotion ? 0 : motion.drawerMs,
       easing: visible ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
       useNativeDriver: true,
     });
@@ -37,7 +40,7 @@ export function NavOverlay({ visible, onClose, width, children, testID = 'nav-ov
       if (finished && !visible) setMounted(false);
     });
     return () => animation.stop();
-  }, [visible, mounted, progress]);
+  }, [visible, mounted, progress, reduceMotion]);
 
   useEffect(() => {
     if (!visible) return;

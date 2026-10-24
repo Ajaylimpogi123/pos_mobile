@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CardGrid, type GridEmptyProps } from '@/components/shared/CardGrid';
 import { ListHeader } from '@/components/shared/ListHeader';
+import { ListToolbar } from '@/components/shared/ListToolbar';
 import { useLatestCallback } from '@/components/shared/useLatestCallback';
 import { ShiftEventCard } from '@/components/sync/ShiftEventCard';
 import { SyncQueueCard } from '@/components/sync/SyncQueueCard';
@@ -44,7 +45,7 @@ export function SyncQueueScreen() {
   const queue = useSyncQueue();
   // Stable, so the memoized cards only re-render when their own entry changes.
   const retry = useLatestCallback(queue.retry);
-  const { screenPaddingX, contentMaxWidth } = useResponsive();
+  const { screenPaddingX } = useResponsive();
 
   const empty: GridEmptyProps = {
     title: 'Everything is synced',
@@ -63,9 +64,10 @@ export function SyncQueueScreen() {
 
   return (
     <Screen edges={[]} testID="sync-queue-screen">
-      <ListHeader subtitle="Offline sales on this tablet" title="Sync queue" testIDPrefix="sync-queue" />
+      <ListHeader band subtitle="Offline sales on this tablet" title="Sync queue" testIDPrefix="sync-queue" />
       <SafeAreaView edges={['left', 'right']} style={styles.body}>
-        <View style={[styles.toolbar, { paddingHorizontal: screenPaddingX, maxWidth: contentMaxWidth }]}>
+        <ListToolbar testID="sync-queue-toolbar">
+        <View style={[styles.toolbar, { paddingHorizontal: screenPaddingX }]}>
           <Text style={styles.summary} testID="sync-queue-summary">
             {summaryText(queue.pendingCount, queue.attentionCount)}
           </Text>
@@ -79,6 +81,7 @@ export function SyncQueueScreen() {
             testID="sync-queue-sync-now"
           />
         </View>
+        </ListToolbar>
         <CardGrid
           items={queue.items}
           keyOf={entryKey}
@@ -115,7 +118,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing.md,
-    paddingTop: spacing.md,
   },
   summary: {
     ...typography.bodyStrong,

@@ -10,8 +10,8 @@
  * - change = sum − total, and it comes out of the cash
  * - no payments at all only when the total is 0
  */
-import type { OrderPaymentRequest, PaymentMethod } from '@/services/types';
-import { formatPeso, parsePesoInput } from '@/utils/money';
+import type { OrderPaymentRequest, PaymentMethod } from '../contract/types';
+import { formatPeso, parsePesoInput } from '../money';
 
 /** "Cash", "GCash". */
 export function paymentMethodLabel(method: PaymentMethod): string {

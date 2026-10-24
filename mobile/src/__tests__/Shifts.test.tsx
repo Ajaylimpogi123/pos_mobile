@@ -18,7 +18,7 @@ import { freshTestDatabase } from '@/test-utils/database';
 import { decodeEscPos } from '@/test-utils/escpos';
 import { createFakeTransport, makePrintConfig, type FakeTransport } from '@/test-utils/printing';
 import { makeShift, makeShiftReport, TEST_SHIFT_ULID } from '@/test-utils/shifts';
-import { businessDateAt } from '@/utils/businessDay';
+import { businessDateAt } from '@pos/core/businessDay';
 
 jest.mock('@/db/client', () => ({
   // eslint-disable-next-line @typescript-eslint/no-require-imports

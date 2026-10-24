@@ -75,6 +75,7 @@ Ingredient/recipe stock depletion, unit conversions, suppliers, purchase request
 | Ingredients, recipes, ingredient depletion | | ✅ | |
 | Unit conversions (server-side, enforced) | | ✅ | |
 | Suppliers, PR → PO → goods receipt, costing | | ✅ | |
+| Dine-in tables & tabs (optional; rounds, transfer/merge, split bill, service charge; done 2026-10-13) | ✅ | | |
 | Multi-branch activation, transfers | | | ✅ |
 | Bluetooth printing fallback | | | ✅ |
 | Loyalty, promos, happy-hour pricing | | | ✅ |
@@ -211,7 +212,7 @@ Internet drops mid-service. Cashier keeps selling: cart, checkout, receipt, and 
 ## 5. Database Design
 
 ### 5.1 Conventions
-- Plural snake_case table names. **No `tbl_` prefix.** Standard `id` bigint PK on every table. **No custom PK names.**
+- Plural snake_case table names. **Every physical table is prefixed `tbl_`** (user decision 2026-10-07: one database shared by the mobile app and the web POS), applied once through the `mysql` connection's `prefix` in `config/database.php`; framework tables included. Code (models, migrations, `exists:`/`unique:` rules) uses the bare name; **raw SQL must never hard-code a table name or qualifier** (builder columns, or `DB::getQueryGrammar()->wrap()`/`wrapTable()`). Index, foreign key and CHECK names stay **unprefixed** (`prefix_indexes => false`: prefixed names exceed MySQL's 64-character limit). Standard `id` bigint PK on every table. **No custom PK names.**
 - Transactional tables additionally carry a `ulid` CHAR(26) **UNIQUE** — client-generated, the idempotency key.
 - Money: `bigint` centavos, suffixed `_cents`. Quantities: `decimal(12,4)`. Timestamps: UTC.
 - Every table: `created_at`, `updated_at`. Mutable business entities: `created_by`, `updated_by`.
@@ -363,6 +364,12 @@ Rate-limit auth endpoints. Strong password policy (legacy used the 8-character d
 
 ## 7. React Native Architecture
 
+> **Repo structure (2026-10-09):** the clients share one TypeScript package, `packages/pos-core` (`@pos/core`). It holds the contract types, money, business day, permissions, pricing, discounts, SC/PWD, payments, the order body, order numbers, the ESC/POS builder, the printed documents and printer routing.
+> - `mobile/` and `web/` link it with `file:`. It is not an npm workspace, because Expo pins a different React from the web.
+> - Platform code stays in each app: UI, stores, storage, HTTP, print transport, and the tablet's offline orders.
+> - Rules: `packages/pos-core/README.md`.
+> - The repo root `package.json` is a task runner (`npm run check`, `dev`, `build`, `install:all`). Laravel's unused Vite/Blade starter files were removed, and `/` redirects to `/pos`.
+
 ### 7.1 Stack
 Expo (SDK latest) · **Expo Dev Client / EAS Build — NOT Expo Go** (native TCP + SQLite modules) · TypeScript strict · Expo Router · TanStack Query · Zustand · `expo-sqlite` + Drizzle ORM · `expo-secure-store` · a local Expo Module `modules/pos-printer` (TCP) · an in-house ESC/POS builder *(2026-09-26: replaced `react-native-tcp-socket`, which lacks New Architecture support, and the deprecated `esc-pos-encoder`)*.
 
@@ -396,7 +403,7 @@ src/
 Rule: **SQLite is the source of truth on-device.** TanStack Query caches reads; it never owns unsynced writes.
 
 ### 7.4 UX principles
-Large tap targets (counter use, possibly gloved). Cart always visible in landscape — never hidden behind a breakpoint (a real legacy bug hid the entire cart below 1024px, making the POS unusable on the very tablets it targets). Optimistic UI with explicit sync state. A permanent, unmissable offline/pending indicator. Destructive actions (void, refund, shift close) require confirmation plus authorization.
+**Visual design: `design-system/pos/MASTER.md`** (approved 2026-10-07; the legacy shadcn/Figtree look, shared by tablet and web; replaces Sage Emerald). Large tap targets (counter use, possibly gloved). Cart always visible in landscape — never hidden behind a breakpoint (a real legacy bug hid the entire cart below 1024px, making the POS unusable on the very tablets it targets). Optimistic UI with explicit sync state. A permanent, unmissable offline/pending indicator. Destructive actions (void, refund, shift close) require confirmation plus authorization.
 
 ---
 
@@ -489,6 +496,8 @@ Bluetooth transport (for printers out of WiFi range, ~10m limit) and a server-si
 | **7. Voids & refunds** | Void, full/partial refund, authorization, reversing movements, audit log. *(2026-09-27, done: void only while the sale's shift is open, on the tablet that sold it; refunds full or per line with no time limit; manager PIN approval; money back by the method paid; VOID kitchen ticket, void and refund slips; online only. Refunds live in `refunds`/`refund_items`/`refund_payments` (not negative `payments` rows) and count on their own business day and shift.)* | Stock and revenue reconcile exactly after a void and a partial refund |
 | **7b. Inventory (v1 completion)** *(added 2026-09-27)* | Stock list with derived In stock / Low / Out status and a per-product reorder level; movement history with running balance; stock in / count / wastage; dashboard stock alerts; Low/Out badges on Sell tiles; inventory report + CSV (contract "Inventory (v1 completion)") | Report reconciles opening + received − sold + returned − wasted + adjusted = closing; report <500ms on a year of movements |
 | **7c. Ingredients, Recipes & Purchasing** *(brought forward from v2, 2026-09-28)* | **Round A (done 2026-09-29):** unit catalog + per-ingredient units, ingredient stock with weighted-average cost, suppliers, PR (per-item decisions) → one PO per PR → append-only receiving, purchasing report, insights. **Round B (done 2026-09-29):** product stock modes (`track_stock` now generated from `stock_mode`), recipes with cost and margin, depletion on sale online and offline (never blocks), void returns, refund wastage, Sell `Check stock` badges | Unit math exact (examples G–J); ledger and value invariants hold; purchasing and sales reports <500ms on the real MySQL |
+| **W. Web POS** *(added 2026-10-07)* | Browser POS terminal + full back-office in `web/` (Vite, React, TS, shadcn), same API and database; online only; server print-job queue + LAN print agent for web terminals. Replaces the legacy `htdocs\pos` app (UI donor only, no data import). Rounds W1–W5 (contract "Web POS & Print Bridge") | A web terminal sells, prints receipt and kitchen tickets through the agent, and the sale shows in tablet history and reports |
+| **D. Dine-in tables & tabs** *(added and built 2026-10-13, optional)* | Branch setting `dine_in_enabled` (off by default: the default stays pay-as-you-order) and `service_charge_bps`; admin tables; server-side tabs (online only) with kitchen rounds, sent-item cancel with manager PIN, settlement into normal orders at snapshot prices with no stock block, close, transfer, merge, split by item or equally, printed bill, service charge (contract "Dine-in Tables & Tabs", v1.26) | A tab opens, sends rounds, splits and settles on tablet and web; reports and refunds reconcile with the service charge |
 | **8. Hardening & pilot** | Load/soak test, crash reporting, backup/restore, device provisioning, staff training | Runs a full real service day with no data loss |
 | **v2** | Ingredients, recipes, enforced unit conversion, suppliers, PR → PO → goods receipt, weighted-average costing | Ingredient stock depletes on sale; a receipt updates cost correctly in the stocking unit |
 | **v3** | Multi-branch activation, Bluetooth printing, server-side print bridge, loyalty | — |
@@ -521,6 +530,7 @@ Bluetooth transport (for printers out of WiFi range, ~10m limit) and a server-si
 | 16 | Absolute image URLs from object storage | RN has no base URL; legacy's `public/storage` symlink never existed | Relative paths + symlink |
 | 17 | Unit conversion enforced server-side (v2) | Legacy applied it once in the browser; receiving corrupted stock silently | Client-side conversion |
 | 18 | Isolated test database | Legacy tests ran `RefreshDatabase` against production data | Sharing the dev/prod DB |
+| 19 | Web terminals print through a server print-job queue and a LAN print agent; tablets keep direct TCP (#8) *(2026-10-07)* | A browser cannot open TCP sockets; client-built ESC/POS bytes keep one layout implementation (the tablet's TypeScript builders) | Re-rendering receipts in PHP (two layouts to keep in sync); browser print dialog (no kitchen routing) |
 
 ---
 

@@ -44,8 +44,8 @@ const TONES: Record<ChoiceChipTone, Tone> = {
   soft: {
     background: colors.primarySoft,
     pressed: colors.primarySoftPressed,
-    border: colors.accent,
-    pressedBorder: colors.accent,
+    border: colors.greenChip,
+    pressedBorder: colors.greenLine,
     text: colors.primaryDark,
   },
 };

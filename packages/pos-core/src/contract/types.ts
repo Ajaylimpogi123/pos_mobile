@@ -532,7 +532,9 @@ export type InsightAction =
   /** Q-029: the purchasing insights' action keys. */
   | 'purchasing.requests.pending'
   | 'purchasing.orders.pending'
-  | 'purchasing.orders.to_receive';
+  | 'purchasing.orders.to_receive'
+  /** Hardening & Pilot §C: `device_unsynced` opens admin Devices. */
+  | 'settings.devices';
 
 /** `insights[]`: built only from sections the caller can see; ordered critical → warning → info, then `key`. */
 export type Insight = {
@@ -573,12 +575,46 @@ export type DashboardTopProduct = {
   net_sales_cents: number;
 };
 
+/** Dashboard Period Filter (v1.28): the `period` query param and `sales.period`. */
+export type DashboardPeriod = 'day' | 'month' | 'year';
+
+/** GET /api/v1/dashboard query (v1.28). Both optional; omitted = Day / today. */
+export type DashboardParams = {
+  /** Default `day`. */
+  period?: DashboardPeriod;
+  /** Any business date inside the wanted period; not after the current business date (else 422 on `date`). */
+  date?: BusinessDate;
+};
+
+/** `sales.trend.buckets[]`: oldest first, 0-filled. */
+export type DashboardTrendBucket = {
+  /** The bucket's first business date (the 1st for a month bucket). */
+  start: BusinessDate;
+  orders_count: number;
+  net_sales_cents: number;
+};
+
+/** `sales.trend`: `day` buckets for `period=day|month`, `month` buckets for `period=year`. */
+export type DashboardTrend = {
+  unit: 'day' | 'month';
+  /** day: the 7 business days ending on the anchor; month: each day of the range; year: each month of the range. */
+  buckets: DashboardTrendBucket[];
+};
+
 /**
- * Section `sales` (permission `report.view`, caller's branch, today's
- * business day, orders that are not `voided`, Phase 7). With no sales today every figure is 0
- * and the lists keep their fixed shapes.
+ * Section `sales` (permission `report.view`, caller's branch, orders that are not `voided`,
+ * Phase 7). v1.28: every figure covers `date_from … date_to` (the chosen period; Day / today
+ * by default). With no sales every figure is 0 and the lists keep their fixed shapes.
  */
 export type DashboardSales = {
+  /** v1.28: echo of the request (default `day`). */
+  period: DashboardPeriod;
+  /** v1.28: inclusive range of the period; a running month/year ends on the current business date. */
+  date_from: BusinessDate;
+  date_to: BusinessDate;
+  /** v1.28: the chart series for the period. */
+  trend: DashboardTrend;
+  /** The **current** business date (not the anchor). */
   business_date: BusinessDate;
   orders_count: number;
   /** Σ `qty`. */
@@ -593,6 +629,7 @@ export type DashboardSales = {
   /** `rhu(net_sales_cents, orders_count)`, or 0 with no orders. */
   average_order_cents: number;
   by_payment_method: DashboardPaymentMethodTotal[];
+  /** @deprecated v1.28: always the 7 days ending on the current business date, kept for older builds. Read `trend`. */
   last_7_days: DashboardSalesDay[];
   top_products: DashboardTopProduct[];
   /** Voids & Refunds (Phase 7): today's voided orders (on the order's business day). */
@@ -601,7 +638,8 @@ export type DashboardSales = {
   refunds_cents: number;
   /** Phase 7: `net_sales_cents − refunds_cents`. */
   net_after_refunds_cents: number;
-} & ScPwdSalesFigures;
+} & ScPwdSalesFigures &
+  ServiceChargeFigures;
 
 /**
  * GET /api/v1/dashboard → `data`. A section the caller may not see is `null`
@@ -864,7 +902,8 @@ export type ReviewReason =
   | 'total_mismatch'
   | 'payment_short'
   | 'discount_over_limit'
-  | 'clock_skew';
+  | 'clock_skew'
+  | 'shift_closed';
 
 /** Offline Sales (Phase 5) → "Order changes": on every `Order` and `OrderSummary`. */
 export type OrderSyncFields = {
@@ -940,6 +979,12 @@ export type Order = {
   queue_no: number;
   /** Table Number (Core Sale revision 2): a free label, e.g. "12" or "Patio 2"; `null` when not set. */
   table_no: string | null;
+  /** Dine-in Tables & Tabs: the tab this order settled; `null` for pay-now sales. */
+  tab_ulid: string | null;
+  /** Dine-in: the service charge `S` (included in `total_cents`); `0` when none. */
+  service_charge_cents: number;
+  /** Dine-in (T2): the equal-split share count (2–10); `null` when not split equally. */
+  split_count: number | null;
   business_date: BusinessDate;
   status: OrderStatus;
   placed_at: IsoDateTime;
@@ -1073,6 +1118,12 @@ export type OrderSummary = {
   queue_no: number;
   /** Table Number (Core Sale revision 2); `null` when not set. */
   table_no: string | null;
+  /** Dine-in Tables & Tabs: the tab this order settled; `null` for pay-now sales. */
+  tab_ulid: string | null;
+  /** Dine-in: the service charge `S` (included in `total_cents`); `0` when none. */
+  service_charge_cents: number;
+  /** Dine-in (T2): the equal-split share count (2–10); `null` when not split equally. */
+  split_count: number | null;
   business_date: BusinessDate;
   status: OrderStatus;
   placed_at: IsoDateTime;
@@ -1244,6 +1295,10 @@ export type BranchSettings = {
   /** 1–3. */
   receipt_copies: number;
   print_kitchen_tickets: boolean;
+  /** Dine-in Tables & Tabs: the Tables view and tab endpoints are on (default `false`). */
+  dine_in_enabled: boolean;
+  /** Dine-in: service charge on tab settlements, 0–2000 basis points (0 = none, the default). */
+  service_charge_bps: BasisPoints;
   /** `null` until the settings are first saved. */
   updated_at: IsoDateTime | null;
 };
@@ -1255,6 +1310,10 @@ export type BranchSettingsUpdateRequest = {
   auto_print_receipt?: boolean;
   receipt_copies?: number;
   print_kitchen_tickets?: boolean;
+  /** Turning it off with open tabs returns `409 "Close the N open bills first."`. */
+  dine_in_enabled?: boolean;
+  /** 0–2000. */
+  service_charge_bps?: BasisPoints;
 };
 
 /** `print-config.branch`. */
@@ -1278,22 +1337,29 @@ export type PrintConfig = {
 // Feature: Offline Sales (Phase 5)
 // ---------------------------------------------------------------------------
 
+/** Web POS §C: the platform of a terminal. */
+export type DevicePlatform = 'android' | 'web';
+
 /** POST /api/v1/devices/register body. */
 export type DeviceRegisterRequest = {
-  /** A ULID generated once per app install (SecureStore). */
+  /** A ULID generated once per install: SecureStore on a tablet, `localStorage` `pos.install_id` on web. */
   install_id: string;
-  /** Max 60, e.g. the device model. */
+  /** Max 60: the device model on a tablet, `Web · <browser> on <OS>` on web. */
   name: string;
   /** Max 20. */
   app_version: string | null;
+  /** Web POS §C: omitted (= `android`) by tablets, `web` from the web POS. */
+  platform?: DevicePlatform | null;
 };
 
 /** POST /api/v1/devices/register 200 `data`. */
 export type RegisteredDevice = {
   id: number;
-  /** `T` + the id padded to 2 digits: `T01`, `T02`, … `T123`. */
+  /** `T` (tablet) or `W` (web) + the id padded to 2 digits: `T01`, `W03`, … */
   code: string;
   name: string;
+  /** Web POS §C. */
+  platform: DevicePlatform;
 };
 
 /** `OfflineOrder.items[]`: the `POST /orders` item plus the price the device sold at. */
@@ -1441,7 +1507,8 @@ export type ShiftReport = {
   refunds_by_method: ShiftReportRefundMethod[];
   /** Phase 7: `net_sales_cents − refunds_cents`. */
   net_after_refunds_cents: number;
-} & ScPwdSalesFigures;
+} & ScPwdSalesFigures &
+  ServiceChargeFigures;
 
 /** `ShiftReport.refunds_by_method[]` (Phase 7): always both methods, cash first. */
 export type ShiftReportRefundMethod = {
@@ -1560,7 +1627,8 @@ export type SalesReportTotals = {
   refunds_cents: number;
   /** `net_sales_cents − refunds_cents`. */
   net_after_refunds_cents: number;
-} & ScPwdSalesFigures;
+} & ScPwdSalesFigures &
+  ServiceChargeFigures;
 
 /**
  * `data.rows[]`. `qty` is `null` for `payment` rows; `gross_sales_cents` and
@@ -2401,4 +2469,510 @@ export type RecipeLineRequest =
 /** PUT /api/v1/admin/products/{id}/recipe body: the whole recipe (0..50 lines, no duplicate component). */
 export type RecipeUpdateRequest = {
   lines: RecipeLineRequest[];
+};
+
+// ---------------------------------------------------------------------------
+// Web POS §D: print jobs
+// ---------------------------------------------------------------------------
+
+export type PrintJobKind =
+  | 'receipt'
+  | 'kitchen'
+  | 'x_read'
+  | 'z_read'
+  | 'void_slip'
+  | 'kitchen_void'
+  | 'refund_slip'
+  | 'test'
+  /** Dine-in: the printed bill (receipt printer). */
+  | 'bill';
+
+export type PrintJobStatus = 'queued' | 'printing' | 'printed' | 'failed';
+
+/** The `PrintJob` resource. */
+export type PrintJob = {
+  ulid: string;
+  printer_id: number;
+  printer_name: string;
+  kind: PrintJobKind;
+  order_ulid: string | null;
+  copy_no: number;
+  is_reprint: boolean;
+  status: PrintJobStatus;
+  attempts: number;
+  last_error: string | null;
+  created_at: IsoDateTime;
+  printed_at: IsoDateTime | null;
+};
+
+/** POST /api/v1/print-jobs body (idempotent by `ulid`). */
+export type PrintJobCreateRequest = {
+  ulid: string;
+  printer_id: number;
+  kind: PrintJobKind;
+  /** Required unless `kind` is `x_read`, `z_read` or `test`. */
+  order_ulid: string | null;
+  /** 1–3. */
+  copy_no: number;
+  is_reprint: boolean;
+  /** The ESC/POS bytes, base64; 1–65,536 bytes decoded. */
+  payload_base64: string;
+};
+
+// ---------------------------------------------------------------------------
+// Feature: Hardening & Pilot (Phase 8)
+// ---------------------------------------------------------------------------
+
+/** §B: who produced an error group. */
+export type ErrorSource = 'app' | 'server';
+
+export type ErrorLevel = 'warning' | 'error' | 'fatal';
+
+export type ErrorGroupStatus = 'open' | 'resolved';
+
+/** §B `ClientError.context`: every field optional. */
+export type ClientErrorContext = {
+  /** Max 120. */
+  screen?: string | null;
+  /** Max 20. */
+  app_version?: string | null;
+  /** Max 20: `android`, `ios` or `web`. */
+  os?: string | null;
+  /** Max 20. On web: the browser name and major version. */
+  os_version?: string | null;
+  /** Max 60. Null on web. */
+  device_model?: string | null;
+  /** ULID. */
+  install_id?: string | null;
+  online?: boolean | null;
+  /** At most 20 string keys; values max 500 characters. */
+  extra?: Record<string, string> | null;
+};
+
+/** §B: one error the app sends. Redacted before it is queued (§F). */
+export type ClientError = {
+  /** The idempotency key: a duplicate is ignored. */
+  ulid: string;
+  occurred_at: IsoDateTime;
+  level: ErrorLevel;
+  /** Max 1000 (the server truncates). */
+  message: string;
+  /** Max 16000 (the server truncates). */
+  stack: string | null;
+  context: ClientErrorContext;
+};
+
+/** POST /api/v1/client-errors body (auth optional). */
+export type ClientErrorsRequest = {
+  /** 1..20. */
+  errors: ClientError[];
+};
+
+/** POST /api/v1/client-errors 202 `data`. */
+export type ClientErrorsAccepted = {
+  accepted: number;
+  duplicates: number;
+};
+
+/** `ErrorGroup.latest.device`. */
+export type ErrorDeviceRef = {
+  id: number;
+  code: string;
+  name: string;
+};
+
+/** `ErrorGroup.latest`: the newest occurrence. */
+export type ErrorGroupLatest = {
+  occurred_at: IsoDateTime;
+  screen: string | null;
+  app_version: string | null;
+  device: ErrorDeviceRef | null;
+  user: UserRef | null;
+};
+
+/** GET /api/v1/admin/error-log item. */
+export type ErrorGroup = {
+  id: number;
+  source: ErrorSource;
+  level: ErrorLevel;
+  message: string;
+  status: ErrorGroupStatus;
+  occurrences: number;
+  first_seen_at: IsoDateTime;
+  last_seen_at: IsoDateTime;
+  /** The last 5 distinct app versions. */
+  app_versions: string[];
+  resolved_at: IsoDateTime | null;
+  resolved_by: UserRef | null;
+  latest: ErrorGroupLatest;
+};
+
+/** `meta.summary` of the error-log list. */
+export type ErrorLogSummary = {
+  open: number;
+  open_fatal: number;
+  last_24h: number;
+};
+
+/** GET /api/v1/admin/error-log response. */
+export type ErrorLogListResponse = {
+  data: ErrorGroup[];
+  links: CursorLinks;
+  meta: CursorMeta & { summary: ErrorLogSummary };
+};
+
+/** GET /api/v1/admin/error-log query. */
+export type ErrorLogQuery = CursorParams & {
+  /** Default `open`. */
+  status?: ErrorGroupStatus;
+  source?: ErrorSource;
+  level?: ErrorLevel;
+  /** Matches the message. */
+  search?: string;
+  /** `YYYY-MM-DD`, on `last_seen_at`. */
+  from?: string;
+  to?: string;
+};
+
+/** One occurrence in the error-group detail. */
+export type ErrorEvent = {
+  ulid: string;
+  occurred_at: IsoDateTime;
+  received_at: IsoDateTime;
+  message: string;
+  stack: string | null;
+  context: ClientErrorContext;
+  device: ErrorDeviceRef | null;
+  user: UserRef | null;
+};
+
+/** GET /api/v1/admin/error-log/{group} `data`: the group plus its latest 50 events. */
+export type ErrorGroupDetail = ErrorGroup & {
+  events: ErrorEvent[];
+};
+
+/** §C `AppVersionInfo`: GET /api/v1/app-version `data`, and in the heartbeat response. Semver `major.minor.patch`. */
+export type AppVersionInfo = {
+  min_version: string;
+  latest_version: string;
+  update_url: string | null;
+};
+
+/** §C heartbeat `printers[]`. */
+export type HeartbeatPrinter = {
+  id: number;
+  ok: boolean;
+  checked_at: IsoDateTime;
+};
+
+/** POST /api/v1/devices/heartbeat body. Web terminals omit the outbox and sync fields. */
+export type HeartbeatRequest = {
+  app_version: string;
+  os_version?: string | null;
+  device_model?: string | null;
+  outbox_pending?: number | null;
+  outbox_failed?: number | null;
+  oldest_pending_at?: IsoDateTime | null;
+  errors_pending?: number | null;
+  last_catalogue_sync_at?: IsoDateTime | null;
+  last_stock_sync_at?: IsoDateTime | null;
+  storage_free_mb?: number | null;
+  /** Max 20. */
+  printers?: HeartbeatPrinter[] | null;
+};
+
+/** POST /api/v1/devices/heartbeat 200 `data`. */
+export type HeartbeatResponse = {
+  server_time: IsoDateTime;
+  app: AppVersionInfo;
+};
+
+/** §C derived health of a device. */
+export type DeviceHealth = 'ok' | 'attention' | 'offline' | 'retired';
+
+/** `AdminDevice.heartbeat`: the fields of the last heartbeat (null fields were not sent). */
+export type DeviceHeartbeat = {
+  outbox_pending: number | null;
+  outbox_failed: number | null;
+  oldest_pending_at: IsoDateTime | null;
+  errors_pending: number | null;
+  last_catalogue_sync_at: IsoDateTime | null;
+  last_stock_sync_at: IsoDateTime | null;
+  storage_free_mb: number | null;
+  os_version: string | null;
+  device_model: string | null;
+  printers: HeartbeatPrinter[];
+};
+
+/** GET /api/v1/admin/devices item (also the PATCH / retire / restore 200 `data`). */
+export type AdminDevice = {
+  id: number;
+  code: string;
+  name: string;
+  platform: DevicePlatform;
+  app_version: string | null;
+  last_seen_at: IsoDateTime | null;
+  is_active: boolean;
+  retired_at: IsoDateTime | null;
+  last_user: UserRef | null;
+  heartbeat: DeviceHeartbeat | null;
+  heartbeat_at: IsoDateTime | null;
+  health: DeviceHealth;
+};
+
+/** GET /api/v1/admin/devices query. */
+export type AdminDeviceQuery = CursorParams & {
+  /** Default `active`. */
+  status?: 'active' | 'retired' | 'all';
+  platform?: DevicePlatform;
+  search?: string;
+};
+
+/** PATCH /api/v1/admin/devices/{id} body. */
+export type AdminDeviceRenameRequest = {
+  /** Max 60. */
+  name: string;
+};
+
+/** POST /api/v1/admin/devices/{id}/retire body. */
+export type AdminDeviceRetireRequest = {
+  /** True retires even with unsynced sales. */
+  confirm?: boolean;
+};
+
+/** POST /api/v1/admin/devices/{id}/retire 409 body (unsynced sales, not confirmed). */
+export type DeviceRetireConflict = {
+  message: string;
+  outbox_pending: number;
+};
+
+// ---------------------------------------------------------------------------
+// Feature: Dine-in Tables & Tabs (v1.26)
+// ---------------------------------------------------------------------------
+
+/**
+ * Dine-in §G: on `ShiftReport`, the sales report `totals` and the dashboard
+ * `sales`. `net_sales_cents` (Σ `total_cents`) already includes it; product
+ * and category rows are line-based and exclude it.
+ */
+export type ServiceChargeFigures = {
+  /** Σ `orders.service_charge_cents` of non-voided orders, by the same scope rules as the other sales figures. */
+  service_charge_cents: number;
+};
+
+/** Admin `DiningTable` (GET/POST/PATCH /api/v1/admin/tables). */
+export type DiningTable = {
+  id: number;
+  /** Max 10, `^[A-Za-z0-9 -]+$` (fits `orders.table_no`); unique in the branch. */
+  name: string;
+  /** Max 30; `null` = no area. */
+  area: string | null;
+  /** 1–50. */
+  seats: number;
+  /** 0–9999. */
+  sort_order: number;
+  is_active: boolean;
+  updated_at: IsoDateTime;
+};
+
+/** GET /api/v1/admin/tables query. Ordered by `area`, `sort_order`, `name`. */
+export type DiningTableListParams = CursorParams;
+
+/** POST /api/v1/admin/tables body. */
+export type DiningTableCreateRequest = {
+  name: string;
+  area?: string | null;
+  seats: number;
+  sort_order?: number;
+  is_active?: boolean;
+};
+
+/** PATCH /api/v1/admin/tables/{id} body: partial. */
+export type DiningTableUpdateRequest = Partial<DiningTableCreateRequest>;
+
+export type TabStatus = 'open' | 'closed' | 'merged' | 'cancelled';
+
+/** `TableView.tab`: an open tab's summary. */
+export type TabSummary = {
+  ulid: string;
+  guests: number;
+  opened_at: IsoDateTime;
+  opened_by: UserRef;
+  /** Σ `remaining_qty`. */
+  item_count: number;
+  /** Σ `unit_price_cents × remaining_qty`: before discounts and service charge, display only. */
+  remaining_cents: number;
+  rounds_count: number;
+  updated_at: IsoDateTime;
+};
+
+/** GET /api/v1/tables item: an active table and its open tab (`null` = free). */
+export type TableView = {
+  id: number;
+  name: string;
+  area: string | null;
+  seats: number;
+  tab: TabSummary | null;
+};
+
+/** GET /api/v1/tables query (`per_page` 1–100, default 100). */
+export type TableViewListParams = CursorParams;
+
+/** `Tab.table`. */
+export type TabTable = {
+  id: number;
+  name: string;
+  area: string | null;
+};
+
+/** `Tab.items[]`: a sent line, with the snapshots taken when its round was sent. */
+export type TabItem = {
+  id: number;
+  round_no: number;
+  product_id: number;
+  product_name: string;
+  category_id: number;
+  unit_price_cents: number;
+  is_vatable: boolean;
+  qty: number;
+  settled_qty: number;
+  cancelled_qty: number;
+  /** `qty − settled_qty − cancelled_qty`. */
+  remaining_qty: number;
+  notes: string | null;
+  added_at: IsoDateTime;
+  added_by: UserRef;
+};
+
+/** `Tab.orders[]`: the orders that settled this tab, oldest first. */
+export type TabOrderRef = {
+  ulid: string;
+  invoice_no: string;
+  total_cents: number;
+};
+
+/** Shared object `Tab`. */
+export type Tab = {
+  ulid: string;
+  status: TabStatus;
+  table: TabTable;
+  /** 1–99. */
+  guests: number;
+  customer: OrderCustomer | null;
+  notes: string | null;
+  opened_at: IsoDateTime;
+  opened_by: UserRef;
+  closed_at: IsoDateTime | null;
+  /** Set when `status` is `merged`. */
+  merged_into_ulid: string | null;
+  rounds_count: number;
+  /** By `round_no`, then `id`. At most 200 lines. */
+  items: TabItem[];
+  orders: TabOrderRef[];
+  /** Σ `unit_price_cents × remaining_qty`. */
+  remaining_cents: number;
+  updated_at: IsoDateTime;
+};
+
+/** POST /api/v1/tabs body (Idempotent: `Idempotency-Key` = `ulid`). */
+export type TabOpenRequest = {
+  ulid: string;
+  table_id: number;
+  /** 1–99; default the table's `seats`. */
+  guests?: number;
+  customer_id?: number | null;
+  /** Max 255. */
+  notes?: string | null;
+};
+
+/** PATCH /api/v1/tabs/{ulid} body: partial. */
+export type TabUpdateRequest = {
+  guests?: number;
+  customer_id?: number | null;
+  notes?: string | null;
+};
+
+/** POST /api/v1/tabs/{ulid}/rounds → `items[]` (the `POST /orders` item rules, no discounts). */
+export type TabRoundItemRequest = {
+  product_id: number;
+  /** 1–999. */
+  qty: number;
+  /** Max 120. */
+  notes: string | null;
+};
+
+/** POST /api/v1/tabs/{ulid}/rounds body (Idempotent: `Idempotency-Key` = `ulid`). */
+export type TabRoundRequest = {
+  ulid: string;
+  /** 1–100 lines. */
+  items: TabRoundItemRequest[];
+};
+
+/** POST /api/v1/tabs/{ulid}/rounds 200. */
+export type TabRoundResponse = {
+  data: Tab;
+  /** The round just sent (print its kitchen ticket). */
+  round_no: number;
+};
+
+/** POST /api/v1/tabs/{ulid}/items/{id}/cancel body (Idempotency-Key: a ULID made when the dialog opens). */
+export type TabItemCancelRequest = {
+  /** 1 … `remaining_qty`. */
+  qty: number;
+  /** Required, max 255. */
+  reason: string;
+  /** Void authority: `null` when the caller has `sale.void`. */
+  authorization: ReversalAuthorization | null;
+};
+
+/** POST /api/v1/tabs/{ulid}/settle → `items[]`. */
+export type TabSettleItemRequest = {
+  tab_item_id: number;
+  /** 1 … `remaining_qty`. */
+  qty: number;
+  discount: SaleDiscount | null;
+  sc_pwd: boolean;
+};
+
+/**
+ * POST /api/v1/tabs/{ulid}/settle body (Idempotent: `Idempotency-Key` =
+ * `ulid`). The `POST /orders` body with tab items instead of products.
+ */
+export type TabSettleRequest = {
+  ulid: string;
+  shift_ulid: string;
+  /** Omitted: settle everything remaining. */
+  items?: TabSettleItemRequest[];
+  customer_id: number | null;
+  /** Max 255. */
+  notes: string | null;
+  discount: SaleDiscount | null;
+  /** `headcount` mode: `diners` defaults to the tab's `guests`. */
+  sc_pwd: ScPwdRequest | null;
+  /** Default `true`; `false` waives the service charge. */
+  service_charge?: boolean;
+  /** T2: 2–10 equal shares; `payments` then has exactly this many entries, in share order. */
+  split_count?: number | null;
+  /** Max 10. At most one `cash` unless `split_count` is set. */
+  payments: OrderPaymentRequest[];
+  client_total_cents: number;
+  discount_authorization: DiscountAuthorization | null;
+};
+
+/** POST /api/v1/tabs/{ulid}/settle 201. */
+export type TabSettleResponse = {
+  data: Order;
+  tab: Tab;
+};
+
+/** POST /api/v1/tabs/{ulid}/transfer body (T2). */
+export type TabTransferRequest = {
+  /** An active, free table. */
+  table_id: number;
+};
+
+/** POST /api/v1/tabs/{ulid}/merge body (T2). */
+export type TabMergeRequest = {
+  /** Another open tab in the branch: the one that remains. */
+  into_ulid: string;
 };

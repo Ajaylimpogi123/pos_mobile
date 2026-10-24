@@ -11,6 +11,7 @@ import { migrate } from 'drizzle-orm/expo-sqlite/migrator';
 import { getDb } from '@/db/client';
 import { readCatalogueSummary } from '@/db/menuQueries';
 import migrations from '@/db/migrations/migrations';
+import { captureError } from '@/errors/capture';
 import { useSyncStore } from '@/stores/sync';
 
 export const DATABASE_ERROR_MESSAGE = "The menu stored on this device couldn't be opened. Restart the app and try again.";
@@ -27,7 +28,9 @@ export function prepareDatabase(): Promise<boolean> {
       const summary = await readCatalogueSummary();
       useSyncStore.getState().setDatabaseReady(summary.serverTime);
       return true;
-    } catch {
+    } catch (error) {
+      // Phase 8 §F: a failed migration of the local database goes to the error log (held in memory).
+      captureError(error, { level: 'error', extra: { source: 'sqlite_migration' } });
       useSyncStore.getState().setDatabaseError(DATABASE_ERROR_MESSAGE);
       preparing = null;
       return false;

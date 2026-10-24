@@ -3,7 +3,7 @@
  * printer, receipt copies, and one ticket per station with the default
  * kitchen printer as the fallback.
  */
-import { chooseReceiptPrinter, planSale, routeKitchen, stationFor } from '@/printing/routing';
+import { chooseReceiptPrinter, planSale, routeKitchen, stationFor } from '@pos/core/printing/routing';
 import { BAR, COUNTER, KITCHEN, makePrintConfig, makePrinter, makeSettings } from '@/test-utils/printing';
 import { makeOrder } from '@/test-utils/sale';
 

@@ -8,8 +8,8 @@ import { CellText, DATA_TABLE_ROW_HEIGHT, type DataTableColumn, type DataTableFo
 import { colors, layout, spacing } from '@/constants/theme';
 import { useResponsive } from '@/hooks/useResponsive';
 import type { InventoryReportRow, InventoryReportTotals } from '@/services/types';
-import { formatPeso } from '@/utils/money';
-import { formatCount } from '@/utils/numbers';
+import { formatPeso } from '@pos/core/money';
+import { formatCount } from '@pos/core/numbers';
 
 /**
  * The rows table's layout: every column (wide: tablet landscape), the key

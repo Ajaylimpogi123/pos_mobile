@@ -20,8 +20,8 @@ import {
   purchaseRequestsNeedingDecisionRoute,
   ROUTES,
 } from '@/constants/routes';
-import { chart } from '@/constants/theme';
-import { paymentMethodLabel } from '@/sale/payments';
+import { chart, type StatAccentKey } from '@/constants/theme';
+import { paymentMethodLabel } from '@pos/core/sale/payments';
 import type {
   AuthUser,
   Dashboard,
@@ -32,9 +32,15 @@ import type {
   InsightAction,
   InsightSeverity,
 } from '@/services/types';
+import {
+  formatMonthShort,
+  formatMonthYear,
+  salesPeriodLabel,
+  trendChartTitle,
+} from '@/hooks/dashboard/dashboardPeriod';
 import { formatBusinessDate, formatWeekdayShort } from '@/utils/dates';
-import { formatPeso } from '@/utils/money';
-import { formatCount, formatPercentBps, formatPercentBpsOrDash } from '@/utils/numbers';
+import { formatPeso } from '@pos/core/money';
+import { formatCount, formatPercentBps, formatPercentBpsOrDash } from '@pos/core/numbers';
 import { hasAnyPermission, PERMISSIONS, type PermissionSlug } from '@/utils/permissions';
 
 const [SLOT_1, SLOT_2] = chart.series;
@@ -44,17 +50,81 @@ const [SLOT_1, SLOT_2] = chart.series;
 // ---------------------------------------------------------------------------
 
 export type KpiTile = {
-  key: 'products' | 'margin' | 'staff' | 'customers' | 'changes';
+  key: 'net-sales' | 'orders' | 'average' | 'stock' | 'products' | 'margin' | 'staff' | 'customers' | 'changes';
   label: string;
   value: string;
   detail: string;
   icon: IconName;
+  /** MASTER §1.4: only Net sales, Orders, Average ticket and Low or out of stock carry an accent; the rest are neutral. */
+  accent: StatAccentKey | null;
 };
 
-/** The KPI stat tiles, each only when its section is present. */
-export function kpiTiles(data: Dashboard): KpiTile[] {
+/** The insights `stock_out` / `stock_low` are built for users with `inventory.adjust` or `report.view`. */
+export function canSeeStockAlerts(user: AuthUser | null): boolean {
+  return hasAnyPermission(user, [PERMISSIONS.inventoryAdjust, PERMISSIONS.reportView]);
+}
+
+/** The count of an insight by key (absent means 0: an insight with a count of 0 is left out). */
+export function insightCount(data: Pick<Dashboard, 'insights'>, key: string): number {
+  return data.insights.find((insight) => insight.key === key)?.count ?? 0;
+}
+
+/** Low and out counts for products and ingredients, from the stock insights. */
+export function stockAlerts(data: Pick<Dashboard, 'insights'>) {
+  return {
+    products: { out: insightCount(data, 'stock_out'), low: insightCount(data, 'stock_low') },
+    ingredients: { out: insightCount(data, 'ingredients_out'), low: insightCount(data, 'ingredients_low') },
+  };
+}
+
+/**
+ * The stat cards (back-office.md → Dashboard), each only when its section is
+ * present: Net sales (green), Orders (blue), Average ticket (purple) and Low or
+ * out of stock (orange) first, then the neutral overview figures.
+ */
+export function kpiTiles(data: Dashboard, user: AuthUser | null = null): KpiTile[] {
   const tiles: KpiTile[] = [];
-  const { catalog, staff, customers, activity } = data;
+  const { catalog, staff, customers, activity, sales } = data;
+
+  if (sales) {
+    // v1.28 §D: the period label ("Today", "October 2026", …) is each sales card's caption.
+    const period = salesPeriodLabel(sales);
+    tiles.push({
+      key: 'net-sales',
+      label: 'Net sales',
+      value: formatPeso(sales.net_sales_cents),
+      detail: `${period} · gross ${formatPeso(sales.gross_sales_cents)}`,
+      icon: 'trending-up-outline',
+      accent: 'sales',
+    });
+    tiles.push({
+      key: 'orders',
+      label: 'Orders',
+      value: formatCount(sales.orders_count),
+      detail: `${period} · ${formatCount(sales.items_sold)} ${sales.items_sold === 1 ? 'item' : 'items'} sold`,
+      icon: 'receipt-outline',
+      accent: 'orders',
+    });
+    tiles.push({
+      key: 'average',
+      label: 'Average ticket',
+      value: formatPeso(sales.average_order_cents),
+      detail: `${period} · net sales per order`,
+      icon: 'calculator-outline',
+      accent: 'average',
+    });
+  }
+  if (canSeeStockAlerts(user)) {
+    const { products } = stockAlerts(data);
+    tiles.push({
+      key: 'stock',
+      label: 'Low or out of stock',
+      value: formatCount(products.out + products.low),
+      detail: `${formatCount(products.out)} out · ${formatCount(products.low)} low (products)`,
+      icon: 'cube-outline',
+      accent: 'stock',
+    });
+  }
 
   if (catalog) {
     tiles.push({
@@ -63,6 +133,7 @@ export function kpiTiles(data: Dashboard): KpiTile[] {
       value: formatCount(catalog.products_available),
       detail: `of ${formatCount(catalog.products_total)} products`,
       icon: 'fast-food-outline',
+      accent: null,
     });
     tiles.push({
       key: 'margin',
@@ -73,6 +144,7 @@ export function kpiTiles(data: Dashboard): KpiTile[] {
           ? 'No products with cost data'
           : `Target ${formatPercentBps(catalog.low_margin_threshold_bps, 0)}`,
       icon: 'trending-up-outline',
+      accent: null,
     });
   }
   if (staff) {
@@ -82,6 +154,7 @@ export function kpiTiles(data: Dashboard): KpiTile[] {
       value: formatCount(staff.active),
       detail: `of ${formatCount(staff.total)} staff`,
       icon: 'people-outline',
+      accent: null,
     });
   }
   if (customers) {
@@ -91,6 +164,7 @@ export function kpiTiles(data: Dashboard): KpiTile[] {
       value: formatCount(customers.total),
       detail: `+${formatCount(customers.new_last_7_days)} this week`,
       icon: 'person-circle-outline',
+      accent: null,
     });
   }
   if (activity) {
@@ -101,6 +175,7 @@ export function kpiTiles(data: Dashboard): KpiTile[] {
       value: today ? formatCount(today.count) : '—',
       detail: today ? formatBusinessDate(today.date) : 'No data',
       icon: 'create-outline',
+      accent: null,
     });
   }
   return tiles;
@@ -154,6 +229,8 @@ const INSIGHT_TARGETS: Record<InsightAction, InsightTarget> = {
     route: ROUTES.receiving,
     permission: PERMISSIONS.purchaseReceive,
   },
+  // Hardening & Pilot §C: `device_unsynced` opens admin Devices.
+  'settings.devices': { label: 'Open devices', route: ROUTES.devices, permission: PERMISSIONS.systemManage },
 };
 
 /**
@@ -358,77 +435,84 @@ export function activityChart(activity: DashboardActivity): LineModel {
 // Sales (Phase 3): only real figures from `sales`, never estimated
 // ---------------------------------------------------------------------------
 
-/** Whether any of the last 7 business days had a sale (otherwise the trend chart is left out). */
-export function hasSalesInLast7Days(sales: DashboardSales): boolean {
-  return sales.last_7_days.some((day) => day.orders_count > 0);
+/** Whether any bucket of the period's trend had a sale (otherwise the trend chart is left out). */
+export function hasSalesInTrend(sales: DashboardSales): boolean {
+  return sales.trend.buckets.some((bucket) => bucket.orders_count > 0);
 }
 
-/** "Sat 19"; the last entry (today) reads "Today". */
-function dayRowLabel(date: string, isToday: boolean): string {
-  if (isToday) return 'Today';
-  return `${formatWeekdayShort(date)} ${Number(date.slice(8, 10))}`;
-}
-
-/** Net sales per business day, last 7 days (one series: slot 1), oldest first. */
-export function salesTrendChart(sales: DashboardSales): BarChartModel {
-  const days = sales.last_7_days;
-  const rows: BarRow[] = days.map((day, index) => ({
-    key: day.date,
-    label: dayRowLabel(day.date, index === days.length - 1),
-    values: [day.net_sales_cents],
-    endLabel: formatPeso(day.net_sales_cents),
-    tooltip: {
-      title: formatBusinessDate(day.date),
-      rows: [
-        { label: 'Net sales', value: formatPeso(day.net_sales_cents), color: SLOT_1 },
-        { label: 'Orders', value: formatCount(day.orders_count) },
-      ],
-    },
-  }));
-  const max = Math.max(0, ...days.map((day) => day.net_sales_cents));
-
+/**
+ * Net sales of the period's trend (v1.28 §D), one green series with its 18 %
+ * area, oldest first. X labels: the weekday (Day: the 7 days ending on the
+ * chosen day), the day number (Month) or the short month name (Year).
+ */
+export function salesTrendChart(sales: DashboardSales): LineModel {
+  const { unit, buckets } = sales.trend;
+  const byMonth = unit === 'month';
+  const xLabel = (start: string) =>
+    byMonth ? formatMonthShort(start) : sales.period === 'month' ? String(Number(start.slice(8, 10))) : formatWeekdayShort(start);
+  const title = (start: string) => (byMonth ? formatMonthYear(start) : formatBusinessDate(start));
+  const chartTitle = trendChartTitle(sales);
   return {
-    series: [{ key: 'net', label: 'Net sales', color: SLOT_1 }],
-    rows,
-    domain: { min: 0, max: niceTicks(max).max },
+    series: [{ key: 'net', label: 'Net sales', color: SLOT_1, values: buckets.map((bucket) => bucket.net_sales_cents) }],
+    xLabels: buckets.map((bucket) => xLabel(bucket.start)),
+    columnTitles: buckets.map((bucket) => title(bucket.start)),
     table: {
-      columns: ['Day', 'Orders', 'Net sales'],
-      rows: days.map((day) => [formatBusinessDate(day.date), formatCount(day.orders_count), formatPeso(day.net_sales_cents)]),
+      columns: [byMonth ? 'Month' : 'Day', 'Orders', 'Net sales'],
+      rows: buckets.map((bucket) => [title(bucket.start), formatCount(bucket.orders_count), formatPeso(bucket.net_sales_cents)]),
     },
-    accessibilityLabel: `Net sales, last ${days.length} days. ${days
-      .map((day) => `${formatBusinessDate(day.date)}: ${formatPeso(day.net_sales_cents)}, ${day.orders_count} orders`)
+    accessibilityLabel: `${chartTitle}. ${buckets
+      .map((bucket) => `${title(bucket.start)}: ${formatPeso(bucket.net_sales_cents)}, ${bucket.orders_count} orders`)
       .join('. ')}.`,
   };
 }
 
-/** Today's takings per payment method (cash, then GCash), net of change: one series (slot 1). */
+/** "₱3,000.00 · 74%" of the whole (no percentage when there is nothing). */
+function shareLabel(cents: number, total: number): string {
+  if (total <= 0) return formatPeso(cents);
+  return `${formatPeso(cents)} · ${Math.round((cents / total) * 100)}%`;
+}
+
+/**
+ * The period's takings by payment method, net of change (back-office.md): **one
+ * stacked bar** (cash, then GCash, in series order) plus a legend with each
+ * method's amount and share.
+ */
 export function paymentMethodsChart(sales: DashboardSales): BarChartModel {
   const methods = sales.by_payment_method;
-  const rows: BarRow[] = methods.map((entry) => ({
+  const total = methods.reduce((sum, entry) => sum + Math.max(0, entry.amount_cents), 0);
+  const period = salesPeriodLabel(sales);
+  const series: BarSeries[] = methods.map((entry, index) => ({
     key: entry.method,
     label: paymentMethodLabel(entry.method),
-    values: [entry.amount_cents],
-    endLabel: formatPeso(entry.amount_cents),
-    tooltip: {
-      title: paymentMethodLabel(entry.method),
-      rows: [
-        { label: 'Amount', value: formatPeso(entry.amount_cents), color: SLOT_1 },
-        { label: 'Orders', value: formatCount(entry.orders_count) },
-      ],
-    },
+    color: chart.series[index] ?? chart.other,
+    legendValue: shareLabel(entry.amount_cents, total),
   }));
-  const max = Math.max(0, ...methods.map((entry) => entry.amount_cents));
 
   return {
-    series: [{ key: 'amount', label: 'Amount', color: SLOT_1 }],
-    rows,
-    domain: { min: 0, max: niceTicks(max).max },
+    series,
+    rows: [
+      {
+        key: 'period',
+        label: period,
+        values: methods.map((entry) => entry.amount_cents),
+        endLabel: formatPeso(total),
+        tooltip: {
+          title: `Payments · ${period}`,
+          rows: methods.map((entry, index) => ({
+            label: paymentMethodLabel(entry.method),
+            value: `${shareLabel(entry.amount_cents, total)} · ${formatCount(entry.orders_count)} orders`,
+            color: series[index].color,
+          })),
+        },
+      },
+    ],
+    domain: { min: 0, max: niceTicks(total).max },
     table: {
       columns: ['Method', 'Orders', 'Amount'],
       rows: methods.map((entry) => [paymentMethodLabel(entry.method), formatCount(entry.orders_count), formatPeso(entry.amount_cents)]),
     },
-    accessibilityLabel: `Payments today. ${methods
-      .map((entry) => `${paymentMethodLabel(entry.method)}: ${formatPeso(entry.amount_cents)} from ${entry.orders_count} orders`)
+    accessibilityLabel: `Payments · ${period}: ${formatPeso(total)} in total. ${methods
+      .map((entry) => `${paymentMethodLabel(entry.method)}: ${shareLabel(entry.amount_cents, total)}, from ${entry.orders_count} orders`)
       .join('. ')}.`,
   };
 }

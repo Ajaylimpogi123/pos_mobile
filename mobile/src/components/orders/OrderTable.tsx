@@ -8,12 +8,12 @@ import { colors, radius, spacing, typography } from '@/constants/theme';
 import type { LocalOrderBadge, LocalOrderSummary } from '@/hooks/orders/useLocalOrders';
 import type { OrderListEntry } from '@/hooks/orders/useOrders';
 import { orderNumberLabel, ticketNumberLabel } from '@/sale/localOrder';
-import { paymentMethodLabel } from '@/sale/payments';
-import { orderStatusLabel } from '@/sale/reversals';
+import { paymentMethodLabel } from '@pos/core/sale/payments';
+import { orderStatusLabel } from '@pos/core/sale/reversals';
 import type { OrderStatus } from '@/services/types';
 import { formatBusinessDate, formatClockTime } from '@/utils/dates';
-import { formatPeso } from '@/utils/money';
-import { formatCount, NO_VALUE } from '@/utils/numbers';
+import { formatPeso } from '@pos/core/money';
+import { formatCount, NO_VALUE } from '@pos/core/numbers';
 
 /** Offline Sales: a local sale that hasn't synced (`pending`) or that the server rejected. */
 export const ORDER_BADGES: Record<LocalOrderBadge, { label: string; variant: 'pending' | 'cancelled'; icon: IconName }> = {
@@ -24,8 +24,8 @@ export const ORDER_BADGES: Record<LocalOrderBadge, { label: string; variant: 'pe
 const STATUS_VARIANT: Record<OrderStatus, ChipVariant> = {
   completed: 'completed',
   voided: 'cancelled',
-  refunded: 'pending',
-  partially_refunded: 'pending',
+  refunded: 'processing',
+  partially_refunded: 'processing',
 };
 
 type StatusChip = { key: string; label: string; variant: ChipVariant; testSuffix: string };
@@ -49,7 +49,7 @@ export function orderStatusChips(order: LocalOrderSummary, badge?: LocalOrderBad
       refunded && order.refunded_cents > 0 ? `${orderStatusLabel(order.status)} · ${formatPeso(order.refunded_cents)}` : orderStatusLabel(order.status);
     chips.push({ key: 'status', label, variant: STATUS_VARIANT[order.status] ?? 'neutral', testSuffix: 'status' });
   }
-  if (order.has_sc_pwd) chips.push({ key: 'sc-pwd', label: 'SC/PWD', variant: 'info', testSuffix: 'sc-pwd' });
+  if (order.has_sc_pwd) chips.push({ key: 'sc-pwd', label: 'SC/PWD', variant: 'neutral', testSuffix: 'sc-pwd' });
   return chips;
 }
 
@@ -196,13 +196,13 @@ const styles = StyleSheet.create({
     minWidth: spacing.xxxl + spacing.sm,
     alignItems: 'center',
     borderRadius: radius.sm,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.accent,
     paddingHorizontal: spacing.sm - spacing.xxs,
     paddingVertical: spacing.xxs,
   },
   queueText: {
     ...typography.controlStrong,
-    color: colors.primaryDark,
+    color: colors.text,
   },
   orderText: {
     flexShrink: 1,

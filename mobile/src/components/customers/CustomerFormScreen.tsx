@@ -1,16 +1,19 @@
 import { useRef } from 'react';
 import type { TextInput } from 'react-native';
 
+import { FormFooter } from '@/components/shared/FormFooter';
 import { FormLayout } from '@/components/shared/FormLayout';
 import { FormSection } from '@/components/shared/FormSection';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Input } from '@/components/ui/Input';
+import { focusField } from '@/components/ui/ErrorSummary';
 import { ROUTES } from '@/constants/routes';
 import { CUSTOMER_LIMITS, useCustomerForm } from '@/hooks/customers/useCustomerForm';
 import type { Customer } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
+import { showToast } from '@/stores/toast';
 import { goBackOr } from '@/utils/navigation';
 import { hasPermission, PERMISSIONS } from '@/utils/permissions';
 
@@ -23,16 +26,26 @@ function backToList() {
   goBackOr(ROUTES.customers);
 }
 
+/** MASTER §6: save success is a toast. */
+function savedAndBack() {
+  showToast('Customer saved.');
+  backToList();
+}
+
+const FIELD_LABELS = { first_name: 'First name', last_name: 'Last name', contact: 'Contact', email: 'Email', notes: 'Notes' };
+
 /**
  * Create / edit a customer: first and last name, contact (phone keypad),
- * email and notes, in one centred column (max 480) on every device.
+ * email and notes, in one centred card column (back-office.md → Forms), with
+ * the error summary after a failed submit and the sticky Cancel / Save footer.
  * - Save needs `sale.create`; without it the record is shown read-only.
  * - Delete needs `customer.manage` and asks for confirmation.
  * 422 → under each field; anything else → the banner.
  */
 export function CustomerFormScreen({ customer }: CustomerFormScreenProps) {
-  const form = useCustomerForm({ initial: customer, onSaved: backToList, onDeleted: backToList });
+  const form = useCustomerForm({ initial: customer, onSaved: savedAndBack, onDeleted: backToList });
   // Keyboard "Next" moves through the fields.
+  const customerFirstNameRef = useRef<TextInput>(null);
   const customerLastNameRef = useRef<TextInput>(null);
   const customerContactRef = useRef<TextInput>(null);
   const customerEmailRef = useRef<TextInput>(null);
@@ -49,6 +62,22 @@ export function CustomerFormScreen({ customer }: CustomerFormScreenProps) {
       subtitle={form.isEdit ? name : null}
       onBack={backToList}
       banner={form.bannerError}
+      fieldErrors={fieldErrors}
+      onSelectError={(field) => focusField(field, { first_name: customerFirstNameRef, last_name: customerLastNameRef, contact: customerContactRef, email: customerEmailRef, notes: customerNotesRef })}
+      fieldLabels={FIELD_LABELS}
+      footer={
+        canEdit ? (
+          <FormFooter
+            onCancel={backToList}
+            cancelDisabled={busy}
+            saveTitle={form.isEdit ? 'Save changes' : 'Create customer'}
+            onSave={form.submit}
+            saving={form.submitting}
+            saveDisabled={busy}
+            saveTestID="customer-save"
+          />
+        ) : null
+      }
       testID="customer-form-screen"
       main={
         <>
@@ -68,6 +97,7 @@ export function CustomerFormScreen({ customer }: CustomerFormScreenProps) {
               returnKeyType="next"
               submitBehavior="submit"
               onSubmitEditing={() => customerLastNameRef.current?.focus()}
+              ref={customerFirstNameRef}
               testID="customer-first-name"
             />
             <Input
@@ -135,17 +165,6 @@ export function CustomerFormScreen({ customer }: CustomerFormScreenProps) {
             />
           </FormSection>
 
-          {canEdit ? (
-            <Button
-              title={form.isEdit ? 'Save changes' : 'Create customer'}
-              leftIcon="checkmark"
-              size="lg"
-              onPress={form.submit}
-              loading={form.submitting}
-              disabled={busy}
-              testID="customer-save"
-            />
-          ) : null}
           {form.isEdit && canDelete ? (
             <Button
               title="Delete customer"

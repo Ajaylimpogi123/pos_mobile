@@ -1,15 +1,15 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { productInitial, productTint } from '@/components/sell/productVisual';
 import { Chip } from '@/components/ui/Chip';
+import { Icon } from '@/components/ui/Icon';
 import { IconButton } from '@/components/ui/IconButton';
 import { QtyStepper } from '@/components/ui/QtyStepper';
-import { colors, fontFamilies, hitTarget, numeric, opacity, radius, spacing, typography } from '@/constants/theme';
-import { describeDiscount } from '@/sale/discountRules';
-import type { PricedLine } from '@/sale/pricing';
+import { colors, iconSizes, motion, numeric, opacity, radius, sizes, spacing, status, typography } from '@/constants/theme';
+import { describeDiscount } from '@pos/core/sale/discountRules';
+import type { PricedLine } from '@pos/core/sale/pricing';
 import { CART_LIMITS, type CartLine } from '@/stores/cart';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 
 type CartLineRowProps = {
   line: CartLine;
@@ -23,21 +23,22 @@ type CartLineRowProps = {
   locked: boolean;
   /** Senior Citizen / PWD Discount: the line is marked for the SC/PWD (`items` mode). */
   scPwd?: boolean;
+  /** Changes when a tap just added to this line: the line highlights for 600 ms (sell.md). `0`: none. */
+  highlightToken?: number;
   onEdit: (line: CartLine) => void;
   onQtyChange: (key: string, qty: number) => void;
   onRemove: (key: string) => void;
 };
 
-/** The thumbnail tile (44, radius 10) and the stepper sit in a column this wide. */
-const THUMB = hitTarget.min;
-
 /**
- * One cart line (POS board): a tinted thumbnail with the product's initial,
- * the name, "₱X each", its chips (SC/PWD, discount) and note, and the line
- * amount (after its own discount), all tapping through to the line editor;
- * under it the bordered qty stepper and a remove button. A message (e.g. a
- * stock `422`) shows in red under the line until it changes; offline, an
- * "offline estimate" stock warning shows too (Offline Sales).
+ * One cart line (MASTER §3 Current Order card, sell.md): a line box (radius 8,
+ * hairline border) with a 44 dp thumbnail, the name, the unit price in green
+ * ("₱X each"), its tags (SC/PWD, discount) and note, all tapping through to
+ * the line editor, and × remove; under it the round stepper and the line total
+ * in green (after its own discount). A message (e.g. a stock `422`) shows in
+ * red under the line until it changes; offline, an "offline estimate" stock
+ * warning shows too (Offline Sales). A tap on the menu that adds to this line
+ * highlights it briefly.
  */
 export const CartLineRow = memo(function CartLineRow({
   line,
@@ -47,60 +48,76 @@ export const CartLineRow = memo(function CartLineRow({
   warning,
   locked,
   scPwd = false,
+  highlightToken = 0,
   onEdit,
   onQtyChange,
   onRemove,
 }: CartLineRowProps) {
   const testID = `cart-line-${index}`;
   const amount = formatPeso(priced?.net_cents ?? line.product.price_cents * line.qty);
-  const tint = productTint(line.product.id);
   const edit = useCallback(() => onEdit(line), [onEdit, line]);
   const changeQty = useCallback((qty: number) => onQtyChange(line.key, qty), [onQtyChange, line.key]);
   const remove = useCallback(() => onRemove(line.key), [onRemove, line.key]);
 
+  const [highlighted, setHighlighted] = useState(false);
+  useEffect(() => {
+    if (highlightToken === 0) return undefined;
+    setHighlighted(true);
+    const timer = setTimeout(() => setHighlighted(false), motion.lineHighlightMs);
+    return () => clearTimeout(timer);
+  }, [highlightToken]);
+
   return (
-    <View style={[styles.row, error ? styles.rowError : null]} testID={testID}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${line.qty} × ${line.product.name}, ${amount}`}
-        accessibilityHint="Edits the quantity, discount and note"
-        accessibilityState={{ disabled: locked }}
-        disabled={locked}
-        onPress={edit}
-        style={({ pressed }) => [styles.info, pressed && styles.pressed]}
-        testID={`${testID}-edit`}
-      >
-        <View style={[styles.thumb, tint.backgroundStyle]}>
-          <Text style={[styles.thumbText, tint.inkStyle]} accessibilityElementsHidden importantForAccessibility="no">
-            {productInitial(line.product.name)}
-          </Text>
-        </View>
-        <View style={styles.text}>
-          <Text style={styles.name} numberOfLines={2}>
-            {line.product.name}
-          </Text>
-          <Text style={styles.meta} numberOfLines={1}>
-            {formatPeso(line.product.price_cents)} each
-          </Text>
-          {scPwd ? <Chip label="SC/PWD" variant="info" icon="id-card-outline" testID={`${testID}-sc-pwd`} /> : null}
-          {line.discount ? (
-            <Chip
-              label={`${describeDiscount(line.discount)} · −${formatPeso(priced?.line_discount_cents ?? 0)}`}
-              variant="primary"
-              icon="pricetag-outline"
-              testID={`${testID}-discount`}
-            />
-          ) : null}
-          {line.notes ? (
-            <Text style={styles.meta} numberOfLines={2} testID={`${testID}-notes`}>
-              “{line.notes}”
+    <View
+      style={[styles.box, highlighted && styles.boxHighlighted, error ? styles.boxError : null]}
+      testID={testID}
+    >
+      <View style={styles.top}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${line.qty} × ${line.product.name}, ${amount}`}
+          accessibilityHint="Edits the quantity, discount and note"
+          accessibilityState={{ disabled: locked }}
+          disabled={locked}
+          onPress={edit}
+          style={({ pressed }) => [styles.info, pressed && styles.pressed]}
+          testID={`${testID}-edit`}
+        >
+          <View style={styles.thumb}>
+            <Icon name="restaurant-outline" size={iconSizes.md} color={colors.textMuted} />
+          </View>
+          <View style={styles.text}>
+            <Text style={styles.name} numberOfLines={2}>
+              {line.product.name}
             </Text>
-          ) : null}
-        </View>
-        <Text style={styles.amount} numberOfLines={1} testID={`${testID}-amount`}>
-          {amount}
-        </Text>
-      </Pressable>
+            <Text style={styles.each} numberOfLines={1}>
+              {formatPeso(line.product.price_cents)} each
+            </Text>
+            {scPwd ? <Chip label="SC/PWD" variant="neutral" icon="id-card-outline" testID={`${testID}-sc-pwd`} /> : null}
+            {line.discount ? (
+              <Chip
+                label={`${describeDiscount(line.discount)} · −${formatPeso(priced?.line_discount_cents ?? 0)}`}
+                variant="neutral"
+                icon="pricetag-outline"
+                testID={`${testID}-discount`}
+              />
+            ) : null}
+            {line.notes ? (
+              <Text style={styles.meta} numberOfLines={2} testID={`${testID}-notes`}>
+                “{line.notes}”
+              </Text>
+            ) : null}
+          </View>
+        </Pressable>
+        <IconButton
+          icon="close"
+          variant="ghost"
+          accessibilityLabel={`Remove ${line.product.name}`}
+          onPress={remove}
+          disabled={locked}
+          testID={`${testID}-remove`}
+        />
+      </View>
       <View style={styles.controls}>
         <QtyStepper
           value={line.qty}
@@ -110,14 +127,9 @@ export const CartLineRow = memo(function CartLineRow({
           disabled={locked}
           testID={`${testID}-qty`}
         />
-        <IconButton
-          icon="trash-outline"
-          variant="ghost"
-          accessibilityLabel={`Remove ${line.product.name}`}
-          onPress={remove}
-          disabled={locked}
-          testID={`${testID}-remove`}
-        />
+        <Text style={styles.amount} numberOfLines={1} testID={`${testID}-amount`}>
+          {amount}
+        </Text>
       </View>
       {warning ? (
         <Text style={styles.warning} accessibilityLiveRegion="polite" testID={`${testID}-stock-warning`}>
@@ -134,18 +146,29 @@ export const CartLineRow = memo(function CartLineRow({
 });
 
 const styles = StyleSheet.create({
-  row: {
+  box: {
     gap: spacing.sm,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
-  },
-  rowError: {
-    backgroundColor: colors.dangerSoft,
+    padding: spacing.md,
     borderRadius: radius.md,
-    paddingHorizontal: spacing.sm,
+    borderWidth: sizes.borderWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  boxHighlighted: {
+    backgroundColor: colors.greenSoft,
+    borderColor: colors.greenChip,
+  },
+  boxError: {
+    backgroundColor: colors.dangerSoft,
+    borderColor: status.cancelled.border,
+  },
+  top: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
   },
   info: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
@@ -155,40 +178,41 @@ const styles = StyleSheet.create({
     opacity: opacity.pressed,
   },
   thumb: {
-    width: THUMB,
-    height: THUMB,
-    borderRadius: radius.inner,
+    width: sizes.cartThumb,
+    height: sizes.cartThumb,
+    borderRadius: radius.md,
+    backgroundColor: colors.imageTint,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  thumbText: {
-    ...typography.section,
-    fontFamily: fontFamilies.heavy,
   },
   text: {
     flex: 1,
     gap: spacing.xxs,
   },
   name: {
-    ...typography.control,
+    ...typography.controlStrong,
     color: colors.text,
+  },
+  each: {
+    ...typography.captionStrong,
+    ...numeric,
+    color: colors.green,
   },
   meta: {
     ...typography.captionMedium,
     color: colors.textSecondary,
   },
   amount: {
-    ...typography.bodyStrong,
-    ...numeric,
-    fontFamily: fontFamilies.bold,
-    color: colors.text,
+    ...typography.price,
+    color: colors.green,
     textAlign: 'right',
+    flexShrink: 1,
   },
   controls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingLeft: THUMB + spacing.md,
+    gap: spacing.sm,
   },
   error: {
     ...typography.bodySm,
@@ -199,3 +223,4 @@ const styles = StyleSheet.create({
     color: colors.warningText,
   },
 });
+

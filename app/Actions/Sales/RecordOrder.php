@@ -38,7 +38,7 @@ class RecordOrder
      * their users, lines and payments).
      */
     public const RESOURCE_RELATIONS = [
-        'cashier', 'approver', 'reviewer', 'customer', 'items', 'payments',
+        'cashier', 'approver', 'reviewer', 'customer', 'items', 'payments', 'tab:id,ulid',
         'voider', 'voidAuthorizer',
         'refunds.refunder', 'refunds.authorizer', 'refunds.items.orderItem', 'refunds.payments',
     ];
@@ -143,6 +143,8 @@ class RecordOrder
      * @param  list<array{method: string, amount_cents: int, tendered_cents: int|null, change_cents: int, reference_no: string|null}>  $payments
      * @param  array{invoice_no: string, queue_no: int}  $numbers
      * @param  array<string, mixed>  $attributes
+     * @param  array<int, array<string, mixed>>  $lineAttributes  Per line index, columns added to or
+     *                                                            overriding that line's (Dine-in: a tab settlement's snapshots and `tab_item_id`)
      */
     public function insert(
         User $cashier,
@@ -158,6 +160,7 @@ class RecordOrder
         string $businessDate,
         CarbonInterface $placedAt,
         array $attributes = [],
+        array $lineAttributes = [],
     ): Order {
         $orderDiscount = $sale->orderDiscount;
 
@@ -245,6 +248,7 @@ class RecordOrder
                 'sc_pwd_vat_relief_cents' => $pricedLine->scPwdVatReliefCents,
                 'sc_pwd_discount_cents' => $pricedLine->scPwdDiscountCents,
                 'notes' => $line['notes'],
+                ...($lineAttributes[$i] ?? []),
             ])->save();
 
             $items[] = $item;

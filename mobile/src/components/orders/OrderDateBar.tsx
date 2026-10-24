@@ -9,7 +9,7 @@ import { IconButton } from '@/components/ui/IconButton';
 import { colors, hitTarget, layout, radius, sizes, spacing, typography } from '@/constants/theme';
 import type { useOrderListScreen } from '@/hooks/orders/useOrders';
 import { useResponsive } from '@/hooks/useResponsive';
-import { ORDER_STATUS_FILTERS, orderStatusLabel } from '@/sale/reversals';
+import { ORDER_STATUS_FILTERS, orderStatusLabel } from '@pos/core/sale/reversals';
 import { formatBusinessDate } from '@/utils/dates';
 
 type OrderDateBarProps = {

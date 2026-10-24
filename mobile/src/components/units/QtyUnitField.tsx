@@ -4,8 +4,8 @@ import { StyleSheet, Text, View, type TextInput, type TextInputProps } from 'rea
 import { ChoiceChip } from '@/components/ui/ChoiceChip';
 import { Input } from '@/components/ui/Input';
 import { colors, spacing, typography } from '@/constants/theme';
-import { formatBaseQty, parseQtyInput, toBaseQty } from '@/utils/quantity';
-import { findUnit, type UnitChoices, type UnitOption } from '@/utils/units';
+import { formatBaseQty, parseQtyInput, toBaseQty } from '@pos/core/quantity';
+import { findUnit, type UnitChoices, type UnitOption } from '@pos/core/units';
 
 /**
  * The live base preview (§L): `= 50,000 g (50 kg)` for 2 sack of a 25,000 g

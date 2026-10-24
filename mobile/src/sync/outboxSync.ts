@@ -36,6 +36,7 @@ import {
   type OrderOutboxEntry,
   type ShiftEventEntry,
 } from '@/db/offlineRepository';
+import { captureError } from '@/errors/capture';
 import { getErrorMessage, isApiError } from '@/services/api';
 import { closeShift, createCashMovement, openShift } from '@/services/shifts';
 import { syncOrders } from '@/services/sync';
@@ -84,6 +85,8 @@ export type OutboxSyncDeps = {
   random: () => number;
   /** Called after every batch that changed the stored sales (screens refresh). */
   onChange?: () => void;
+  /** Phase 8 §F: a sale `/sync/orders` rejected (reported to the error log). */
+  onRejected?: (ulid: string, message: string) => void;
 };
 
 export type OutboxSyncTotals = { sent: number; synced: number; rejected: number };
@@ -172,6 +175,7 @@ async function applyResults(
       const message = result.message?.trim() ? result.message : REJECTED_FALLBACK_MESSAGE;
       await deps.repository.markRejected(entry.ulid, message, now);
       totals.rejected += 1;
+      deps.onRejected?.(entry.ulid, message);
     } else {
       unanswered.push(entry.ulid);
     }
@@ -329,6 +333,7 @@ export function createOutboxSyncRunner(getDeps: () => OutboxSyncDeps) {
       schedule(result.retryAt, deps);
     } else {
       useOfflineStore.getState().finishSync(null);
+      if (result.outcome === 'done') useOfflineStore.getState().setLastOutboxSyncAt(new Date(deps.now()).toISOString());
       schedule(result.outcome === 'done' ? result.retryAt : null, deps);
     }
     return result;
@@ -365,6 +370,8 @@ function appDeps(): OutboxSyncDeps {
     now: Date.now,
     random: Math.random,
     onChange: () => useOfflineStore.getState().markLocalChanged(),
+    onRejected: (ulid, message) =>
+      captureError(new Error(`Sale rejected by sync: ${message}`), { level: 'warning', extra: { source: 'sync_orders', order_ulid: ulid } }),
   };
 }
 

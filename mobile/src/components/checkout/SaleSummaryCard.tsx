@@ -5,15 +5,15 @@ import { ScPwdAmountRows } from '@/components/sell/ScPwdAmountRows';
 import { AmountRow } from '@/components/shared/AmountRow';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
-import { showVatBreakdown } from '@/constants/features';
+import { showVatBreakdown } from '@pos/core/features';
 import { colors, numeric, radius, sizes, spacing, typography } from '@/constants/theme';
-import { describeDiscount } from '@/sale/discountRules';
-import { VAT_RATE_BPS, type SalePricing } from '@/sale/pricing';
-import { describeScPwd } from '@/sale/scPwd';
+import { describeDiscount } from '@pos/core/sale/discountRules';
+import { VAT_RATE_BPS, type SalePricing } from '@pos/core/sale/pricing';
+import { describeScPwd } from '@pos/core/sale/scPwd';
 import type { SaleDiscount, ScPwdRequest } from '@/services/types';
 import type { CartCustomer, CartLine } from '@/stores/cart';
-import { formatPeso } from '@/utils/money';
-import { formatPercentBps } from '@/utils/numbers';
+import { formatPeso } from '@pos/core/money';
+import { formatPercentBps } from '@pos/core/numbers';
 
 type SaleSummaryCardProps = {
   lines: readonly CartLine[];
@@ -28,6 +28,11 @@ type SaleSummaryCardProps = {
   scPwdDisabled?: boolean;
   /** The SC/PWD message to show (a rule the cart breaks, or the server's). */
   scPwdError?: string | null;
+  /**
+   * Dine-in: the service charge row before the total (`pricing.total_cents`
+   * then already includes it). Not given: no row.
+   */
+  serviceCharge?: { label: string; cents: number } | null;
 };
 
 /**
@@ -48,6 +53,7 @@ export function SaleSummaryCard({
   onEditScPwd,
   scPwdDisabled = false,
   scPwdError = null,
+  serviceCharge = null,
 }: SaleSummaryCardProps) {
   const itemsMode = scPwd?.mode === 'items';
   return (
@@ -72,7 +78,7 @@ export function SaleSummaryCard({
                   {line.product.name}
                 </Text>
                 {itemsMode && line.scPwd ? (
-                  <Chip label="SC/PWD" variant="info" icon="id-card-outline" testID={`checkout-line-${index}-sc-pwd`} />
+                  <Chip label="SC/PWD" variant="neutral" icon="id-card-outline" testID={`checkout-line-${index}-sc-pwd`} />
                 ) : null}
                 {line.discount ? (
                   <Text style={styles.lineMeta}>
@@ -118,6 +124,9 @@ export function SaleSummaryCard({
             testIDPrefix="checkout"
             variant="summary"
           />
+        ) : null}
+        {serviceCharge && serviceCharge.cents > 0 ? (
+          <AmountRow label={serviceCharge.label} cents={serviceCharge.cents} variant="summary" testID="checkout-service-charge" />
         ) : null}
         <View style={styles.totalRow}>
           <AmountRow label="Total" cents={pricing.total_cents} variant="total" testID="checkout-total" />

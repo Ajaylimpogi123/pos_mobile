@@ -4,7 +4,7 @@
  * The contract types `review_reasons` as `string[]`: a reason this build
  * doesn't know is shown as it is.
  */
-import type { ReviewReason } from '@/services/types';
+import type { ReviewReason } from '../contract/types';
 
 export const REVIEW_REASON_LABELS: Record<ReviewReason, string> = {
   price_changed: 'Price changed during the outage',
@@ -13,6 +13,7 @@ export const REVIEW_REASON_LABELS: Record<ReviewReason, string> = {
   payment_short: 'The payment was short of the total',
   discount_over_limit: "The discount was over the cashier's limit",
   clock_skew: "The tablet's clock was ahead of the server's",
+  shift_closed: 'Sold after its shift was closed',
 };
 
 /** The plain-words label of one reason. */

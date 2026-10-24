@@ -8,7 +8,7 @@ import { menuKeys } from '@/hooks/menu/queryKeys';
 import { patchProductInLists } from '@/hooks/menu/useAdminProducts';
 import { createStockAdjustment } from '@/services/adminCatalog';
 import type { AdminProduct, StockAdjustmentRequest, StockMovement } from '@/services/types';
-import { formatCount } from '@/utils/numbers';
+import { formatCount } from '@pos/core/numbers';
 
 /** Add and Remove send `qty_delta` (±n); Count sends `counted_qty` (the server works out the delta). */
 export type StockMode = 'add' | 'remove' | 'count';

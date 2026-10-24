@@ -17,7 +17,7 @@ import { prepareDatabase } from '@/db/database';
 import { offlineRepository } from '@/db/offlineRepository';
 import { refundRepository } from '@/db/refundRepository';
 import { shiftRepository, ShiftNotOpenError, type LocalShift } from '@/db/shiftRepository';
-import type { ShiftReadDocument, ShiftReadKind } from '@/printing/documents/shiftRead';
+import type { ShiftReadDocument, ShiftReadKind } from '@pos/core/printing/documents/shiftRead';
 import { printShiftRead } from '@/printing/printActions';
 import { isoSeconds } from '@/sale/localOrder';
 import type { AuthUser, CashMovementType, Order, Shift, ShiftReport } from '@/services/types';
@@ -121,7 +121,6 @@ export async function openShiftOnTablet(input: {
     store.setLoaded(input.user.branch.id, result.shift);
     store.setGateNotice(null);
     store.setLastClose(null);
-    store.setFlash(null);
     if (result.created) afterWrite();
     return { ok: true, value: result.shift };
   } catch {
@@ -285,7 +284,6 @@ export async function closeShiftOnTablet(input: {
   afterWrite();
   const store = useShiftStore.getState();
   store.setLoaded(input.user.branch.id, null);
-  store.setFlash(null);
 
   let report: ShiftReport;
   let print: PrintOutcome;

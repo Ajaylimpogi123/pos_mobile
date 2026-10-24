@@ -162,13 +162,15 @@ class BuildInventoryReportAction
             ->when($categoryId !== null, fn (Builder $q) => $q->where('products.category_id', $categoryId))
             ->when($status !== null, fn (Builder $q) => $this->inventory->whereStatus($q, (string) $status))
             ->select(['products.id as product_id', 'products.name', 'categories.name as category_name', 'products.cost_cents'])
-            ->selectRaw('CAST(COALESCE(flows.opening_qty, 0) AS SIGNED) AS opening_qty')
-            ->selectRaw('CAST(COALESCE('.InventoryQuery::QTY.', 0) AS SIGNED) AS qty')
+            ->selectRaw('CAST(COALESCE('.$this->inventory->col('flows.opening_qty').', 0) AS SIGNED) AS opening_qty')
+            ->selectRaw('CAST(COALESCE('.$this->inventory->col(InventoryQuery::QTY).', 0) AS SIGNED) AS qty')
             ->addSelect(InventoryQuery::REORDER_LEVEL.' as reorder_level');
 
         foreach (array_keys(self::FLOWS) as $column) {
-            $query->selectRaw("CAST(COALESCE(flows.{$column}, 0) AS SIGNED) AS {$column}")
-                ->selectRaw("CAST(SUM(COALESCE(flows.{$column}, 0)) OVER () AS SIGNED) AS total_{$column}");
+            $flow = $this->inventory->col("flows.{$column}");
+
+            $query->selectRaw("CAST(COALESCE({$flow}, 0) AS SIGNED) AS {$column}")
+                ->selectRaw("CAST(SUM(COALESCE({$flow}, 0)) OVER () AS SIGNED) AS total_{$column}");
         }
 
         return $query->orderBy('products.name')->orderBy('products.id');

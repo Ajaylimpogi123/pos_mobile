@@ -3,12 +3,12 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { AmountRow } from '@/components/shared/AmountRow';
 import { colors, numeric, sizes, spacing, typography } from '@/constants/theme';
-import { varianceWord } from '@/printing/documents/shiftRead';
-import { paymentMethodLabel } from '@/sale/payments';
+import { varianceWord } from '@pos/core/printing/documents/shiftRead';
+import { paymentMethodLabel } from '@pos/core/sale/payments';
 import { cashRefundsOf } from '@/shifts/shiftReport';
 import type { ShiftReport } from '@/services/types';
-import { formatPeso } from '@/utils/money';
-import { formatCount } from '@/utils/numbers';
+import { formatPeso } from '@pos/core/money';
+import { formatCount } from '@pos/core/numbers';
 
 type ShiftReportViewProps = {
   report: ShiftReport;
@@ -96,6 +96,10 @@ export function ShiftReportView({ report, openingFloatCents, countedCashCents, t
           variant="muted"
           testID={`${testID}-sc-pwd`}
         />
+        {/* Dine-in Tables & Tabs: on its own row (Net sales includes it). */}
+        {(report.service_charge_cents ?? 0) !== 0 ? (
+          <AmountRow label="Service charge" cents={report.service_charge_cents} testID={`${testID}-service-charge`} />
+        ) : null}
         <AmountRow label="Net sales" cents={report.net_sales_cents} variant="total" testID={`${testID}-net`} />
         <AmountRow label="VATable sales" cents={report.vatable_sales_cents} variant="muted" />
         <AmountRow label="VAT" cents={report.vat_amount_cents} variant="muted" />

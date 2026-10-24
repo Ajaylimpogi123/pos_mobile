@@ -19,11 +19,30 @@ import {
   typography,
 } from '@/constants/theme';
 import { typedCents, type CheckoutState } from '@/hooks/sell/useCheckout';
-import { exactCashCents, GCASH_OVER_TOTAL_MESSAGE, PAYMENT_LIMITS, QUICK_CASH_CENTS } from '@/sale/payments';
-import { formatPeso } from '@/utils/money';
+import { exactCashCents, GCASH_OVER_TOTAL_MESSAGE, PAYMENT_LIMITS, QUICK_CASH_CENTS } from '@pos/core/sale/payments';
+import { formatPeso } from '@pos/core/money';
+
+/**
+ * What the payment parts read: the pay-now checkout, or a dine-in tab's
+ * settlement (one share at a time when split equally).
+ */
+export type TenderControls = Pick<
+  CheckoutState,
+  | 'draft'
+  | 'summary'
+  | 'tenderErrors'
+  | 'locked'
+  | 'canAddGcash'
+  | 'addGcash'
+  | 'setCash'
+  | 'setQuickCash'
+  | 'setExactCash'
+  | 'updateGcash'
+  | 'removeGcash'
+> & { cart: { pricing: { total_cents: number } } };
 
 type CheckoutProps = {
-  checkout: CheckoutState;
+  checkout: TenderControls;
 };
 
 /** Quick-cash buttons: 52 dp. */

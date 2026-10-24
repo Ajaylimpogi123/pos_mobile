@@ -3,8 +3,10 @@
 namespace App\Actions\Printing;
 
 use App\Actions\Audit\RecordAuditLog;
+use App\Exceptions\ConflictException;
 use App\Models\Branch;
 use App\Models\Setting;
+use App\Models\Tab;
 use App\Models\User;
 use App\Support\BranchSettings;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +22,10 @@ use Illuminate\Support\Facades\DB;
  */
 class UpdateBranchSettingsAction
 {
+    public const MESSAGE_OPEN_TABS = 'Close the %d open bills first.';
+
+    public const MESSAGE_OPEN_TAB = 'Close the 1 open bill first.';
+
     public function __construct(private readonly RecordAuditLog $recordAuditLog) {}
 
     /**
@@ -42,6 +48,11 @@ class UpdateBranchSettingsAction
 
                 if ($value === $current->get($key)) {
                     continue;
+                }
+
+                // Dine-in Tables & Tabs → A: dine-in can't be turned off while tabs are open.
+                if ($key === BranchSettings::DINE_IN_ENABLED && $value === false) {
+                    $this->assertNoOpenTabs($branch);
                 }
 
                 $changes[$key] = ['from' => $current->get($key), 'to' => $value];
@@ -70,15 +81,27 @@ class UpdateBranchSettingsAction
     }
 
     /**
+     * @throws ConflictException 409 while the branch has open tabs
+     */
+    private function assertNoOpenTabs(Branch $branch): void
+    {
+        $open = Tab::query()->where('branch_id', $branch->id)->where('status', Tab::STATUS_OPEN)->count();
+
+        if ($open > 0) {
+            throw new ConflictException($open === 1 ? self::MESSAGE_OPEN_TAB : sprintf(self::MESSAGE_OPEN_TABS, $open));
+        }
+    }
+
+    /**
      * The validated value as stored: lines as a list of strings, flags as booleans,
-     * copies as an integer.
+     * copies and the service charge as integers.
      */
     private function normalise(string $key, mixed $value): mixed
     {
         return match ($key) {
             BranchSettings::RECEIPT_HEADER_LINES, BranchSettings::RECEIPT_FOOTER_LINES => array_values(array_map('strval', $value)),
-            BranchSettings::AUTO_PRINT_RECEIPT, BranchSettings::PRINT_KITCHEN_TICKETS => filter_var($value, FILTER_VALIDATE_BOOLEAN),
-            BranchSettings::RECEIPT_COPIES => (int) $value,
+            BranchSettings::AUTO_PRINT_RECEIPT, BranchSettings::PRINT_KITCHEN_TICKETS, BranchSettings::DINE_IN_ENABLED => filter_var($value, FILTER_VALIDATE_BOOLEAN),
+            BranchSettings::RECEIPT_COPIES, BranchSettings::SERVICE_CHARGE_BPS => (int) $value,
             default => $value,
         };
     }

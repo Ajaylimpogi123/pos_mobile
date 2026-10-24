@@ -3,9 +3,9 @@
  * timezone** (from print-config, via `branchWallClock`), never the tablet's.
  * Amounts come from the server's `Order`; these helpers only format them.
  */
-import { discountTypeLabel, formatPercentValue } from '@/sale/discountRules';
-import type { PrinterRole, SaleDiscount } from '@/services/types';
-import { branchWallClock } from '@/utils/businessDay';
+import { discountTypeLabel, formatPercentValue } from '../../sale/discountRules';
+import type { PrinterRole, SaleDiscount } from '../../contract/types';
+import { branchWallClock } from '../../businessDay';
 
 function pad2(value: number): string {
   return String(value).padStart(2, '0');

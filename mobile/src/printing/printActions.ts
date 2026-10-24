@@ -16,25 +16,27 @@
  * - `testPrint`, `printSample`: straight to one printer, through its lane; not stored.
  * - `retryJob`, `retryAllFailed`, `dismissJob`, `probePrinters`, `chooseReceiptPrinter`.
  */
+import { captureError } from '@/errors/capture';
 import { prepareDatabase } from '@/db/database';
 import { printRepository } from '@/db/printRepository';
 import type { PrintJobInsert, PrintJobRow } from '@/db/schema';
 import { API_BASE_URL } from '@/services/api';
 import { getReceiptPrinterId, saveReceiptPrinterId } from '@/services/secureStorage';
-import type { BranchSettings, Order, OrderItem, PrintableOrder, PrintConfig, Printer, Refund } from '@/services/types';
+import type { BranchSettings, Order, OrderItem, PrintableOrder, PrintConfig, Printer, Refund, Tab, TabItem } from '@/services/types';
 import { selectFailedJobs, toJobView, usePrintingStore } from '@/stores/printing';
 import { useSessionStore } from '@/stores/session';
 import { ulid } from '@/utils/ulid';
 
-import { buildReceiptSample } from './documents/receipt';
-import type { RefundSlipDocument } from './documents/refundSlip';
-import type { ShiftReadDocument } from './documents/shiftRead';
-import { buildTestPage, type TestPageTarget } from './documents/testPage';
-import { columnsFor } from './escpos/layout';
+import { buildReceiptSample } from '@pos/core/printing/documents/receipt';
+import type { RefundSlipDocument } from '@pos/core/printing/documents/refundSlip';
+import type { ShiftReadDocument } from '@pos/core/printing/documents/shiftRead';
+import { buildTestPage, type TestPageTarget } from '@pos/core/printing/documents/testPage';
+import { columnsFor } from '@pos/core/printing/escpos/layout';
 import { describeItem } from './labels';
 import { CONNECT_TIMEOUT_MS, createPrintQueue, failureMessage, type PrintQueue } from './queue';
 import { renderJob } from './render';
-import { chooseReceiptPrinter, planSale, routeKitchen } from './routing';
+import { chooseReceiptPrinter, planSale, routeKitchen, routeTicketLines } from '@pos/core/printing/routing';
+import type { BillDocument, TabRoundDocument, TabVoidDocument } from './tabDocuments';
 import { getPrintTransport, isPrintTransportError, PrintTransportError, type PrintTarget } from './transport';
 
 /** Contract: the success screen's message when this tablet has no receipt printer. */
@@ -70,7 +72,16 @@ function getQueue(): PrintQueue {
       render: renderJob,
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: Date.now,
-      onJobChanged: (row) => store().upsertJobs([toJobView(row)]),
+      onJobChanged: (row) => {
+        store().upsertJobs([toJobView(row)]);
+        // Phase 8 §F: a print that failed after all its retries goes to the error log.
+        if (row.status === 'failed') {
+          captureError(new Error(`Print failed: ${row.error ?? 'unknown error'}`), {
+            level: 'warning',
+            extra: { source: 'print_queue', kind: row.kind, printer_role: row.printer_role, attempts: String(row.attempts) },
+          });
+        }
+      },
     });
   }
   return queue;
@@ -180,6 +191,12 @@ function clampCopies(copies: number): number {
   return Math.max(1, Math.min(3, Math.trunc(copies)));
 }
 
+/** Dine-in (T2): an equally split order prints one receipt per share (each its own copy); else `copies`. */
+function receiptCountOf(order: PrintableOrder, copies: number): number {
+  const shares = order.split_count ?? 0;
+  return shares >= 2 && copies > 0 ? shares : copies;
+}
+
 /** Why printing can't run right now (`null`: it can), after making sure it started. */
 async function blocker(): Promise<string | null> {
   const transport = getPrintTransport();
@@ -230,15 +247,17 @@ export async function printSale(order: PrintableOrder): Promise<void> {
     }
 
     const plan = planSale(order, config, store().receiptPrinterId);
-    const jobs = plan.receiptPrinter ? receiptJobs(order, plan.receiptPrinter, plan.receiptCopies, false) : [];
-    const tickets = ticketJobs(order, config, false);
+    const jobs = plan.receiptPrinter ? receiptJobs(order, plan.receiptPrinter, receiptCountOf(order, plan.receiptCopies), false) : [];
+    // Dine-in §D.6: a settled tab prints the receipt only; its rounds already went to the kitchen.
+    const fromTab = Boolean(order.tab_ulid);
+    const tickets = fromTab ? { jobs: [], unrouted: [] } : ticketJobs(order, config, false);
     const inserted = await printRepository.insertJobs([...jobs, ...tickets.jobs]);
 
     const rows = await firstPrintsOf(ulidOfSale);
     store().setSale(ulidOfSale, {
       preparing: false,
       jobIds: rows.map((row) => row.id),
-      unrouted: plan.unrouted.map(describeItem),
+      unrouted: fromTab ? [] : plan.unrouted.map(describeItem),
       noReceiptPrinter: plan.receiptPrinter === null,
       manualReceipt: plan.manualReceipt && plan.receiptPrinter !== null && !rows.some((row) => row.kind === 'receipt'),
     });
@@ -263,7 +282,9 @@ export async function printReceipt(order: PrintableOrder): Promise<void> {
       store().setSale(ulidOfSale, { noReceiptPrinter: printer === null, manualReceipt: false, notice: config ? null : NO_CONFIG_MESSAGE });
       return;
     }
-    const inserted = await printRepository.insertJobs(receiptJobs(order, printer, clampCopies(config.settings.receipt_copies), false));
+    const inserted = await printRepository.insertJobs(
+      receiptJobs(order, printer, receiptCountOf(order, clampCopies(config.settings.receipt_copies)), false),
+    );
     const rows = await firstPrintsOf(ulidOfSale);
     store().setSale(ulidOfSale, { jobIds: rows.map((row) => row.id), manualReceipt: false });
     await getQueue().enqueue(inserted);
@@ -297,7 +318,7 @@ export async function reprintOrder(order: PrintableOrder, kind: ReprintKind): Pr
     if (kind === 'receipt') {
       const printer = chooseReceiptPrinter(config.printers, store().receiptPrinterId);
       if (!printer) return { jobIds: [], notice: NO_RECEIPT_PRINTER_MESSAGE, unrouted: [] };
-      return { jobIds: await queueJobs(receiptJobs(order, printer, 1, true)), notice: null, unrouted: [] };
+      return { jobIds: await queueJobs(receiptJobs(order, printer, receiptCountOf(order, 1), true)), notice: null, unrouted: [] };
     }
 
     const tickets = ticketJobs(order, config, true);
@@ -639,4 +660,130 @@ export function sellPrinters(config: PrintConfig | null, receiptPrinterId: numbe
   const receipt = chooseReceiptPrinter(config.printers, receiptPrinterId);
   const stations = config.printers.filter((printer) => printer.is_enabled && printer.role !== 'cashier');
   return receipt ? [receipt, ...stations] : stations;
+}
+
+// ---------------------------------------------------------------------------
+// Dine-in Tables & Tabs (§F)
+// ---------------------------------------------------------------------------
+
+export type TabPrintResult = {
+  /** The jobs (their rows show the progress). */
+  jobIds: string[];
+  /** Why nothing (or not everything) was sent. */
+  notice: string | null;
+  /** Tickets: lines no enabled station takes, e.g. "2 x Sisig". */
+  unrouted: string[];
+};
+
+export const TAB_PRINT_FAILED_MESSAGE = "This couldn't be sent to the printer.";
+
+function tabJob(
+  key: string,
+  printer: Printer,
+  options: { kind: PrintJobRow['kind']; queueNo: number; json: string; itemIds: number[] | null; reprint?: boolean },
+): PrintJobInsert {
+  const now = new Date().toISOString();
+  return {
+    id: ulid(),
+    order_ulid: key,
+    queue_no: options.queueNo,
+    kind: options.kind,
+    printer_id: printer.id,
+    printer_name: printer.name,
+    printer_role: printer.role,
+    copy_no: 1,
+    copies: 1,
+    is_reprint: options.reprint ?? false,
+    order_json: options.json,
+    item_ids: options.itemIds ? JSON.stringify(options.itemIds) : null,
+    status: 'pending',
+    attempts: 0,
+    error: null,
+    dismissed: false,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+/** Stores and queues station tickets for tab lines, routed like a sale's (and only while `print_kitchen_tickets` is on). */
+async function printTabTickets(
+  key: string,
+  kind: 'tab_round' | 'tab_void',
+  queueNo: number,
+  items: readonly TabItem[],
+  json: string,
+): Promise<TabPrintResult> {
+  const blocked = await blocker();
+  if (blocked) return { jobIds: [], notice: blocked, unrouted: [] };
+  const config = store().config;
+  if (!config) return { jobIds: [], notice: CONFIG_NOT_SYNCED_MESSAGE, unrouted: [] };
+  const routing = routeTicketLines(items, config);
+  const jobs = routing.tickets.map((ticket) =>
+    tabJob(key, ticket.printer, { kind, queueNo, json, itemIds: ticket.items.map((item) => item.id) }),
+  );
+  const inserted = await printRepository.insertJobs(jobs);
+  // A replayed answer: the first prints already exist for this key; show those.
+  const rows = (await printRepository.jobsForOrder(key)).filter((row) => row.kind === kind && !row.is_reprint);
+  store().upsertJobs(rows.map(toJobView));
+  await getQueue().enqueue(inserted);
+  return { jobIds: rows.map((row) => row.id), notice: null, unrouted: routing.unrouted.map(describeItem) };
+}
+
+/**
+ * After **Send to kitchen** (`200 {data, round_no}`): the round's kitchen
+ * ticket, one per station (`TABLE 5`, `ROUND 2 · 3 guests`, the server, the
+ * round's items only), when `print_kitchen_tickets` is on. Deduplicated by the
+ * round's ULID. Never rejects.
+ */
+export async function printTabRound(tab: Tab, roundNo: number, roundUlid: string, serverName: string): Promise<TabPrintResult> {
+  try {
+    const items = tab.items.filter((item) => item.round_no === roundNo);
+    const doc: TabRoundDocument = {
+      tab: { ulid: tab.ulid, table: tab.table, guests: tab.guests, notes: tab.notes },
+      items,
+      round_no: roundNo,
+      server_name: serverName,
+      sent_at: items[0]?.added_at ?? new Date().toISOString(),
+    };
+    return await printTabTickets(roundUlid, 'tab_round', roundNo, items, JSON.stringify(doc));
+  } catch {
+    return { jobIds: [], notice: TAB_PRINT_FAILED_MESSAGE, unrouted: [] };
+  }
+}
+
+/** After a sent item is cancelled: the VOID kitchen ticket for the cancelled quantity, per station. Never rejects. */
+export async function printTabVoid(tab: Tab, item: TabItem, qty: number, cancelKey: string): Promise<TabPrintResult> {
+  try {
+    const items = [{ ...item, qty }];
+    const doc: TabVoidDocument = {
+      tab: { ulid: tab.ulid, table: tab.table },
+      items,
+      cancelled_at: new Date().toISOString(),
+    };
+    return await printTabTickets(cancelKey, 'tab_void', 0, items, JSON.stringify(doc));
+  } catch {
+    return { jobIds: [], notice: TAB_PRINT_FAILED_MESSAGE, unrouted: [] };
+  }
+}
+
+/** **Print bill**: the bill (`BILL — NOT A RECEIPT`) on this tablet's receipt printer, as often as asked. Never rejects. */
+export async function printBill(tab: Tab, splitCount: number | null = null): Promise<TabPrintResult> {
+  try {
+    const blocked = await blocker();
+    if (blocked) return { jobIds: [], notice: blocked, unrouted: [] };
+    const config = store().config;
+    if (!config) return { jobIds: [], notice: CONFIG_NOT_SYNCED_MESSAGE, unrouted: [] };
+    const printer = chooseReceiptPrinter(config.printers, store().receiptPrinterId);
+    if (!printer) return { jobIds: [], notice: NO_RECEIPT_PRINTER_MESSAGE, unrouted: [] };
+    const doc: BillDocument = {
+      tab: { ulid: tab.ulid, table: tab.table, guests: tab.guests, items: tab.items },
+      printed_at: Date.now(),
+      service_charge_bps: config.settings.service_charge_bps ?? 0,
+      split_count: splitCount,
+    };
+    const job = tabJob(ulid(), printer, { kind: 'bill', queueNo: 0, json: JSON.stringify(doc), itemIds: null });
+    return { jobIds: await queueJobs([job]), notice: null, unrouted: [] };
+  } catch {
+    return { jobIds: [], notice: TAB_PRINT_FAILED_MESSAGE, unrouted: [] };
+  }
 }

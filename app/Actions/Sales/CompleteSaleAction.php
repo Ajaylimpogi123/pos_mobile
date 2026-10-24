@@ -156,7 +156,7 @@ class CompleteSaleAction
      *
      * @throws ValidationException
      */
-    private function checkMenu(array $lines): Collection
+    public function checkMenu(array $lines): Collection
     {
         $products = Product::withTrashed()
             ->with('category')

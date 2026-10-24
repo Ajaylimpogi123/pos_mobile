@@ -1,18 +1,18 @@
 import { router, usePathname } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 
+import { useDineInEnabled } from '@/hooks/tables/useDineIn';
 import { activeModuleKey, visibleModuleGroups, type ModuleDefinition } from '@/constants/modules';
 import { useResponsive, type SidebarMode } from '@/hooks/useResponsive';
-import { useSidebarPreference } from '@/hooks/useSidebarPreference';
+import { ROUTES } from '@/constants/routes';
 import { useSessionStore } from '@/stores/session';
+import { hasPermission, PERMISSIONS } from '@/utils/permissions';
 
 /**
- * What the app shell shows, derived from `useResponsive().sidebarMode` and the
- * remembered preference:
- * - tablet landscape: a persistent expanded panel, collapsible to the rail
- *   with the chevron (remembered per device)
- * - tablet portrait / phone landscape: a persistent rail; the chevron opens
- *   the expanded panel as an overlay with a scrim
+ * What the app shell shows, derived from `useResponsive().sidebarMode`
+ * (MASTER §2.2 / §6):
+ * - tablets (both orientations) / phone landscape: the persistent 64 dp rail;
+ *   its chevron opens the 256 dp labelled panel as an overlay with a scrim
  * - phone portrait: no persistent sidebar; ☰ opens a slide-in drawer
  *
  * The overlay is tied to the size class it was opened in, so a rotation
@@ -21,28 +21,23 @@ import { useSessionStore } from '@/stores/session';
 export function useAppShell() {
   const responsive = useResponsive();
   const { sidebarMode } = responsive;
-  const { collapsed, setCollapsed } = useSidebarPreference();
   const [overlayMode, setOverlayMode] = useState<SidebarMode | null>(null);
   const pathname = usePathname();
   const user = useSessionStore((state) => state.user);
 
-  const groups = useMemo(() => visibleModuleGroups(user), [user]);
+  const dineIn = useDineInEnabled();
+  const groups = useMemo(() => visibleModuleGroups(user, { dineIn }), [user, dineIn]);
   const activeKey = activeModuleKey(pathname ?? '/');
 
-  let persistent: 'expanded' | 'rail' | null = null;
-  if (sidebarMode === 'expanded') persistent = collapsed ? 'rail' : 'expanded';
-  else if (sidebarMode === 'rail') persistent = 'rail';
+  const persistent: 'rail' | null = sidebarMode === 'rail' ? 'rail' : null;
 
   const overlayOpen = overlayMode !== null && overlayMode === sidebarMode;
 
   const openOverlay = useCallback(() => setOverlayMode(sidebarMode), [sidebarMode]);
   const closeOverlay = useCallback(() => setOverlayMode(null), []);
 
-  /** The persistent panel's chevron: collapse / expand in place, or open the overlay from the rail. */
-  const toggleSidebar = useCallback(() => {
-    if (sidebarMode === 'expanded') setCollapsed(!collapsed);
-    else openOverlay();
-  }, [sidebarMode, collapsed, setCollapsed, openOverlay]);
+  /** The rail's chevron: opens the labelled panel as an overlay. */
+  const toggleSidebar = openOverlay;
 
   const selectModule = useCallback(
     (module: ModuleDefinition) => {
@@ -56,8 +51,18 @@ export function useAppShell() {
     [activeKey, pathname],
   );
 
+  /** The dark icon-only **New sale** button under the logo (MASTER §6): for users who can sell. */
+  const canSell = hasPermission(user, PERMISSIONS.saleCreate);
+  const newSale = useCallback(() => {
+    setOverlayMode(null);
+    if (pathname === ROUTES.sell) return;
+    router.navigate(ROUTES.sell);
+  }, [pathname]);
+
   return {
     responsive,
+    canSell,
+    newSale,
     user,
     groups,
     activeKey,

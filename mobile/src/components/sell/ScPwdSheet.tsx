@@ -14,16 +14,16 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { colors, spacing, typography } from '@/constants/theme';
 import type { ScPwdEditor } from '@/hooks/sell/useScPwdEditor';
 import { useResponsive } from '@/hooks/useResponsive';
-import { describeDiscount } from '@/sale/discountRules';
+import { describeDiscount } from '@pos/core/sale/discountRules';
 import {
   describeConflicts,
   SC_PWD_LIMITS,
   SC_PWD_MODES,
   SC_PWD_PERSON_TYPES,
   VAT_EXEMPT_HINT,
-} from '@/sale/scPwd';
+} from '@pos/core/sale/scPwd';
 import type { CartLine } from '@/stores/cart';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 
 type ScPwdSheetProps = {
   editor: ScPwdEditor;
@@ -196,7 +196,7 @@ export function ScPwdSheet({ editor, lines, applied, serverErrors }: ScPwdSheetP
                       {dinersError}
                     </Text>
                   ) : null}
-                  <Chip label="Other discounts are removed for a shared meal" variant="info" icon="information-circle-outline" />
+                  <Chip label="Other discounts are removed for a shared meal" variant="neutral" icon="information-circle-outline" />
                 </View>
               )}
 

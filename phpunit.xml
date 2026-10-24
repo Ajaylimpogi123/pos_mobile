@@ -14,11 +14,16 @@
         <testsuite name="Performance">
             <directory>tests/Performance</directory>
         </testsuite>
+        <testsuite name="Soak">
+            <directory>tests/Soak</directory>
+        </testsuite>
     </testsuites>
     <!-- The year-of-sales report benchmark runs only on demand: php artisan test with the group option set to performance. -->
+    <!-- The service-day soak (Hardening & Pilot, G) runs only on demand: php artisan test with the group option set to soak. -->
     <groups>
         <exclude>
             <group>performance</group>
+            <group>soak</group>
         </exclude>
     </groups>
     <source>

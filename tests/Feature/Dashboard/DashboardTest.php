@@ -133,10 +133,14 @@ describe('shape and gating', function () {
             ->and(array_keys($response->json('data.insights.0')))->toBe(['key', 'severity', 'title', 'message', 'count', 'action'])
             // Phase 3: `sales` replaces the reserved null (report.view); see DashboardSalesTest.
             ->and(array_keys($response->json('data.sales')))->toBe([
-                'business_date', 'orders_count', 'items_sold', 'gross_sales_cents', 'discounts_cents',
+                // v1.28: Dashboard Period Filter
+                'period', 'date_from', 'date_to',
+                'business_date',
+                'trend',
+                'orders_count', 'items_sold', 'gross_sales_cents', 'discounts_cents',
                 'net_sales_cents', 'vat_amount_cents',
                 // SC/PWD
-                'sc_pwd_orders_count', 'sc_pwd_vat_relief_cents', 'sc_pwd_discount_cents',
+                'sc_pwd_orders_count', 'sc_pwd_vat_relief_cents', 'sc_pwd_discount_cents', 'service_charge_cents',
                 'average_order_cents',
                 // Phase 7
                 'voids_count', 'refunds_cents', 'net_after_refunds_cents',
@@ -630,8 +634,8 @@ describe('performance', function () {
 
         // Auth + permissions (~5) + catalog 3 + staff 3 + customers 1 + activity 2 + one per subject type (≤ 4)
         // + sales 4 (Phase 3) + the stock alerts 1 (Inventory) + the ingredient alerts 1 and the
-        // purchasing queues 3 (Ingredients, Recipes & Purchasing).
-        expect($small)->toBeLessThanOrEqual(29)
+        // purchasing queues 3 (Ingredients, Recipes & Purchasing) + the unsynced tablets 1 (Hardening & Pilot).
+        expect($small)->toBeLessThanOrEqual(30)
             ->and($large)->toBe($small);
     });
 });

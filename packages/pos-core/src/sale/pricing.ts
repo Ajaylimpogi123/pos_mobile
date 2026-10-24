@@ -36,7 +36,7 @@
  *    rhu(T × 10000, 10000 + r)`, `vat = T − vatable_sales`, `vat_exempt = total − T`
  *    (step 8 is the case with no SC/PWD).
  */
-import type { DiscountKind, ScPwdMode } from '@/services/types';
+import type { DiscountKind, ScPwdMode } from '../contract/types';
 
 /**
  * Philippine VAT, included in prices: the server's `config('pos.vat_rate_bps')`,

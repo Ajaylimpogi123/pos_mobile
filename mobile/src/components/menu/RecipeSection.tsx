@@ -18,10 +18,10 @@ import { useRecipeComponentPicker, type RecipeComponentOption } from '@/hooks/me
 import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useResponsive } from '@/hooks/useResponsive';
 import { getErrorMessage } from '@/services/api';
-import { formatPeso } from '@/utils/money';
-import { formatPercentBpsOrDash, NO_VALUE } from '@/utils/numbers';
-import { formatQty } from '@/utils/quantity';
-import { RECIPE_MAX_LINES } from '@/utils/recipe';
+import { formatPeso } from '@pos/core/money';
+import { formatPercentBpsOrDash, NO_VALUE } from '@pos/core/numbers';
+import { formatQty } from '@pos/core/quantity';
+import { RECIPE_MAX_LINES } from '@pos/core/recipe';
 
 type LineEditorProps = {
   builder: RecipeBuilderState;

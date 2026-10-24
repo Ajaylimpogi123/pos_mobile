@@ -1,0 +1,1 @@
+Source: https://github.com/nextlevelbuilder/ui-ux-pro-max-skill @ 477bcb2 (MIT). Copied 2026-10-07; tests removed.

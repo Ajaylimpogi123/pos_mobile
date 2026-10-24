@@ -24,8 +24,8 @@ function roleSlugsWithPermission(string $permission): array
         ->all();
 }
 
-it('grants customer.manage to owner and manager only (21 permissions since Ingredients & Purchasing)', function () {
-    expect(Permission::query()->count())->toBe(21)
+it('grants customer.manage to owner and manager only (22 permissions since Hardening & Pilot)', function () {
+    expect(Permission::query()->count())->toBe(22)
         ->and(Permission::query()->where('slug', 'customer.manage')->value('description'))->toBe('Delete customer records')
         ->and(roleSlugsWithPermission('customer.manage'))->toBe(['owner', 'manager']);
 });
@@ -59,8 +59,8 @@ it('removes purchase.approve from an existing Manager role when re-seeded', func
 
     expect(roleSlugsWithPermission('purchase.approve'))->toBe(['owner'])
         ->and(Permission::query()->where('slug', 'purchase.approve')->count())->toBe(1)
-        ->and($manager->fresh()->permissionSlugs())->toHaveCount(18)->not->toContain('purchase.approve')
-        ->and(Role::query()->where('slug', 'owner')->sole()->permissionSlugs())->toHaveCount(21);
+        ->and($manager->fresh()->permissionSlugs())->toHaveCount(19)->not->toContain('purchase.approve')
+        ->and(Role::query()->where('slug', 'owner')->sole()->permissionSlugs())->toHaveCount(22);
 });
 
 it('seeds the Phase 1b staff PINs, manager2 and the customers in the local environment, idempotently', function () {

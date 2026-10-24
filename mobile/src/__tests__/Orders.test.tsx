@@ -75,7 +75,7 @@ describe('Orders list', () => {
     expect(call.query.has('search')).toBe(false);
     expect(screen.getByTestId('orders-date')).toHaveTextContent('Today · Fri, 25 Sep 2026');
     expect(screen.getByTestId('orders-next-day')).toBeDisabled();
-    expect(screen.getByTestId('orders-header')).toHaveTextContent(/Your sales/);
+    expect(screen.getByTestId('orders-band-subtitle')).toHaveTextContent(/^Your sales · /);
 
     expect(card).toHaveTextContent(/#17/);
     expect(card).toHaveTextContent(/INV-MAIN-00000042/);
@@ -88,6 +88,20 @@ describe('Orders list', () => {
 
     await fireEvent.press(screen.getByTestId(`order-card-${first.ulid}-open`));
     expect(router.push).toHaveBeenCalledWith({ pathname: '/orders/[ulid]', params: { ulid: first.ulid } });
+  });
+
+  it('each row has a ⋯ menu (View, Reprint, Refund, Void order) and the list ends with "Showing n"', async () => {
+    routeFetch([{ method: 'GET', path: ORDERS, reply: () => mockResponse(200, page([first, second], null, ORDERS)) }]);
+    await renderWithQuery(<OrdersIndexRoute />);
+    await screen.findByTestId(`order-card-${first.ulid}`);
+
+    expect(screen.getByTestId('orders-grid-more-count')).toHaveTextContent('Showing 2');
+    expect(screen.queryByTestId('orders-grid-more-button')).toBeNull();
+
+    await fireEvent.press(screen.getByTestId(`order-card-${first.ulid}-actions`));
+    expect(screen.getByTestId('order-actions-view')).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId('order-actions-reprint'));
+    expect(router.push).toHaveBeenLastCalledWith({ pathname: '/orders/[ulid]', params: { ulid: first.ulid, action: 'reprint' } });
   });
 
   it('steps back a day (never past today), returns to Today, and shows all dates', async () => {
@@ -176,7 +190,7 @@ describe('Orders list', () => {
     routeFetch([{ method: 'GET', path: ORDERS, reply: () => mockResponse(200, page([], null, ORDERS)) }]);
     await renderWithQuery(<OrdersIndexRoute />);
 
-    expect(await screen.findByTestId('orders-header')).toHaveTextContent(/All sales in this branch/);
+    expect(await screen.findByTestId('orders-band-subtitle')).toHaveTextContent(/^All sales in this branch · /);
   });
 });
 

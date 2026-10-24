@@ -44,59 +44,142 @@ final class SalesFigures
 {
     public const ORDERS_COUNT = 'COUNT(*)';
 
-    public const ITEMS_SOLD = 'COALESCE(SUM(orders.items_qty), 0)';
-
-    public const GROSS_SALES = 'COALESCE(SUM(orders.subtotal_cents), 0)';
-
-    public const DISCOUNTS = 'COALESCE(SUM(orders.discount_cents), 0)';
-
-    public const NET_SALES = 'COALESCE(SUM(orders.total_cents), 0)';
-
-    public const VATABLE_SALES = 'COALESCE(SUM(orders.vatable_sales_cents), 0)';
-
-    public const VAT_AMOUNT = 'COALESCE(SUM(orders.vat_amount_cents), 0)';
-
-    public const VAT_EXEMPT_SALES = 'COALESCE(SUM(orders.vat_exempt_sales_cents), 0)';
-
-    public const SC_PWD_ORDERS_COUNT = 'COALESCE(SUM(orders.sc_pwd_mode IS NOT NULL), 0)';
-
-    public const SC_PWD_VAT_RELIEF = 'COALESCE(SUM(orders.sc_pwd_vat_relief_cents), 0)';
-
-    public const SC_PWD_DISCOUNT = 'COALESCE(SUM(orders.sc_pwd_discount_cents), 0)';
-
     /**
      * The SC/PWD figures of every sales total (ShiftReport, sales report `totals`, dashboard
      * `sales`), in their field order.
      */
     public const SC_PWD_FIGURES = ['sc_pwd_orders_count', 'sc_pwd_vat_relief_cents', 'sc_pwd_discount_cents'];
 
-    public const LINE_ORDERS_COUNT = 'COUNT(DISTINCT order_items.order_id)';
-
-    public const LINE_QTY = 'COALESCE(SUM(order_items.qty), 0)';
-
-    public const LINE_GROSS_SALES = 'COALESCE(SUM(order_items.gross_cents), 0)';
-
-    public const LINE_DISCOUNTS = 'COALESCE(SUM(order_items.line_discount_cents + order_items.order_discount_share_cents + order_items.sc_pwd_vat_relief_cents + order_items.sc_pwd_discount_cents), 0)';
-
-    public const LINE_NET_SALES = 'COALESCE(SUM(order_items.line_total_cents), 0)';
-
-    public const PAYMENT_ORDERS_COUNT = 'COUNT(DISTINCT payments.order_id)';
-
-    public const PAYMENT_AMOUNT = 'COALESCE(SUM(payments.amount_cents), 0)';
-
     public const VOIDS_COUNT = 'COUNT(*)';
-
-    public const VOIDS_AMOUNT = 'COALESCE(SUM(orders.total_cents), 0)';
 
     public const REFUNDS_COUNT = 'COUNT(*)';
 
-    public const REFUNDS_AMOUNT = 'COALESCE(SUM(refunds.amount_cents), 0)';
+    /*
+     * The aggregate SQL expressions. They qualify their columns through the query grammar,
+     * so the connection's table prefix is applied (a raw string is never prefixed).
+     */
 
-    public const REFUND_LINE_QTY = 'COALESCE(SUM(refund_items.qty), 0)';
+    public static function itemsSold(): string
+    {
+        return self::sum('orders.items_qty');
+    }
 
-    public const REFUND_LINE_AMOUNT = 'COALESCE(SUM(refund_items.amount_cents), 0)';
+    public static function grossSales(): string
+    {
+        return self::sum('orders.subtotal_cents');
+    }
 
-    public const REFUND_PAYMENT_AMOUNT = 'COALESCE(SUM(refund_payments.amount_cents), 0)';
+    public static function discounts(): string
+    {
+        return self::sum('orders.discount_cents');
+    }
+
+    public static function netSales(): string
+    {
+        return self::sum('orders.total_cents');
+    }
+
+    public static function vatableSales(): string
+    {
+        return self::sum('orders.vatable_sales_cents');
+    }
+
+    public static function vatAmount(): string
+    {
+        return self::sum('orders.vat_amount_cents');
+    }
+
+    public static function vatExemptSales(): string
+    {
+        return self::sum('orders.vat_exempt_sales_cents');
+    }
+
+    public static function scPwdOrdersCount(): string
+    {
+        return 'COALESCE(SUM('.self::column('orders.sc_pwd_mode').' IS NOT NULL), 0)';
+    }
+
+    public static function scPwdVatRelief(): string
+    {
+        return self::sum('orders.sc_pwd_vat_relief_cents');
+    }
+
+    public static function scPwdDiscount(): string
+    {
+        return self::sum('orders.sc_pwd_discount_cents');
+    }
+
+    /**
+     * Dine-in Tables & Tabs → G: Σ the service charge `S` (already part of `total_cents`, so
+     * of `net_sales_cents`; outside the line-based figures).
+     */
+    public static function serviceCharge(): string
+    {
+        return self::sum('orders.service_charge_cents');
+    }
+
+    public static function lineOrdersCount(): string
+    {
+        return 'COUNT(DISTINCT '.self::column('order_items.order_id').')';
+    }
+
+    public static function lineQty(): string
+    {
+        return self::sum('order_items.qty');
+    }
+
+    public static function lineGrossSales(): string
+    {
+        return self::sum('order_items.gross_cents');
+    }
+
+    public static function lineDiscounts(): string
+    {
+        return 'COALESCE(SUM('.self::column('order_items.line_discount_cents')
+            .' + '.self::column('order_items.order_discount_share_cents')
+            .' + '.self::column('order_items.sc_pwd_vat_relief_cents')
+            .' + '.self::column('order_items.sc_pwd_discount_cents').'), 0)';
+    }
+
+    public static function lineNetSales(): string
+    {
+        return self::sum('order_items.line_total_cents');
+    }
+
+    public static function paymentOrdersCount(): string
+    {
+        return 'COUNT(DISTINCT '.self::column('payments.order_id').')';
+    }
+
+    public static function paymentAmount(): string
+    {
+        return self::sum('payments.amount_cents');
+    }
+
+    public static function voidsAmount(): string
+    {
+        return self::sum('orders.total_cents');
+    }
+
+    public static function refundsAmount(): string
+    {
+        return self::sum('refunds.amount_cents');
+    }
+
+    public static function refundLineQty(): string
+    {
+        return self::sum('refund_items.qty');
+    }
+
+    public static function refundLineAmount(): string
+    {
+        return self::sum('refund_items.amount_cents');
+    }
+
+    public static function refundPaymentAmount(): string
+    {
+        return self::sum('refund_payments.amount_cents');
+    }
 
     /**
      * The sales: orders that are not voided (raw query builder, no select yet). The caller
@@ -219,19 +302,20 @@ final class SalesFigures
     {
         $orders
             ->selectRaw(self::ORDERS_COUNT.' AS orders_count')
-            ->selectRaw(self::ITEMS_SOLD.' AS items_sold')
-            ->selectRaw(self::GROSS_SALES.' AS gross_sales_cents')
-            ->selectRaw(self::DISCOUNTS.' AS discounts_cents')
-            ->selectRaw(self::NET_SALES.' AS net_sales_cents')
-            ->selectRaw(self::VAT_AMOUNT.' AS vat_amount_cents')
-            ->selectRaw(self::SC_PWD_ORDERS_COUNT.' AS sc_pwd_orders_count')
-            ->selectRaw(self::SC_PWD_VAT_RELIEF.' AS sc_pwd_vat_relief_cents')
-            ->selectRaw(self::SC_PWD_DISCOUNT.' AS sc_pwd_discount_cents');
+            ->selectRaw(self::itemsSold().' AS items_sold')
+            ->selectRaw(self::grossSales().' AS gross_sales_cents')
+            ->selectRaw(self::discounts().' AS discounts_cents')
+            ->selectRaw(self::netSales().' AS net_sales_cents')
+            ->selectRaw(self::vatAmount().' AS vat_amount_cents')
+            ->selectRaw(self::scPwdOrdersCount().' AS sc_pwd_orders_count')
+            ->selectRaw(self::scPwdVatRelief().' AS sc_pwd_vat_relief_cents')
+            ->selectRaw(self::scPwdDiscount().' AS sc_pwd_discount_cents')
+            ->selectRaw(self::serviceCharge().' AS service_charge_cents');
 
         if ($vatSplit) {
             $orders
-                ->selectRaw(self::VATABLE_SALES.' AS vatable_sales_cents')
-                ->selectRaw(self::VAT_EXEMPT_SALES.' AS vat_exempt_sales_cents');
+                ->selectRaw(self::vatableSales().' AS vatable_sales_cents')
+                ->selectRaw(self::vatExemptSales().' AS vat_exempt_sales_cents');
         }
 
         return $orders;
@@ -244,7 +328,7 @@ final class SalesFigures
     {
         return $voidedOrders
             ->selectRaw(self::VOIDS_COUNT.' AS voids_count')
-            ->selectRaw(self::VOIDS_AMOUNT.' AS voids_cents');
+            ->selectRaw(self::voidsAmount().' AS voids_cents');
     }
 
     /**
@@ -254,7 +338,7 @@ final class SalesFigures
     {
         return $refunds
             ->selectRaw(self::REFUNDS_COUNT.' AS refunds_count')
-            ->selectRaw(self::REFUNDS_AMOUNT.' AS refunds_cents');
+            ->selectRaw(self::refundsAmount().' AS refunds_cents');
     }
 
     /**
@@ -273,13 +357,13 @@ final class SalesFigures
     /**
      * A selectTotals() row as integers (every figure 0 when there is no row).
      *
-     * @return array{orders_count: int, items_sold: int, gross_sales_cents: int, discounts_cents: int, net_sales_cents: int, vatable_sales_cents: int, vat_amount_cents: int, vat_exempt_sales_cents: int, sc_pwd_orders_count: int, sc_pwd_vat_relief_cents: int, sc_pwd_discount_cents: int}
+     * @return array{orders_count: int, items_sold: int, gross_sales_cents: int, discounts_cents: int, net_sales_cents: int, vatable_sales_cents: int, vat_amount_cents: int, vat_exempt_sales_cents: int, sc_pwd_orders_count: int, sc_pwd_vat_relief_cents: int, sc_pwd_discount_cents: int, service_charge_cents: int}
      */
     public static function totalsFrom(?object $row): array
     {
         $figures = [];
 
-        foreach (['orders_count', 'items_sold', 'gross_sales_cents', 'discounts_cents', 'net_sales_cents', 'vatable_sales_cents', 'vat_amount_cents', 'vat_exempt_sales_cents', ...self::SC_PWD_FIGURES] as $key) {
+        foreach (['orders_count', 'items_sold', 'gross_sales_cents', 'discounts_cents', 'net_sales_cents', 'vatable_sales_cents', 'vat_amount_cents', 'vat_exempt_sales_cents', ...self::SC_PWD_FIGURES, 'service_charge_cents'] as $key) {
             $figures[$key] = (int) ($row->{$key} ?? 0);
         }
 
@@ -315,8 +399,8 @@ final class SalesFigures
             ->join('payments', 'payments.order_id', '=', 'orders.id')
             ->groupBy('payments.method')
             ->addSelect('payments.method')
-            ->selectRaw(self::PAYMENT_ORDERS_COUNT.' AS orders_count')
-            ->selectRaw(self::PAYMENT_AMOUNT.' AS amount_cents');
+            ->selectRaw(self::paymentOrdersCount().' AS orders_count')
+            ->selectRaw(self::paymentAmount().' AS amount_cents');
     }
 
     /**
@@ -358,6 +442,22 @@ final class SalesFigures
             'method' => $method,
             'amount_cents' => (int) ($byMethod[$method]->amount_cents ?? 0),
         ], Payment::METHODS);
+    }
+
+    /**
+     * A qualified column, wrapped by the query grammar (so the table gets the connection prefix).
+     */
+    private static function column(string $column): string
+    {
+        return DB::getQueryGrammar()->wrap($column);
+    }
+
+    /**
+     * `COALESCE(SUM(column), 0)` over a qualified column.
+     */
+    private static function sum(string $column): string
+    {
+        return 'COALESCE(SUM('.self::column($column).'), 0)';
     }
 
     /**

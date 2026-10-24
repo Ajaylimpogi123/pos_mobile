@@ -5,11 +5,11 @@ import { timelineAction } from '@/components/purchasing/purchasingLabels';
 import { FormSection } from '@/components/shared/FormSection';
 import { colors, layout, radius, sizes, spacing, status, typography } from '@/constants/theme';
 import type { PurchaseTimelineEntry } from '@/services/types';
-import { formatBranchDateTime } from '@/utils/businessDay';
+import { formatBranchDateTime } from '@pos/core/businessDay';
 
-/** The dot colour of an audit action: created sage, approved green, declined / cancelled red, received blue, edits grey. */
+/** The dot colour of an audit action: created grey, approved green, declined / cancelled red, received blue, edits grey. */
 function dotColor(action: string): string {
-  if (action.endsWith('.created')) return colors.accent;
+  if (action.endsWith('.created')) return colors.textSecondary;
   if (action.endsWith('approved')) return status.completed.color;
   if (action.endsWith('declined') || action.endsWith('.cancelled')) return status.cancelled.color;
   if (action.endsWith('.received')) return status.processing.color;

@@ -12,8 +12,8 @@ import type {
   IngredientUpdateRequest,
   Unit,
 } from '@/services/types';
-import { FACTOR_MAX_DECIMALS, parseFactorInput, toScaled } from '@/utils/quantity';
-import { reservedUnitCode, reservedUnitMessage } from '@/utils/units';
+import { FACTOR_MAX_DECIMALS, parseFactorInput, toScaled } from '@pos/core/quantity';
+import { reservedUnitCode, reservedUnitMessage } from '@pos/core/units';
 
 /** Contract limits (§A, §D). */
 export const INGREDIENT_LIMITS = { name: 120, unitName: 20, units: 50 } as const;

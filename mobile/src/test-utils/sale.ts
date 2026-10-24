@@ -65,6 +65,9 @@ export function makeOrder(overrides: Partial<Order> = {}): Order {
     invoice_no: 'INV-MAIN-00000042',
     queue_no: 17,
     table_no: null,
+    tab_ulid: null,
+    service_charge_cents: 0,
+    split_count: null,
     business_date: '2026-09-25',
     status: 'completed',
     placed_at: '2026-09-25T04:12:09Z',
@@ -234,6 +237,9 @@ export function makeOrderSummary(overrides: Partial<OrderSummary> = {}): OrderSu
     invoice_no: 'INV-MAIN-00000042',
     queue_no: 17,
     table_no: null,
+    tab_ulid: null,
+    service_charge_cents: 0,
+    split_count: null,
     business_date: '2026-09-25',
     status: 'completed',
     placed_at: '2026-09-25T04:12:09Z',
@@ -297,7 +303,15 @@ const LAST_7 = ['2026-09-19', '2026-09-20', '2026-09-21', '2026-09-22', '2026-09
 export function makeSales(overrides: Partial<DashboardSales> = {}): DashboardSales {
   const counts = [0, 3, 5, 0, 8, 10, 12];
   const nets = [0, 95000, 180000, 0, 250000, 331000, 403000];
+  const lastSeven = LAST_7.map((date, index) => ({ date, orders_count: counts[index], net_sales_cents: nets[index] }));
   return {
+    period: 'day',
+    date_from: '2026-09-25',
+    date_to: '2026-09-25',
+    trend: {
+      unit: 'day',
+      buckets: lastSeven.map((day) => ({ start: day.date, orders_count: day.orders_count, net_sales_cents: day.net_sales_cents })),
+    },
     business_date: '2026-09-25',
     orders_count: 12,
     items_sold: 34,
@@ -310,7 +324,7 @@ export function makeSales(overrides: Partial<DashboardSales> = {}): DashboardSal
       { method: 'cash', orders_count: 9, amount_cents: 300000 },
       { method: 'gcash', orders_count: 4, amount_cents: 103000 },
     ],
-    last_7_days: LAST_7.map((date, index) => ({ date, orders_count: counts[index], net_sales_cents: nets[index] })),
+    last_7_days: lastSeven,
     top_products: [{ product_id: 9, name: 'Iced Tea', qty: 14, net_sales_cents: 45000 }],
     voids_count: 0,
     refunds_cents: 0,
@@ -318,6 +332,7 @@ export function makeSales(overrides: Partial<DashboardSales> = {}): DashboardSal
     sc_pwd_orders_count: 0,
     sc_pwd_vat_relief_cents: 0,
     sc_pwd_discount_cents: 0,
+    service_charge_cents: 0,
     ...overrides,
   };
 }
@@ -337,6 +352,7 @@ export function noSales(): DashboardSales {
       { method: 'gcash', orders_count: 0, amount_cents: 0 },
     ],
     last_7_days: LAST_7.map((date) => ({ date, orders_count: 0, net_sales_cents: 0 })),
+    trend: { unit: 'day', buckets: LAST_7.map((start) => ({ start, orders_count: 0, net_sales_cents: 0 })) },
     top_products: [],
     voids_count: 0,
     refunds_cents: 0,

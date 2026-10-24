@@ -12,8 +12,8 @@
  * - Starting either needs `sale.create`, or `sale.void` / `sale.refund`
  *   (a UI hint: the server enforces).
  */
-import type { Order, OrderStatus, PaymentMethod, PrintableOrder } from '@/services/types';
-import { formatPeso } from '@/utils/money';
+import type { Order, OrderStatus, PaymentMethod, PrintableOrder } from '../contract/types';
+import { formatPeso } from '../money';
 
 import { paidByMethod } from './refunds';
 

@@ -4,7 +4,7 @@ import { Chip, STATUS_CHIP_HIT_SLOP } from '@/components/ui/Chip';
 import { opacity, pressedScale, radius } from '@/constants/theme';
 import type { LocalShift } from '@/db/shiftRepository';
 import { useSessionStore } from '@/stores/session';
-import { formatBranchTime } from '@/utils/businessDay';
+import { formatBranchTime } from '@pos/core/businessDay';
 
 type ShiftPillProps = {
   shift: LocalShift;

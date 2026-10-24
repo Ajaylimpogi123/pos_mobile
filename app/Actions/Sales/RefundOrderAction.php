@@ -203,7 +203,13 @@ class RefundOrderAction
             $vatExempt += $amount - $taxable;
         }
 
-        $amountCents = $vatable + $vatExempt;
+        // Dine-in Tables & Tabs → E: the refund that leaves no refundable quantity also returns
+        // the service charge `S` (outside the VAT figures); a partial refund doesn't.
+        $serviceCharge = $order->service_charge_cents > 0 && self::leavesNothingRefundable($items, $input['items'])
+            ? $order->service_charge_cents
+            : 0;
+
+        $amountCents = $vatable + $vatExempt + $serviceCharge;
 
         if ((int) $input['client_refund_cents'] !== $amountCents) {
             throw ValidationException::withMessages(['client_refund_cents' => self::MESSAGE_AMOUNT_CHANGED]);
@@ -217,6 +223,23 @@ class RefundOrderAction
             'amount_cents' => $amountCents,
             ...RefundCalculator::fromConfig()->vatSplit($vatable, $vatExempt),
         ];
+    }
+
+    /**
+     * Whether, after this refund, no line has any refundable quantity left.
+     *
+     * @param  Collection<int, OrderItem>  $items  The order's lines
+     * @param  array<int, array<string, mixed>>  $refundLines  The refund's lines as sent
+     */
+    private static function leavesNothingRefundable(Collection $items, array $refundLines): bool
+    {
+        $refunding = [];
+
+        foreach ($refundLines as $line) {
+            $refunding[(int) $line['order_item_id']] = ($refunding[(int) $line['order_item_id']] ?? 0) + (int) $line['qty'];
+        }
+
+        return $items->every(fn (OrderItem $item) => $item->refundableQty() - ($refunding[$item->id] ?? 0) <= 0);
     }
 
     /**
@@ -240,7 +263,7 @@ class RefundOrderAction
             ->where('refunds.order_id', $order->id)
             ->groupBy('refund_payments.method')
             ->select('refund_payments.method')
-            ->selectRaw('SUM(refund_payments.amount_cents) AS amount_cents')
+            ->selectRaw('SUM('.DB::getQueryGrammar()->wrap('refund_payments.amount_cents').') AS amount_cents')
             ->pluck('amount_cents', 'method');
 
         $errors = [];

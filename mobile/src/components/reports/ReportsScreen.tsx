@@ -100,7 +100,7 @@ export function ReportsScreen() {
 
   return (
     <Screen edges={[]} testID="reports-screen">
-      <ListHeader subtitle={SUBTITLES[kind]} title="Reports" testIDPrefix="reports">
+      <ListHeader band subtitle={SUBTITLES[kind]} title="Reports" testIDPrefix="reports">
         {kinds.length > 1 ? (
           <SegmentedControl
             options={kinds}

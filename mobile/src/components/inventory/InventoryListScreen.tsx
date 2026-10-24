@@ -10,6 +10,7 @@ import { StockListBody, StockSummaryCards } from '@/components/inventory/StockLi
 import type { GridEmptyProps } from '@/components/shared/CardGrid';
 import { ListFilters, ListSearch } from '@/components/shared/ListFilters';
 import { ListHeader } from '@/components/shared/ListHeader';
+import { ListToolbar } from '@/components/shared/ListToolbar';
 import { Chip } from '@/components/ui/Chip';
 import { CellText, type DataTableColumn } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -20,8 +21,8 @@ import { colors, spacing } from '@/constants/theme';
 import { useInventoryListScreen, type InventorySegment } from '@/hooks/inventory/useInventory';
 import { useResponsive } from '@/hooks/useResponsive';
 import type { InventoryItem, InventorySummary } from '@/services/types';
-import { formatPeso } from '@/utils/money';
-import { formatCount } from '@/utils/numbers';
+import { formatPeso } from '@pos/core/money';
+import { formatCount } from '@pos/core/numbers';
 
 function itemKey(item: InventoryItem): string {
   return String(item.product_id);
@@ -179,6 +180,7 @@ export function InventoryListScreen() {
   return (
     <Screen edges={[]} testID="inventory-list-screen">
       <ListHeader
+        band
         title="Inventory"
         subtitle={tracked === undefined ? undefined : `${formatCount(tracked)} tracked ${tracked === 1 ? 'product' : 'products'}`}
         testIDPrefix="inventory"
@@ -198,6 +200,7 @@ export function InventoryListScreen() {
         <InventoryKindSwitch kind="products" />
       </ListHeader>
       <SafeAreaView edges={['left', 'right']} style={styles.body}>
+        <ListToolbar testID="inventory-toolbar">
         <ListFilters<InventorySegment>
           search={screen.search}
           onSearchChange={screen.setSearch}
@@ -220,6 +223,7 @@ export function InventoryListScreen() {
             testIDPrefix: 'inventory-category',
           }}
         />
+        </ListToolbar>
         {screen.online ? (
           <StockListBody
             items={screen.list.items}

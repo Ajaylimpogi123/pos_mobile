@@ -3,7 +3,7 @@
  * Reports on the tablet): `x_read` and `z_read` at 32 and 48 columns, every
  * figure from the `ShiftReport`, nothing computed.
  */
-import { buildShiftRead, type ShiftReadDocument } from '@/printing/documents/shiftRead';
+import { buildShiftRead, type ShiftReadDocument } from '@pos/core/printing/documents/shiftRead';
 import { jobLabel } from '@/printing/labels';
 import { decodeEscPos, printedLines } from '@/test-utils/escpos';
 import { makeShiftReport, TEST_SHIFT_ULID } from '@/test-utils/shifts';

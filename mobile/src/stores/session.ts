@@ -16,7 +16,13 @@ type SessionState = {
   restoreError: string | null;
   /** True when signed in from the cached user because `/auth/me` could not be reached. */
   isOffline: boolean;
+  /**
+   * Hardening & Pilot §C: a message the login screen shows after a forced sign-out
+   * (registration answered 403 "This tablet has been retired. …"). Kept through sign-out.
+   */
+  loginNotice: string | null;
 
+  setLoginNotice: (message: string | null) => void;
   startRestoring: () => void;
   setRestoreError: (message: string) => void;
   setSignedIn: (user: AuthUser, expiresAt: string | null, options?: { offline?: boolean }) => void;
@@ -34,7 +40,9 @@ export const useSessionStore = create<SessionState>()((set) => ({
   expiresAt: null,
   restoreError: null,
   isOffline: false,
+  loginNotice: null,
 
+  setLoginNotice: (loginNotice) => set({ loginNotice }),
   startRestoring: () => set({ status: 'restoring', restoreError: null }),
   setRestoreError: (message) => set({ status: 'restoring', restoreError: message }),
   setSignedIn: (user, expiresAt, options) =>

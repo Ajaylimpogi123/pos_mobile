@@ -41,6 +41,11 @@ class UpdateBranchSettingsRequest extends FormRequest
                 'sometimes', 'required', 'integer', 'min:'.BranchSettings::MIN_COPIES, 'max:'.BranchSettings::MAX_COPIES,
             ],
             BranchSettings::PRINT_KITCHEN_TICKETS => ['sometimes', 'required', 'boolean'],
+            // Dine-in Tables & Tabs → A.
+            BranchSettings::DINE_IN_ENABLED => ['sometimes', 'required', 'boolean'],
+            BranchSettings::SERVICE_CHARGE_BPS => [
+                'sometimes', 'required', 'integer', 'min:0', 'max:'.BranchSettings::MAX_SERVICE_CHARGE_BPS,
+            ],
         ];
     }
 }

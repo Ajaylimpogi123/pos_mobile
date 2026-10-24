@@ -14,10 +14,12 @@ import { hasAnyPermission, hasPermission, PERMISSIONS, PURCHASING_READ_PERMISSIO
  * - `staff/…` needs `user.manage`
  * - `printers/…` needs `sale.create` or `settings.manage` (its layout gates `new` and `[id]` on `settings.manage`)
  * - `settings/index` needs `settings.manage`
+ * - `tables/index` needs `settings.manage` (Dine-in Tables & Tabs §B; it works while dine-in is off)
  * - `shifts/…` needs `report.zread` (Phase 6)
  * - `reports/index` needs `report.view` (Phase 6), or `purchase.approve` (its Purchasing view)
  * - `inventory/…` needs `inventory.adjust` or `report.view` (Inventory, v1 completion)
  * - `purchasing/…` needs any purchase permission or `report.view` (its layout gates each section)
+ * - `devices/…` and `error-log/…` need `system.manage` (Hardening & Pilot §E)
  * These are UI hints: the API still answers 403, which every admin screen
  * shows as an ErrorState ("No access") or a banner.
  */
@@ -36,6 +38,7 @@ export default function AdminLayout() {
     hasAnyPermission(state.user, [PERMISSIONS.inventoryAdjust, PERMISSIONS.reportView]),
   );
   const canViewPurchasing = useSessionStore((state) => hasAnyPermission(state.user, PURCHASING_READ_PERMISSIONS));
+  const canManageSystem = useSessionStore((state) => hasPermission(state.user, PERMISSIONS.systemManage));
 
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
@@ -51,6 +54,7 @@ export default function AdminLayout() {
       </Stack.Protected>
       <Stack.Protected guard={canManageSettings}>
         <Stack.Screen name="settings/index" />
+        <Stack.Screen name="tables/index" />
       </Stack.Protected>
       <Stack.Protected guard={canViewShifts}>
         <Stack.Screen name="shifts" />
@@ -63,6 +67,10 @@ export default function AdminLayout() {
       </Stack.Protected>
       <Stack.Protected guard={canViewPurchasing}>
         <Stack.Screen name="purchasing" />
+      </Stack.Protected>
+      <Stack.Protected guard={canManageSystem}>
+        <Stack.Screen name="devices" />
+        <Stack.Screen name="error-log" />
       </Stack.Protected>
     </Stack>
   );

@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { UnitsEditor } from '@/components/ingredients/UnitsEditor';
 import { IngredientCostDialog } from '@/components/inventory/IngredientStockDialogs';
 import { ImagePickerPanel } from '@/components/menu/ImagePickerPanel';
+import { FormFooter } from '@/components/shared/FormFooter';
 import { FormLayout } from '@/components/shared/FormLayout';
 import { FormSection } from '@/components/shared/FormSection';
 import { DetailRow } from '@/components/shared/InfoCard';
@@ -21,13 +22,20 @@ import { BASE_UNIT_LOCKED_MESSAGE, INGREDIENT_LIMITS, useIngredientForm } from '
 import { useIsOnline } from '@/hooks/useIsOnline';
 import type { Ingredient } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 import { goBackOr } from '@/utils/navigation';
 import { hasPermission, PERMISSIONS } from '@/utils/permissions';
-import { BASE_UNITS } from '@/utils/units';
+import { showToast } from '@/stores/toast';
+import { BASE_UNITS } from '@pos/core/units';
 
 function backToList() {
   goBackOr(ROUTES.ingredients);
+}
+
+/** MASTER §6: save success is a toast. */
+function savedAndBack() {
+  showToast('Ingredient saved.');
+  backToList();
 }
 
 /** §D1 on the edit screen: this branch's average cost and stock value, with **Set cost**. */
@@ -60,7 +68,7 @@ function CostCard({ ingredient, dialog, disabled }: { ingredient: Ingredient; di
  * open PO, delete while in use) shows in the banner. Needs a connection.
  */
 export function IngredientFormScreen({ ingredient }: { ingredient?: Ingredient }) {
-  const form = useIngredientForm({ initial: ingredient, onSaved: backToList, onDeleted: backToList });
+  const form = useIngredientForm({ initial: ingredient, onSaved: savedAndBack, onDeleted: backToList });
   const online = useIsOnline();
   // §D1: Set cost needs `inventory.adjust`, on a saved ingredient (its saved units are the valid ones).
   const canSetCost = useSessionStore((state) => hasPermission(state.user, PERMISSIONS.inventoryAdjust));
@@ -81,6 +89,18 @@ export function IngredientFormScreen({ ingredient }: { ingredient?: Ingredient }
       subtitle={form.isEdit ? form.saved?.name : null}
       onBack={backToList}
       banner={form.bannerError}
+      fieldErrors={fieldErrors}
+      footer={
+          <FormFooter
+            onCancel={backToList}
+            cancelDisabled={form.submitting}
+            saveTitle={saveLabel}
+            onSave={form.submit}
+            saving={form.submitting}
+            saveDisabled={blocked}
+            saveTestID="ingredient-save"
+          />
+      }
       testID="ingredient-form-screen"
       aside={<ImagePickerPanel image={form.image} placeholderIcon="nutrition-outline" title="Ingredient photo" disabled={blocked} />}
       main={
@@ -139,16 +159,6 @@ export function IngredientFormScreen({ ingredient }: { ingredient?: Ingredient }
 
           <UnitsEditor editor={form.unitsEditor} baseUnit={form.baseUnit} disabled={blocked} error={fieldErrors.units} />
 
-          <Button
-            title={saveLabel}
-            leftIcon="checkmark"
-            size="lg"
-            onPress={form.submit}
-            loading={form.submitting}
-            disabled={blocked}
-            accessibilityLabel={saveLabel}
-            testID="ingredient-save"
-          />
           {form.isEdit ? (
             <Button
               title="Delete ingredient"

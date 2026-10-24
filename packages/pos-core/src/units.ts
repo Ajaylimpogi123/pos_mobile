@@ -6,7 +6,7 @@
  * - an `own`-stock product: `pc` only (factor 1).
  * Factors stay exact decimal strings; conversions go through `@/utils/quantity`.
  */
-import type { BaseUnit, DecimalValue, Ingredient, PurchaseItemType, Unit, UnitDimension } from '@/services/types';
+import type { BaseUnit, DecimalValue, Ingredient, PurchaseItemType, Unit, UnitDimension } from './contract/types';
 
 /** The dimension of each base unit. */
 export const BASE_UNIT_DIMENSION: Readonly<Record<BaseUnit, UnitDimension>> = {

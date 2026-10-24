@@ -184,21 +184,23 @@ class BuildIngredientInventoryReportAction
 
         $this->inventory->join($query, $branchId);
 
+        $col = $this->inventory->col(...);
+
         $query
             ->whereNull('ingredients.deleted_at')
             ->when($status !== null, fn (Builder $q) => $this->inventory->whereStatus($q, (string) $status))
             ->select(['ingredients.id as ingredient_id', 'ingredients.name', 'ingredients.base_unit'])
-            ->selectRaw('COALESCE(flows.opening_qty, 0) AS opening_qty')
-            ->selectRaw('COALESCE(refund_waste.refund_wasted, 0) AS refund_wasted')
-            ->selectRaw('COALESCE('.IngredientInventoryQuery::QTY.', 0) AS qty')
+            ->selectRaw('COALESCE('.$col('flows.opening_qty').', 0) AS opening_qty')
+            ->selectRaw('COALESCE('.$col('refund_waste.refund_wasted').', 0) AS refund_wasted')
+            ->selectRaw('COALESCE('.$col(IngredientInventoryQuery::QTY).', 0) AS qty')
             ->addSelect([IngredientInventoryQuery::REORDER_LEVEL.' as reorder_level', IngredientInventoryQuery::AVG_COST.' as avg_cost'])
-            ->selectRaw('CAST(COALESCE(flows.value_in, 0) AS SIGNED) AS value_in_cents')
-            ->selectRaw('CAST(COALESCE(flows.value_out, 0) AS SIGNED) AS value_out_cents')
-            ->selectRaw('CAST(SUM(COALESCE(flows.value_in, 0)) OVER () AS SIGNED) AS total_value_in_cents')
-            ->selectRaw('CAST(SUM(COALESCE(flows.value_out, 0)) OVER () AS SIGNED) AS total_value_out_cents');
+            ->selectRaw('CAST(COALESCE('.$col('flows.value_in').', 0) AS SIGNED) AS value_in_cents')
+            ->selectRaw('CAST(COALESCE('.$col('flows.value_out').', 0) AS SIGNED) AS value_out_cents')
+            ->selectRaw('CAST(SUM(COALESCE('.$col('flows.value_in').', 0)) OVER () AS SIGNED) AS total_value_in_cents')
+            ->selectRaw('CAST(SUM(COALESCE('.$col('flows.value_out').', 0)) OVER () AS SIGNED) AS total_value_out_cents');
 
         foreach (array_keys(self::FLOWS) as $column) {
-            $query->selectRaw("COALESCE(flows.{$column}, 0) AS {$column}");
+            $query->selectRaw('COALESCE('.$col("flows.{$column}").', 0) AS '.$column);
         }
 
         return $query->orderBy('ingredients.name')->orderBy('ingredients.id');

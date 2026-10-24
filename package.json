@@ -1,17 +1,19 @@
 {
     "$schema": "https://www.schemastore.org/package.json",
     "private": true,
-    "type": "module",
+    "description": "Task runner for the POS repo. Not an npm workspace on purpose: mobile/ (Expo, React 19.2) and web/ (Vite, React 19.3) keep separate installs so neither bundler sees two Reacts; both link packages/pos-core with a file: dependency.",
     "scripts": {
-        "build": "vite build",
-        "dev": "vite"
+        "dev": "npm --prefix web run dev",
+        "build": "npm --prefix web run build",
+        "install:all": "npm --prefix mobile install && npm --prefix web install",
+        "check:api": "php artisan test",
+        "check:core": "node web/node_modules/typescript/bin/tsc -p packages/pos-core/tsconfig.json",
+        "check:mobile": "npm --prefix mobile run typecheck && npm --prefix mobile run lint && npm --prefix mobile test -- --silent",
+        "check:web": "npm --prefix web run lint && npm --prefix web run build",
+        "check": "npm run check:core && npm run check:mobile && npm run check:web"
     },
     "devDependencies": {
-        "@tailwindcss/vite": "^4.0.0",
-        "concurrently": "^10.0.3",
-        "laravel-vite-plugin": "^3.1",
-        "tailwindcss": "^4.0.0",
-        "vite": "^8.0.0"
+        "concurrently": "^10.0.3"
     },
     "optionalDependencies": {
         "@laravel/multiplex": "^0.4.1"

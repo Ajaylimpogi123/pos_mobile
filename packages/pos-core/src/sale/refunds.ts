@@ -27,7 +27,7 @@
  * Intermediate products can exceed 2^53, so the maths runs on `BigInt`;
  * only the results become numbers again. No floats anywhere.
  */
-import { rhu, VAT_RATE_BPS } from '@/sale/pricing';
+import { rhu, VAT_RATE_BPS } from './pricing';
 import type {
   Order,
   OrderItem,
@@ -37,8 +37,8 @@ import type {
   RefundItemRequest,
   RefundPaymentRequest,
   ReversalAuthorization,
-} from '@/services/types';
-import { formatPeso, parsePesoInput } from '@/utils/money';
+} from '../contract/types';
+import { formatPeso, parsePesoInput } from '../money';
 
 const ZERO = BigInt(0);
 const BPS = BigInt(10_000);
@@ -94,7 +94,19 @@ export type RefundPricing = {
   vat_exempt_sales_cents: number;
   /** Σ qty. */
   units: number;
+  /**
+   * Dine-in Tables & Tabs §E: the order's service charge `S`, returned only by
+   * the refund that leaves nothing refundable (included in `amount_cents`,
+   * outside the VAT split); 0 otherwise.
+   */
+  service_charge_cents: number;
 };
+
+/** The selection refunds every unit still refundable (the last refund of the order). */
+export function refundsEverythingLeft(items: readonly OrderItem[], selection: RefundSelection): boolean {
+  const clamped = clampSelection(items, selection);
+  return Object.keys(clamped).length > 0 && items.every((item) => (clamped[item.id] ?? 0) === remainingQty(item));
+}
 
 /** A selection limited to the order's lines and to each line's remaining quantity. */
 export function clampSelection(items: readonly OrderItem[], selection: RefundSelection): Record<number, number> {
@@ -151,12 +163,15 @@ export function refundTaxableAmount(
 /**
  * The refund's amount and VAT split for a selection (see the module notes).
  * `scPwdVatExempt`: the sale's `sc_pwd?.vat_exempt` (its SC/PWD part is then VAT-exempt).
+ * `serviceChargeCents`: the order's `service_charge_cents` (Dine-in §E): a partial
+ * refund doesn't return it; the refund that leaves nothing refundable does.
  */
 export function priceRefund(
   items: readonly OrderItem[],
   selection: RefundSelection,
   scPwdVatExempt = false,
   vatRateBps: number = VAT_RATE_BPS,
+  serviceChargeCents = 0,
 ): RefundPricing {
   const clamped = clampSelection(items, selection);
   const lines: PricedRefundLine[] = [];
@@ -174,13 +189,15 @@ export function priceRefund(
     if (item.is_vatable) vatable += BigInt(refundTaxableAmount(amount, taxablePartCents(item, scPwdVatExempt), item.qty, refunded, qty));
   }
   const vatableSales = rhu(vatable * BPS, BPS + toBig(vatRateBps, 'vatRateBps'));
+  const serviceCharge = serviceChargeCents > 0 && refundsEverythingLeft(items, selection) ? serviceChargeCents : 0;
   return {
     lines,
-    amount_cents: Number(amountTotal),
+    amount_cents: Number(amountTotal) + serviceCharge,
     vatable_sales_cents: Number(vatableSales),
     vat_amount_cents: Number(vatable - vatableSales),
     vat_exempt_sales_cents: Number(amountTotal - vatable),
     units,
+    service_charge_cents: serviceCharge,
   };
 }
 

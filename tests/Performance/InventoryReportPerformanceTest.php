@@ -113,10 +113,13 @@ function seedYearOfMovements(int $branchId, int $salesPerDay): int
         DB::table('stock_movements')->insert($rows);
     }
 
-    DB::statement(
-        'INSERT INTO stock_levels (branch_id, product_id, qty, created_at, updated_at) '
-        .'SELECT branch_id, product_id, SUM(qty_delta), NOW(), NOW() FROM stock_movements WHERE branch_id = ? GROUP BY branch_id, product_id',
-        [$branchId],
+    DB::table('stock_levels')->insertUsing(
+        ['branch_id', 'product_id', 'qty', 'created_at', 'updated_at'],
+        DB::table('stock_movements')
+            ->where('branch_id', $branchId)
+            ->groupBy('branch_id', 'product_id')
+            ->select(['branch_id', 'product_id'])
+            ->selectRaw('SUM(qty_delta), NOW(), NOW()'),
     );
     DB::table('stock_levels')->where('product_id', $products[0]->id)->update(['reorder_level' => 100000]);
 
@@ -130,7 +133,7 @@ it('answers the inventory report over a year of movements in under 500 ms, with 
         ->and(DB::table('stock_movements')->count())->toBe($seeded);
 
     // Committed data: refresh the optimizer statistics, as production tables have them.
-    DB::statement('ANALYZE TABLE stock_movements, stock_levels, products, categories');
+    analyzeTables('stock_movements', 'stock_levels', 'products', 'categories');
 
     $token = tokenFor($this->owner);
 
@@ -163,7 +166,7 @@ it('answers the inventory report over a year of movements in under 500 ms, with 
         sort($timings);
         $ms = $timings[1];
 
-        $movementQueries = array_values(array_filter($log, fn (array $q) => str_contains($q['query'], '`stock_movements`')));
+        $movementQueries = array_values(array_filter($log, fn (array $q) => str_contains($q['query'], DB::getQueryGrammar()->wrapTable('stock_movements'))));
 
         $results[$label] = [
             'runs_ms' => array_map(fn (float $t) => round($t, 1), $timings),

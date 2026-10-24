@@ -21,6 +21,8 @@ import type { Href } from 'expo-router';
  * - `(app)/(admin)/ingredients/…` (`product.manage`): the ingredient admin
  * - `(app)/(admin)/purchasing/…`: purchase requests and orders (any purchase permission or `report.view`),
  *   receiving (`purchase.receive`), suppliers (any purchase permission; `new` needs `supplier.manage`)
+ * - `(app)/device` (every signed-in user): "This tablet", the setup and health screen (Phase 8 §E)
+ * - `(app)/(admin)/devices` and `(app)/(admin)/error-log/…` (`system.manage`): admin Devices and the Error log (Phase 8 §E)
  *
  * Typed routes note: the generated `.expo/types/router.d.ts` (SDK 57) lists
  * nested index routes as `/menu/products/index` instead of `/menu/products`
@@ -68,6 +70,8 @@ export const ROUTES = {
   newPrinter: staticRoute('/printers/new'),
   /** `(app)/(admin)/settings`: receipt settings, needs `settings.manage`. */
   settings: staticRoute('/settings'),
+  /** Dine-in Tables & Tabs §B: admin tables (`settings.manage`). */
+  tables: staticRoute('/tables'),
   /** `(app)/(admin)/shifts`: needs `report.zread` (Phase 6). */
   shifts: staticRoute('/shifts'),
   /** `(app)/(admin)/reports`: needs `report.view` (Phase 6). */
@@ -90,6 +94,12 @@ export const ROUTES = {
   /** `(app)/(admin)/purchasing/suppliers`: any purchase permission (§C); `new` needs `supplier.manage`. */
   suppliers: staticRoute('/purchasing/suppliers'),
   newSupplier: staticRoute('/purchasing/suppliers/new'),
+  /** `(app)/device`: "This tablet", every signed-in user (Hardening & Pilot §E). */
+  device: staticRoute('/device'),
+  /** `(app)/(admin)/devices`: admin Devices (`system.manage`, §E). */
+  devices: staticRoute('/devices'),
+  /** `(app)/(admin)/error-log`: the Error log (`system.manage`, §E). */
+  errorLog: staticRoute('/error-log'),
 } as const;
 
 export function editProductRoute(id: number): Href {
@@ -124,13 +134,28 @@ export function printerRoute(id: number): Href {
   return recordRoute('/printers/[id]', id);
 }
 
-/** `(app)/(pos)/orders/[ulid]`: the receipt-style detail of an order. */
-export function orderRoute(ulid: string): Href {
+/** What the order detail opens on arrival (the Orders row ⋯ menu): its Reprint chooser or its void dialog. */
+export type OrderRouteAction = 'reprint' | 'void';
+
+/** `(app)/(pos)/orders/[ulid]`: the receipt-style detail of an order (optionally opening an action's dialog). */
+export function orderRoute(ulid: string, action?: OrderRouteAction): Href {
   const pathname: string = '/orders/[ulid]';
-  return { pathname, params: { ulid } } as Href;
+  return { pathname, params: action ? { ulid, action } : { ulid } } as Href;
 }
 
 /** `(app)/(pos)/orders/[ulid]/refund`: the refund screen of an order (Voids & Refunds, Phase 7). */
+/** Dine-in Tables & Tabs: an open tab (the menu, the round and the bill). */
+export function tabRoute(ulid: string): Href {
+  const pathname: string = '/tabs/[ulid]';
+  return { pathname, params: { ulid } } as Href;
+}
+
+/** Dine-in Tables & Tabs: paying a tab (whole, by item or equally). */
+export function tabPayRoute(ulid: string): Href {
+  const pathname: string = '/tabs/[ulid]/pay';
+  return { pathname, params: { ulid } } as Href;
+}
+
 export function refundRoute(ulid: string): Href {
   const pathname: string = '/orders/[ulid]/refund';
   return { pathname, params: { ulid } } as Href;
@@ -216,4 +241,14 @@ export function pendingPurchaseOrdersRoute(): Href {
 export function receiveRoute(ulid: string): Href {
   const pathname: string = '/purchasing/receiving/[ulid]';
   return { pathname, params: { ulid } } as Href;
+}
+
+/** `(app)/(admin)/error-log/[id]`: one error group with its latest events (`system.manage`). */
+export function errorGroupRoute(id: number): Href {
+  return recordRoute('/error-log/[id]', id);
+}
+
+/** `(app)/(admin)/devices/[id]`: one device's heartbeat, rename, retire and restore (`system.manage`). */
+export function deviceRoute(id: number): Href {
+  return recordRoute('/devices/[id]', id);
 }

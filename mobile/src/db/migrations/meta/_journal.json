@@ -50,6 +50,13 @@
       "when": 1790647535130,
       "tag": "0006_recipes",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791777954729,
+      "tag": "0007_error_queue",
+      "breakpoints": true
     }
   ]
 }

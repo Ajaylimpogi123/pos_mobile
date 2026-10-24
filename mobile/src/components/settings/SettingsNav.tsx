@@ -5,7 +5,7 @@ import type { IconName } from '@/components/ui/Icon';
 import { ListRow } from '@/components/ui/ListRow';
 import { colors, radius, sizes, spacing, typography } from '@/constants/theme';
 
-export type SettingsNavKey = 'receipt' | 'printers' | 'staff' | 'customers' | 'logout';
+export type SettingsNavKey = 'receipt' | 'printers' | 'dine_in' | 'tables' | 'staff' | 'customers' | 'logout';
 
 export type SettingsNavEntry = {
   key: SettingsNavKey;
@@ -97,7 +97,6 @@ const styles = StyleSheet.create({
   groupLabel: {
     ...typography.overline,
     color: colors.textSecondary,
-    textTransform: 'uppercase',
     paddingHorizontal: spacing.xs,
   },
   card: {

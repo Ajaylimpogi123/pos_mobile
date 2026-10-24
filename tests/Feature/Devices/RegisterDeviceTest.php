@@ -44,6 +44,7 @@ describe('POST /devices/register', function () {
             'id' => $device->id,
             'code' => sprintf('T%02d', $device->id),
             'name' => 'Galaxy Tab A9+',
+            'platform' => 'android',
         ]])
             ->and($device->install_id)->toBe($installId)
             ->and($device->branch_id)->toBe($this->branch->id)
@@ -72,7 +73,7 @@ describe('POST /devices/register', function () {
             ->and($data['code'])->toBe('T'.$data['id']);
     });
 
-    it('re-registers the same install as the same device and code, updating name, version and last seen', function () {
+    it('re-registers the same install as the same device, code and name (Q-044), updating version and last seen', function () {
         $installId = newUlid();
         $first = registerDevice(tokenFor($this->cashier), $installId, ['name' => 'Tab', 'app_version' => '1.0.0'])->assertOk()->json('data');
 
@@ -85,7 +86,9 @@ describe('POST /devices/register', function () {
 
         $device = Device::query()->sole();
 
-        expect($second)->toBe(['id' => $first['id'], 'code' => $first['code'], 'name' => 'Galaxy Tab A9+'])
+        // The existing device keeps its name, so an admin rename lasts (Q-044).
+        expect($second)->toBe(['id' => $first['id'], 'code' => $first['code'], 'name' => 'Tab', 'platform' => 'android'])
+            ->and($device->name)->toBe('Tab')
             ->and($device->app_version)->toBeNull()
             ->and($device->last_seen_at->toIso8601ZuluString())->toBe('2026-09-26T05:00:00Z')
             ->and(tokenRow($token)->device_id)->toBe($device->id)
@@ -148,7 +151,67 @@ describe('POST /devices/register', function () {
         'name too long' => [['name' => str_repeat('a', 61)], 'name'],
         'name not a string' => [['name' => 12], 'name'],
         'app_version too long' => [['app_version' => str_repeat('1', 21)], 'app_version'],
+        'platform unknown' => [['platform' => 'ios'], 'platform'],
+        'platform not a string' => [['platform' => ['web']], 'platform'],
     ]);
+
+    it('creates a web terminal with platform web and the code W + the padded id (Web POS → C)', function () {
+        $token = tokenFor($this->cashier);
+
+        $response = registerDevice($token, null, ['name' => 'Web · Chrome on Windows', 'platform' => 'web'])->assertOk();
+
+        $device = Device::query()->sole();
+
+        expect($response->json())->toBe(['data' => [
+            'id' => $device->id,
+            'code' => sprintf('W%02d', $device->id),
+            'name' => 'Web · Chrome on Windows',
+            'platform' => 'web',
+        ]])
+            ->and($device->platform)->toBe('web')
+            ->and(tokenRow($token)->device_id)->toBe($device->id)
+            ->and(lastAudit('device.registered')->changes['code'])->toBe($device->code);
+    });
+
+    it('treats a missing or null platform as android', function (array $body) {
+        $data = registerDevice(tokenFor($this->cashier), null, $body)->assertOk()->json('data');
+
+        expect($data['platform'])->toBe('android')
+            ->and($data['code'])->toBe(sprintf('T%02d', $data['id']))
+            ->and(Device::query()->sole()->platform)->toBe('android');
+    })->with([
+        'missing' => [[]],
+        'null' => [['platform' => null]],
+        'android' => [['platform' => 'android']],
+    ]);
+
+    it('never changes an existing device\'s code or platform', function () {
+        $installId = newUlid();
+        $tablet = registerDevice(tokenFor($this->cashier), $installId)->assertOk()->json('data');
+
+        $this->app['auth']->forgetGuards();
+        $again = registerDevice(tokenFor($this->manager), $installId, ['platform' => 'web'])->assertOk()->json('data');
+
+        expect($again['code'])->toBe($tablet['code'])
+            ->and($again['platform'])->toBe('android')
+            ->and(Device::query()->sole()->platform)->toBe('android');
+
+        $webInstall = newUlid();
+        $this->app['auth']->forgetGuards();
+        $web = registerDevice(tokenFor($this->cashier), $webInstall, ['platform' => 'web'])->assertOk()->json('data');
+        $this->app['auth']->forgetGuards();
+        $webAgain = registerDevice(tokenFor($this->cashier), $webInstall)->assertOk()->json('data');
+
+        expect($webAgain['code'])->toBe($web['code'])
+            ->and($webAgain['code'])->toStartWith('W')
+            ->and($webAgain['platform'])->toBe('web');
+    });
+
+    it('gives existing rows the android platform (the column default)', function () {
+        $device = Device::factory()->create(['branch_id' => $this->branch->id, 'code' => 'T09']);
+
+        expect($device->fresh()->platform)->toBe('android');
+    });
 
     it('accepts a missing app_version', function () {
         $token = tokenFor($this->cashier);

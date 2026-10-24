@@ -1,4 +1,4 @@
-import { addBusinessDays, businessDateAt, wallClockIn } from '@/utils/businessDay';
+import { addBusinessDays, businessDateAt, wallClockIn } from '@pos/core/businessDay';
 
 describe('businessDateAt (branch timezone + day start)', () => {
   // Asia/Manila is UTC+8 all year; the dev branch's day starts at 04:00.

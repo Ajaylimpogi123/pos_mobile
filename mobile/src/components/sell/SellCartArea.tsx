@@ -15,18 +15,20 @@ type SellCartAreaProps = {
 };
 
 /**
- * Everything on the Sell screen that shows the cart: the side panel (tablet
- * landscape) or the "View order" bar and its sheet (phones and portrait),
- * and the cart's dialogs (SC/PWD, order discount, customer, clear).
+ * Everything on the Sell screen that shows the cart (sell.md): the Current
+ * Order card beside the menu (tablet landscape) or under it (tablet portrait),
+ * the pinned bottom bar with **Checkout** (tablet portrait; on phones it also
+ * opens the cart sheet), and the cart's dialogs (SC/PWD, order discount,
+ * customer, clear).
  *
  * Performance: this is the **only** part of the Sell screen that subscribes
  * to the whole cart (`useCart`, which prices it once per change). The menu
  * grid never re-renders when the cart changes; each tile subscribes only to
  * its own in-cart count.
  *
- * It is the second child of the screen's body: a row with the side panel, a
- * column with the bar at the bottom, so the menu keeps its tree position on
- * rotation. The dialogs are modals, so their position doesn't matter.
+ * It follows the menu in the screen's body: a row with the side card, a
+ * column with the card and / or the bar under the menu, so the menu keeps its
+ * tree position on rotation. The dialogs are modals, so their position doesn't matter.
  */
 export function SellCartArea({ layout, editors }: SellCartAreaProps) {
   const cart = useCart();
@@ -35,13 +37,17 @@ export function SellCartArea({ layout, editors }: SellCartAreaProps) {
   return (
     <>
       {layout.cartSide ? <CartPanel variant="side" cart={cart} editors={editors} /> : null}
-      {layout.cartBar ? (
+      {layout.cartBelow ? <CartPanel variant="below" cart={cart} editors={editors} /> : null}
+      {layout.checkoutBar ? (
         <CartBar
           itemCount={cart.itemCount}
           totalCents={cart.pricing.total_cents}
           tableNo={cart.tableError ? '' : cart.tableNo}
           attention={attention}
-          onOpen={editors.openSheet}
+          onOpen={layout.cartBar ? editors.openSheet : undefined}
+          onCheckout={editors.checkout}
+          checkoutDisabled={cart.isEmpty || (!cart.awaitingConfirmation && cart.hasProblems)}
+          locked={cart.awaitingConfirmation}
         />
       ) : null}
       <BottomSheet

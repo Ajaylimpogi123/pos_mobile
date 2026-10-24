@@ -52,7 +52,7 @@ describe('Dashboard (manager)', () => {
 
     await screen.findByTestId('dashboard-grid');
     expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual(['GET /api/v1/dashboard']);
-    expect(screen.getByTestId('dashboard-header')).toHaveTextContent(/Mia Manager/);
+    expect(screen.getByTestId('dashboard-greeting')).toHaveTextContent(/^Good (morning|afternoon|evening), Mia$/);
     expect(screen.getByTestId('dashboard-date')).toHaveTextContent(/Thu, 24 Sep 2026$/);
     expect(screen.getByTestId('dashboard-branch')).toHaveTextContent(/Main Branch$/);
     expect(screen.getByTestId('dashboard-updated')).toHaveTextContent(/Updated \d{1,2}:\d{2} (AM|PM)$/);

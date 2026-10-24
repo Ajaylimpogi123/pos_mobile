@@ -42,16 +42,20 @@ return new class extends Migration
             $table->date('business_date')->nullable()->after('branch_id');
         });
 
+        // Raw SQL is never prefixed: tables and qualified columns go through the grammar.
+        $grammar = DB::getQueryGrammar();
+
         DB::table('orders')->update([
-            'items_qty' => DB::raw('(SELECT COALESCE(SUM(order_items.qty), 0) FROM order_items WHERE order_items.order_id = orders.id)'),
+            'items_qty' => DB::raw("(SELECT COALESCE(SUM({$grammar->wrap('order_items.qty')}), 0) FROM {$grammar->wrapTable('order_items')}"
+                ." WHERE {$grammar->wrap('order_items.order_id')} = {$grammar->wrap('orders.id')})"),
         ]);
 
         foreach (['order_items', 'payments'] as $table) {
             DB::table($table)
                 ->join('orders', 'orders.id', '=', "{$table}.order_id")
                 ->update([
-                    "{$table}.branch_id" => DB::raw('orders.branch_id'),
-                    "{$table}.business_date" => DB::raw('orders.business_date'),
+                    "{$table}.branch_id" => DB::raw($grammar->wrap('orders.branch_id')),
+                    "{$table}.business_date" => DB::raw($grammar->wrap('orders.business_date')),
                 ]);
 
             Schema::table($table, function (Blueprint $blueprint) {

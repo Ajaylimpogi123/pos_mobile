@@ -18,14 +18,14 @@ import { prepareDatabase } from '@/db/database';
 import { readCategoryNames } from '@/db/menuQueries';
 import { offlineRepository, type OfflineRepository, type StockDemand } from '@/db/offlineRepository';
 import { buildLocalOrder, buildOfflineOrder, isoSeconds, type LocalSaleInput } from '@/sale/localOrder';
-import type { SalePricing } from '@/sale/pricing';
+import type { SalePricing } from '@pos/core/sale/pricing';
 import type { AuthUser, OrderPaymentRequest, PrintableOrder, SaleDiscount, ScPwdRequest } from '@/services/types';
 import type { CachedDevice } from '@/services/secureStorage';
 import type { CartCustomer, CartLine } from '@/stores/cart';
 import { useOfflineStore } from '@/stores/offline';
 import { OFFLINE_SETUP_MESSAGE, offlineDevice } from '@/sync/deviceRegistration';
 import { refreshOutboxCounts, requestOutboxSync } from '@/sync/outboxSync';
-import { businessDateAt } from '@/utils/businessDay';
+import { businessDateAt } from '@pos/core/businessDay';
 
 /** Contract: what the cashier sees when a sale is saved on the tablet. */
 export const OFFLINE_SAVED_MESSAGE = 'No connection — sale saved on this tablet.';

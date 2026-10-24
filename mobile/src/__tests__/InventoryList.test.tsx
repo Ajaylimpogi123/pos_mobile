@@ -64,7 +64,7 @@ describe('the list', () => {
     const [first] = listCalls(calls);
     expect(first.query.get('per_page')).toBe('25');
     expect(first.query.has('status')).toBe(false);
-    expect(screen.getByTestId('inventory-header-subtitle')).toHaveTextContent('24 tracked products');
+    expect(screen.getByTestId('inventory-band-subtitle')).toHaveTextContent(/^24 tracked products · /);
     expect(screen.getByTestId('inventory-segment-low')).toHaveTextContent('Low (3)');
     expect(screen.getByTestId('inventory-segment-out')).toHaveTextContent('Out (1)');
     expect(screen.queryByTestId('inventory-segment-alerts')).toBeNull();

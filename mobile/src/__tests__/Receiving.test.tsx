@@ -15,6 +15,7 @@ import { mockResponse, secureStoreMock } from '@/test-utils';
 import { jsonBody, managerUser, page, renderWithQuery, routeFetch, type FetchCall, type Route } from '@/test-utils/catalog';
 import { makeIngredient, makePoLine, makePurchaseOrder, PO_ULID, UNIT_CATALOG } from '@/test-utils/purchasing';
 import { isUlid } from '@/utils/ulid';
+import { useToastStore } from '@/stores/toast';
 
 const FUTURE = '2099-09-25T01:30:00Z';
 const PO = `/api/v1/purchase-orders/${PO_ULID}`;
@@ -122,7 +123,7 @@ it('keeps the ULID after a network error, retries the same body, then shows the 
   await waitFor(() => expect(receipts(calls)).toHaveLength(2));
   expect(jsonBody(receipts(calls)[1] as FetchCall)).toEqual(body);
 
-  expect(await screen.findByTestId('form-notice')).toHaveTextContent(/Receipt saved/);
+  await waitFor(() => expect(useToastStore.getState().toast?.message).toMatch(/^Receipt saved/));
   expect(screen.getByTestId('receive-line-41-received')).toHaveTextContent('Received 1 sack');
   expect(screen.getByTestId('po-receipt-01K6GR0000000000000000000A-line-0')).toHaveTextContent(/Flour: \+1 sack · ₱1,200.00/);
   expect(screen.getByTestId('receive-line-41-qty').props.value).toBe('');

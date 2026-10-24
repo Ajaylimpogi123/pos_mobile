@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 
 import { getErrorMessage, isApiError, isApiValidationError } from '@/services/api';
 import { signIn } from '@/services/session';
+import { useSessionStore } from '@/stores/session';
 
 /** Login body fields that have their own input (contract: POST /api/v1/auth/login, revision 2). */
 export type LoginField = 'email' | 'password';
@@ -32,6 +33,8 @@ export function useLoginForm() {
   const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Phase 8 §C: why the last session ended (e.g. "This tablet has been retired. …"), until the next attempt.
+  const loginNotice = useSessionStore((state) => state.loginNotice);
 
   const inFlight = useRef(false);
 
@@ -64,6 +67,7 @@ export function useLoginForm() {
     setSubmitting(true);
     setFieldErrors({});
     setBannerError(null);
+    useSessionStore.getState().setLoginNotice(null);
 
     try {
       await signIn({ email, password });
@@ -98,7 +102,7 @@ export function useLoginForm() {
     setPassword,
     togglePasswordVisible,
     fieldErrors,
-    bannerError,
+    bannerError: bannerError ?? loginNotice,
     submitting,
     submit,
   };

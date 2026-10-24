@@ -22,9 +22,9 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { getErrorMessage } from '@/services/api';
 import type { PurchasingReportRow, PurchasingReportTotals } from '@/services/types';
 import { formatBusinessDate } from '@/utils/dates';
-import { formatPeso } from '@/utils/money';
-import { formatCount, NO_VALUE } from '@/utils/numbers';
-import { formatQtyUnit } from '@/utils/quantity';
+import { formatPeso } from '@pos/core/money';
+import { formatCount, NO_VALUE } from '@pos/core/numbers';
+import { formatQtyUnit } from '@pos/core/quantity';
 
 export const PURCHASING_TRUNCATED_MESSAGE = 'Showing the first 500 items. Choose a shorter range or a filter to see every row.';
 

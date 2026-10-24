@@ -52,7 +52,7 @@ class BuildShiftReports
 
         $totals = SalesFigures::selectTotals($this->ofShifts(SalesFigures::sales(), $ids))
             ->addSelect('orders.shift_ulid')
-            ->selectRaw('COALESCE(SUM(orders.needs_review), 0) AS needs_review_count')
+            ->selectRaw('COALESCE(SUM('.DB::getQueryGrammar()->wrap('orders.needs_review').'), 0) AS needs_review_count')
             ->groupBy('orders.shift_ulid')
             ->get()
             ->keyBy('shift_ulid');
@@ -68,7 +68,7 @@ class BuildShiftReports
             ->groupBy('orders.shift_ulid', 'orders.user_id', 'users.name')
             ->select(['orders.shift_ulid', 'orders.user_id', 'users.name'])
             ->selectRaw(SalesFigures::ORDERS_COUNT.' AS orders_count')
-            ->selectRaw(SalesFigures::NET_SALES.' AS net_sales_cents')
+            ->selectRaw(SalesFigures::netSales().' AS net_sales_cents')
             ->orderByDesc('net_sales_cents')
             ->orderBy('users.name')
             ->orderBy('orders.user_id')
@@ -99,7 +99,7 @@ class BuildShiftReports
             ->join('refund_payments', 'refund_payments.refund_id', '=', 'refunds.id')
             ->groupBy('refunds.shift_ulid', 'refund_payments.method')
             ->select(['refunds.shift_ulid', 'refund_payments.method'])
-            ->selectRaw(SalesFigures::REFUND_PAYMENT_AMOUNT.' AS amount_cents')
+            ->selectRaw(SalesFigures::refundPaymentAmount().' AS amount_cents')
             ->get()
             ->groupBy('shift_ulid');
 
@@ -159,6 +159,8 @@ class BuildShiftReports
             'sc_pwd_orders_count' => $totals['sc_pwd_orders_count'],
             'sc_pwd_vat_relief_cents' => $totals['sc_pwd_vat_relief_cents'],
             'sc_pwd_discount_cents' => $totals['sc_pwd_discount_cents'],
+            // Dine-in: Σ the service charge (part of `net_sales_cents`).
+            'service_charge_cents' => $totals['service_charge_cents'],
             'by_payment_method' => $byPaymentMethod,
             'voids_count' => (int) ($voidsRow->voids_count ?? 0),
             'voids_cents' => (int) ($voidsRow->voids_cents ?? 0),

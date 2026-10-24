@@ -62,17 +62,15 @@ beforeEach(async () => {
 });
 
 describe('Switch user', () => {
-  it('is reached from the shell: the sidebar footer opens /switch-user', async () => {
-    (router.push as jest.Mock).mockClear();
+  it('is not offered in the sidebar (the footer has only Log out)', async () => {
     await render(
       <AppShell>
         <Text>Content</Text>
       </AppShell>,
     );
 
-    expect(screen.getByTestId('sidebar-switch-user')).toHaveTextContent(/Switch user$/);
-    await fireEvent.press(screen.getByTestId('sidebar-switch-user'));
-    expect(router.push).toHaveBeenCalledWith('/switch-user');
+    expect(screen.getByTestId('sidebar-logout')).toBeOnTheScreen();
+    expect(screen.queryByTestId('sidebar-switch-user')).toBeNull();
   });
 
   it('lists the people who can switch with a PIN, marking the current user', async () => {

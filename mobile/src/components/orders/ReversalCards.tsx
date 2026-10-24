@@ -10,12 +10,12 @@ import { Icon } from '@/components/ui/Icon';
 import { colors, iconSizes, layout, sizes, spacing, typography } from '@/constants/theme';
 import { refundRoute } from '@/constants/routes';
 import type { VoidOrderState } from '@/hooks/orders/useVoidOrder';
-import { paymentMethodLabel } from '@/sale/payments';
-import type { ReversalGate } from '@/sale/reversals';
+import { paymentMethodLabel } from '@pos/core/sale/payments';
+import type { ReversalGate } from '@pos/core/sale/reversals';
 import type { PrintableOrder, Refund } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
-import { formatBranchDateTime } from '@/utils/businessDay';
-import { formatPeso } from '@/utils/money';
+import { formatBranchDateTime } from '@pos/core/businessDay';
+import { formatPeso } from '@pos/core/money';
 
 function useWhen() {
   const timeZone = useSessionStore((state) => state.user?.branch.timezone ?? '');

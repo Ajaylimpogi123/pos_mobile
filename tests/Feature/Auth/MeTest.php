@@ -39,7 +39,7 @@ it('returns the AuthUser for the current token, with no device key', function ()
             'customer.manage', 'discount.apply', 'discount.override', 'inventory.adjust', 'order.review', 'product.manage',
             'purchase.receive', 'purchase.request',
             'report.view', 'report.zread', 'sale.create', 'sale.refund', 'sale.void',
-            'settings.manage', 'shift.close', 'shift.open', 'supplier.manage', 'user.manage',
+            'settings.manage', 'shift.close', 'shift.open', 'supplier.manage', 'system.manage', 'user.manage',
         ]);
 
     expect(array_keys($response->json('data')))
@@ -54,7 +54,7 @@ it('accepts a device-less token issued outside login', function () {
     expect(PersonalAccessToken::query()->count())->toBe(1);
 });
 
-it('returns all 21 permissions, sorted, for an owner', function () {
+it('returns all 22 permissions, sorted, for an owner', function () {
     $owner = User::factory()->forBranch($this->branch)->withRole('owner')->create();
 
     $permissions = $this->withToken(tokenFor($owner))
@@ -66,7 +66,7 @@ it('returns all 21 permissions, sorted, for an owner', function () {
     $sorted = $permissions;
     sort($sorted);
 
-    expect($permissions)->toHaveCount(21)->toBe($sorted)->toContain('branch.all')->toContain('purchase.approve')->toContain('purchase.approve_own')->toContain('customer.manage');
+    expect($permissions)->toHaveCount(22)->toBe($sorted)->toContain('branch.all')->toContain('purchase.approve')->toContain('purchase.approve_own')->toContain('customer.manage');
 });
 
 it('returns an empty permissions array for a role without permissions', function () {

@@ -2,13 +2,17 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Actions\Devices\RecordHeartbeatAction;
 use App\Actions\Devices\RegisterDeviceAction;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Devices\HeartbeatRequest;
 use App\Http\Requests\Devices\RegisterDeviceRequest;
 use App\Http\Resources\DeviceResource;
+use App\Http\Resources\HeartbeatResource;
 use App\Models\Device;
 use App\Models\PersonalAccessToken;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -39,10 +43,28 @@ class DeviceController extends Controller
             name: $request->validated('name'),
             appVersion: $request->validated('app_version'),
             ip: $request->ip(),
+            platform: $request->validated('platform'),
         );
 
         return (new DeviceResource($device))
             ->response()
             ->setStatusCode(200);
+    }
+
+    /**
+     * POST /api/v1/devices/heartbeat (Hardening & Pilot → C)
+     *
+     * 200 `{ server_time, app }`; 409 when the token has no device.
+     */
+    public function heartbeat(HeartbeatRequest $request, RecordHeartbeatAction $record): HeartbeatResource
+    {
+        $this->authorize('heartbeat', Device::class);
+
+        /** @var User $caller */
+        $caller = $request->user();
+
+        $record->execute($request->device(), $caller, $request->validated());
+
+        return new HeartbeatResource(CarbonImmutable::now());
     }
 }

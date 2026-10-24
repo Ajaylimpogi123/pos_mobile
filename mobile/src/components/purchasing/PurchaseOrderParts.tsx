@@ -9,9 +9,9 @@ import { Chip } from '@/components/ui/Chip';
 import { CellText, type DataTableColumn } from '@/components/ui/DataTable';
 import { colors, numeric, sizes, spacing, typography } from '@/constants/theme';
 import type { GoodsReceipt, PurchaseOrderLine } from '@/services/types';
-import { formatBranchDateTime } from '@/utils/businessDay';
-import { formatPeso } from '@/utils/money';
-import { formatQtyUnit, toScaled } from '@/utils/quantity';
+import { formatBranchDateTime } from '@pos/core/businessDay';
+import { formatPeso } from '@pos/core/money';
+import { formatQtyUnit, toScaled } from '@pos/core/quantity';
 
 export function lineTestID(line: PurchaseOrderLine): string {
   return `po-line-${line.id}`;

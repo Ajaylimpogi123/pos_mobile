@@ -5,7 +5,7 @@
  * `…` → `...` or a stripped control character never breaks the alignment.
  * Pure functions: the builder calls them, and tests check them directly.
  */
-import type { PaperWidthMm } from '@/services/types';
+import type { PaperWidthMm } from '../../contract/types';
 
 import { toPrintable } from './cp437';
 

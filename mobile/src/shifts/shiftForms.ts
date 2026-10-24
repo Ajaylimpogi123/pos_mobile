@@ -6,7 +6,7 @@
  * - a cash movement's reason is required, max 120; the close note max 255.
  * Pure functions: the typed text in, integer centavos (or a message) out.
  */
-import { formatPeso, parsePesoInput } from '@/utils/money';
+import { formatPeso, parsePesoInput } from '@pos/core/money';
 
 /** Contract limits of the bodies. */
 export const SHIFT_LIMITS = {

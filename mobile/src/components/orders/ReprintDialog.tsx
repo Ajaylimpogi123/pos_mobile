@@ -3,11 +3,11 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/components/ui/Button';
 import { DialogFrame } from '@/components/ui/DialogFrame';
 import { IconBadge } from '@/components/ui/IconBadge';
-import { colors, spacing, typography } from '@/constants/theme';
+import { colors, hitTarget, spacing, typography } from '@/constants/theme';
 import type { ReprintState } from '@/hooks/orders/useReprint';
 import { useResponsive } from '@/hooks/useResponsive';
 import { formatBusinessDate } from '@/utils/dates';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 
 type ReprintDialogProps = {
   reprint: ReprintState;
@@ -16,7 +16,7 @@ type ReprintDialogProps = {
 /**
  * "Reprint": the receipt, or the kitchen tickets (all stations), and for a
  * voided or refunded sale (Phase 7) the void slip or each refund's slip.
- * Printed copies say `*** REPRINT ***`.
+ * Printed copies say `*** REPRINT ***`. Each choice is a 48 dp row; the job progress then shows "Sent".
  */
 export function ReprintDialog({ reprint }: ReprintDialogProps) {
   const { isCompactHeight } = useResponsive();
@@ -35,6 +35,7 @@ export function ReprintDialog({ reprint }: ReprintDialogProps) {
           leftIcon="receipt-outline"
           onPress={reprint.reprintReceipt}
           disabled={reprint.busy}
+          style={styles.option}
           testID="reprint-receipt"
         />
         <Button
@@ -43,6 +44,7 @@ export function ReprintDialog({ reprint }: ReprintDialogProps) {
           variant="secondary"
           onPress={reprint.reprintTickets}
           disabled={reprint.busy}
+          style={styles.option}
           testID="reprint-kitchen"
         />
         {reprint.canReprintVoidSlip ? (
@@ -52,6 +54,7 @@ export function ReprintDialog({ reprint }: ReprintDialogProps) {
             variant="secondary"
             onPress={reprint.reprintVoidSlip}
             disabled={reprint.busy}
+            style={styles.option}
             testID="reprint-void-slip"
           />
         ) : null}
@@ -67,10 +70,11 @@ export function ReprintDialog({ reprint }: ReprintDialogProps) {
             variant="secondary"
             onPress={() => reprint.reprintRefundSlip(refund)}
             disabled={reprint.busy}
+            style={styles.option}
             testID={`reprint-refund-slip-${index}`}
           />
         ))}
-        <Button title="Cancel" variant="ghost" onPress={reprint.cancel} disabled={reprint.busy} testID="reprint-cancel" />
+        <Button title="Cancel" variant="secondary" onPress={reprint.cancel} disabled={reprint.busy} style={styles.option} testID="reprint-cancel" />
       </View>
     </DialogFrame>
   );
@@ -88,5 +92,9 @@ const styles = StyleSheet.create({
   actions: {
     gap: spacing.sm,
     marginTop: spacing.sm,
+  },
+  /** Every choice is a 48 dp row (MASTER §4 tablet targets). */
+  option: {
+    minHeight: hitTarget.primary,
   },
 });

@@ -49,29 +49,29 @@ afterEach(() => {
 });
 
 describe('modules per slug', () => {
-  it('a manager sees the Purchasing group and Ingredients in Catalogue', () => {
-    expect(groupOf(managerUser, 'purchasing')).toEqual(['purchase_requests', 'purchase_orders', 'receiving', 'suppliers']);
-    expect(groupOf(managerUser, 'catalogue')).toEqual(['menu', 'ingredients', 'inventory']);
-    expect(groupOf(ownerUser, 'purchasing')).toHaveLength(4);
+  it('a manager sees Inventory and Purchasing in Stock, and Ingredients in Catalogue (MASTER §6)', () => {
+    expect(groupOf(managerUser, 'stock')).toEqual(['inventory', 'purchase_requests', 'purchase_orders', 'receiving', 'suppliers']);
+    expect(groupOf(managerUser, 'catalogue')).toEqual(['products', 'categories', 'ingredients']);
+    expect(groupOf(ownerUser, 'stock')).toHaveLength(5);
   });
 
   it('a cashier sees none of it', () => {
     expect(modulesOf(cashierUser)).not.toEqual(expect.arrayContaining(['purchase_requests']));
-    expect(visibleModuleGroups(cashierUser).map((group) => group.key)).not.toContain('purchasing');
+    expect(visibleModuleGroups(cashierUser).map((group) => group.key)).not.toContain('stock');
     expect(modulesOf(cashierUser)).not.toContain('ingredients');
   });
 
   it('purchase.request alone: requests, orders and suppliers (read), no receiving', () => {
-    expect(groupOf(requesterCashier, 'purchasing')).toEqual(['purchase_requests', 'purchase_orders', 'suppliers']);
+    expect(groupOf(requesterCashier, 'stock')).toEqual(['purchase_requests', 'purchase_orders', 'suppliers']);
     expect(modulesOf(requesterCashier)).not.toContain('reports');
   });
 
   it('report.view alone reads requests and orders, not suppliers or receiving', () => {
-    expect(groupOf(withOnly('report.view'), 'purchasing')).toEqual(['purchase_requests', 'purchase_orders']);
+    expect(groupOf(withOnly('report.view'), 'stock')).toEqual(['inventory', 'purchase_requests', 'purchase_orders']);
   });
 
   it('purchase.receive alone gets Receiving', () => {
-    expect(groupOf(withOnly('purchase.receive'), 'purchasing')).toEqual(['purchase_requests', 'purchase_orders', 'receiving', 'suppliers']);
+    expect(groupOf(withOnly('purchase.receive'), 'stock')).toEqual(['purchase_requests', 'purchase_orders', 'receiving', 'suppliers']);
   });
 
   it('purchase.approve alone opens Reports (its Purchasing view)', () => {

@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { colors, numeric, spacing, typography } from '@/constants/theme';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 
 type AmountRowProps = {
   label: string;
@@ -11,7 +11,7 @@ type AmountRowProps = {
   /** Shown as a deduction ("−₱10.00"), e.g. a discount. */
   deduction?: boolean;
   /**
-   * `total`: the large tabular total (heavy, dark); `strong`: bold;
+   * `total`: the large tabular total (bold, green: MASTER §1.2 money totals); `strong`: bold;
    * `summary`: a quiet breakdown line (secondary label, dark amount);
    * `muted`: secondary text (e.g. the VAT breakdown).
    */
@@ -49,7 +49,7 @@ export const AmountRow = memo(function AmountRow({
         {detail ? <Text style={styles.detail}>{detail}</Text> : null}
       </View>
       <Text
-        style={[styles.amount, variantStyles[variant].amount]}
+        style={[styles.amount, variantStyles[variant].amount, deduction && cents > 0 && styles.deduction]}
         numberOfLines={1}
         adjustsFontSizeToFit={total}
         testID={testID ? `${testID}-amount` : undefined}
@@ -88,6 +88,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'right',
   },
+  /** Deductions (discounts) read in red (MASTER §3: the red Discount row). */
+  deduction: {
+    color: colors.dangerText,
+  },
 });
 
 const variantStyles = {
@@ -102,7 +106,7 @@ const variantStyles = {
   }),
   total: StyleSheet.create({
     label: { ...typography.heading },
-    amount: { ...typography.total, color: colors.text, flexShrink: 1 },
+    amount: { ...typography.total, color: colors.green, flexShrink: 1 },
   }),
   muted: StyleSheet.create({
     label: { ...typography.bodySm, color: colors.textSecondary },

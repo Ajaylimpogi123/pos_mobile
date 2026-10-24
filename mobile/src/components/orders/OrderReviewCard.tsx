@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { colors, iconSizes, spacing, typography } from '@/constants/theme';
 import type { OrderReviewState } from '@/hooks/orders/useOrderReview';
 import { useResponsive } from '@/hooks/useResponsive';
-import { REVIEW_NOTE_MAX, reviewReasonLabel } from '@/sale/reviewReasons';
+import { REVIEW_NOTE_MAX, reviewReasonLabel } from '@pos/core/sale/reviewReasons';
 import type { PrintableOrder } from '@/services/types';
 import { formatClockTime, formatShortDate } from '@/utils/dates';
 

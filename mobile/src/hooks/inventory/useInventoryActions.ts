@@ -15,8 +15,8 @@ import {
 import { setReorderLevel } from '@/services/inventory';
 import type { InventoryItem, StockMovement } from '@/services/types';
 import { requestStockSync } from '@/sync/stockSync';
-import { centsToInputText, parsePesoInput } from '@/utils/money';
-import { formatCount } from '@/utils/numbers';
+import { centsToInputText, parsePesoInput } from '@pos/core/money';
+import { formatCount } from '@pos/core/numbers';
 
 /** The three Inventory dialogs (each a typed stock adjustment). */
 export type StockDialogKind = 'receipt' | 'count' | 'wastage';

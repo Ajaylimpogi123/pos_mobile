@@ -45,7 +45,7 @@ import type {
   ShiftOpenRequest,
   StockLevel,
 } from '@/services/types';
-import { withReversalDefaults } from '@/sale/refunds';
+import { withReversalDefaults } from '@pos/core/sale/refunds';
 import { chunk } from '@/utils/collections';
 
 /** Units of one tracked product (an offline sale lowers the cached stock by these). */
@@ -410,6 +410,18 @@ async function nextBatch(limit: number, now: string, force: boolean): Promise<Ou
   return run.map(toEntry).filter((entry): entry is OutboxEntry => entry !== null);
 }
 
+/** Phase 8 heartbeat: `created_at` of the oldest pending outbox row (`null`: nothing pending). */
+async function oldestPendingAt(): Promise<string | null> {
+  const row = getDb()
+    .select({ at: outbox.created_at })
+    .from(outbox)
+    .where(eq(outbox.status, 'pending'))
+    .orderBy(asc(outbox.id))
+    .limit(1)
+    .get();
+  return row?.at ?? null;
+}
+
 /** When the oldest pending row is due (`null`: nothing pending). */
 async function nextAttemptAt(): Promise<string | null> {
   const row = getDb()
@@ -624,6 +636,7 @@ export type OfflineRepository = {
   getLocalOrder: typeof getLocalOrder;
   listLocalOrders: typeof listLocalOrders;
   countOutbox: typeof countOutbox;
+  oldestPendingAt: typeof oldestPendingAt;
   nextBatch: typeof nextBatch;
   nextAttemptAt: typeof nextAttemptAt;
   markSynced: typeof markSynced;
@@ -647,6 +660,7 @@ export const offlineRepository: OfflineRepository = {
   getLocalOrder,
   listLocalOrders,
   countOutbox,
+  oldestPendingAt,
   nextBatch,
   nextAttemptAt,
   markSynced,

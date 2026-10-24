@@ -72,21 +72,22 @@ describe('useResponsive', () => {
     ['phone landscape (small)', 640, 360, 'rail', 3, 2],
     ['phone landscape', 932, 430, 'rail', 3, 2],
     ['tablet portrait', 800, 1280, 'rail', 3, 2],
-    ['tablet landscape', 1280, 800, 'expanded', 5, 3],
+    // MASTER §6: the tablet keeps the 64 dp rail in landscape too.
+    ['tablet landscape', 1280, 800, 'rail', 5, 3],
   ] as const)('%s: sidebar %s, %i KPI tiles, %i dashboard columns', (_name, width, height, sidebarMode, kpiColumns, dashboardColumns) => {
     expect(getResponsive(width, height)).toMatchObject({ sidebarMode, kpiColumns, dashboardColumns });
   });
 
   it.each([
-    // name, width, height, tileColumns, categoryRailSide
-    ['phone portrait (small)', 360, 640, 2, false],
-    ['phone portrait', 430, 932, 2, false],
-    ['phone landscape (small)', 640, 360, 3, false],
-    ['phone landscape', 932, 430, 3, false],
-    ['tablet portrait', 800, 1280, 3, false],
-    ['tablet landscape', 1280, 800, 4, true],
-  ] as const)('%s: %i Sell tiles per row, side category rail %s', (_name, width, height, tileColumns, categoryRailSide) => {
-    expect(getResponsive(width, height)).toMatchObject({ tileColumns, categoryRailSide });
+    // name, width, height, tileColumns
+    ['phone portrait (small)', 360, 640, 2],
+    ['phone portrait', 430, 932, 2],
+    ['phone landscape (small)', 640, 360, 3],
+    ['phone landscape', 932, 430, 3],
+    ['tablet portrait', 800, 1280, 3],
+    ['tablet landscape', 1280, 800, 4],
+  ] as const)('%s: %i Sell tiles per row', (_name, width, height, tileColumns) => {
+    expect(getResponsive(width, height)).toMatchObject({ tileColumns });
   });
 
   it('gives the dashboard 2 columns on tablet landscape while the expanded sidebar takes its width', () => {

@@ -20,7 +20,10 @@
 import type { JobChanges, PrintRepository } from '@/db/printRepository';
 import type { PrintJobRow } from '@/db/schema';
 import type { PrintConfig, Printer } from '@/services/types';
+import { toJobView } from '@/stores/printing';
+import { showToast } from '@/stores/toast';
 
+import { jobLabel } from './labels';
 import { isPrintTransportError, PrintTransportError, type PrintTarget, type PrintTransport } from './transport';
 
 /** Contract: a 5 s connect timeout. */
@@ -168,6 +171,9 @@ export function createPrintQueue(deps: QueueDeps): PrintQueue {
       try {
         await sendWithDeadline(transport, target, bytes);
         await change(job, { status: 'sent', error: null });
+        // MASTER §6 / contract (Printing → Screens): "Sent", never "Printed" (port 9100 gives no confirmation).
+        // Failures stay banners with Retry.
+        showToast(`Sent: ${jobLabel(toJobView(job))} to ${job.printer_name}`);
         return { outcome: 'sent', message: null };
       } catch (raw) {
         const error = isPrintTransportError(raw) ? raw : new PrintTransportError('unknown', String(raw));

@@ -10,6 +10,7 @@ import type { PrintJobInsert } from '@/db/schema';
 import { createPrintQueue, type PrintQueue } from '@/printing/queue';
 import { renderJob } from '@/printing/render';
 import type { Order, PrintConfig, Printer } from '@/services/types';
+import { useToastStore } from '@/stores/toast';
 import { freshTestDatabase } from '@/test-utils/database';
 import { printedLines } from '@/test-utils/escpos';
 import { COUNTER, createFakeTransport, KITCHEN, makePrintConfig, type FakeTransport } from '@/test-utils/printing';
@@ -86,6 +87,12 @@ describe('sending', () => {
     expect(fake.sent).toHaveLength(1);
     expect(fake.sent[0].target).toEqual({ host: '192.168.1.60', port: 9101 });
     expect(printedLines(fake.sent[0].bytes).slice(0, 2)).toEqual(['KITCHEN', '#17']);
+  });
+
+  it('says "Sent" in a toast (never "Printed": port 9100 gives no confirmation)', async () => {
+    useToastStore.getState().reset();
+    await run(job(KITCHEN));
+    expect(useToastStore.getState().toast?.message).toBe(`Sent: Kitchen ticket #17 to ${KITCHEN.name}`);
   });
 
   it('retries connect errors: 3 attempts at 0 s, +2 s and +4 s', async () => {

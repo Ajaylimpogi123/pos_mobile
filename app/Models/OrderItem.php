@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  * @property int $id
  * @property int $order_id
+ * @property int|null $tab_item_id The tab line this line settled (Dine-in Tables & Tabs), or null
  * @property int $product_id
  * @property int $category_id The product's category at the time of sale (Phase 4)
  * @property string $product_name
@@ -61,6 +62,7 @@ class OrderItem extends Model
     {
         return [
             'order_id' => 'integer',
+            'tab_item_id' => 'integer',
             'product_id' => 'integer',
             'category_id' => 'integer',
             'unit_price_cents' => 'integer',

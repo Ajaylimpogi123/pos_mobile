@@ -8,8 +8,9 @@ import { useUnits } from '@/hooks/units/useUnits';
 import { getIngredient } from '@/services/ingredients';
 import { createGoodsReceipt } from '@/services/purchasing';
 import type { GoodsReceiptLineRequest, GoodsReceiptRequest, Ingredient, PurchaseLineReceivingStatus, PurchaseOrder, PurchaseOrderLine } from '@/services/types';
-import { formatQtyUnit, isWholeQty, parseQtyInput, PRODUCT_WHOLE_MESSAGE, qtyProblemMessage, toBaseQty, toScaled } from '@/utils/quantity';
-import { findUnit, itemUnitChoices, type UnitChoices } from '@/utils/units';
+import { showToast } from '@/stores/toast';
+import { formatQtyUnit, isWholeQty, parseQtyInput, PRODUCT_WHOLE_MESSAGE, qtyProblemMessage, toBaseQty, toScaled } from '@pos/core/quantity';
+import { findUnit, itemUnitChoices, type UnitChoices } from '@pos/core/units';
 
 /** Contract: a correction's reason is required, max 255; receipt remarks are optional (255 is a UI cap). */
 export const RECEIVING_LIMITS = { reason: 255, remarks: 255 } as const;
@@ -208,7 +209,8 @@ export function useReceiveScreen(po: PurchaseOrder | null) {
     setEntries({});
     setRemarks('');
     setLocalErrors({});
-    setNotice(updated.receiving_status === 'fully_received' ? 'Receipt saved. The order is fully received.' : 'Receipt saved.');
+    // MASTER §6: save success is a toast.
+    showToast(updated.receiving_status === 'fully_received' ? 'Receipt saved. The order is fully received.' : 'Receipt saved.');
   }
 
   const errors: ReceiveErrors = { ...request.fieldErrors, ...localErrors };

@@ -6,8 +6,8 @@ import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { colors, hitTarget, numeric, pressedScale, radius, spacing, typography } from '@/constants/theme';
 import type { AdminProduct } from '@/services/types';
-import { formatPeso } from '@/utils/money';
-import { formatCount } from '@/utils/numbers';
+import { formatPeso } from '@pos/core/money';
+import { formatCount } from '@pos/core/numbers';
 
 type ProductCardProps = {
   product: AdminProduct;

@@ -1,20 +1,19 @@
 import { memo, useCallback, useState, type ReactElement } from 'react';
-import { ActivityIndicator, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { GridEmptyProps } from '@/components/shared/CardGrid';
-import { Banner } from '@/components/ui/Banner';
-import { Button } from '@/components/ui/Button';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { Skeleton } from '@/components/ui/Skeleton';
-import { colors, layout, radius, sizes, spacing, status, typography } from '@/constants/theme';
+import type { IconName } from '@/components/ui/Icon';
+import { StatCard } from '@/components/ui/StatCard';
+import { colors, layout, spacing, type StatAccentKey } from '@/constants/theme';
 import type { CursorListGridState } from '@/hooks/useCursorList';
 import { useResponsive } from '@/hooks/useResponsive';
 import { getErrorMessage, isApiError } from '@/services/api';
 import type { InventorySummary } from '@/services/types';
-import { formatCount } from '@/utils/numbers';
+import { formatCount } from '@pos/core/numbers';
 
 /** The list state of any cursor list (`useKeyedCursorList().grid`), whatever its row type. */
 type ListGrid = Omit<CursorListGridState, 'onRefresh'> & { onRefresh: () => Promise<unknown> };
@@ -23,50 +22,34 @@ type ListGrid = Omit<CursorListGridState, 'onRefresh'> & { onRefresh: () => Prom
 // Summary cards
 // ---------------------------------------------------------------------------
 
-type SummaryTile = { key: 'tracked' | 'low' | 'out'; label: string; short: string; bar: string };
+type SummaryTile = { key: 'tracked' | 'low' | 'out'; label: string; short: string; icon: IconName; accent: StatAccentKey | null };
 
-/** The coloured bar of each tile (Sage "Inventory" board): sage, caution, cancelled. */
+/** MASTER §1.4: Low and Out are stock figures (orange); Tracked stays neutral. */
 const SUMMARY_TILES: readonly SummaryTile[] = [
-  { key: 'tracked', label: 'Tracked', short: 'Tracked', bar: colors.accent },
-  { key: 'low', label: 'Low stock', short: 'Low', bar: status.caution.color },
-  { key: 'out', label: 'Out of stock', short: 'Out', bar: status.cancelled.color },
+  { key: 'tracked', label: 'Tracked', short: 'Tracked', icon: 'cube-outline', accent: null },
+  { key: 'low', label: 'Low stock', short: 'Low', icon: 'trending-down-outline', accent: 'stock' },
+  { key: 'out', label: 'Out of stock', short: 'Out', icon: 'alert-circle-outline', accent: 'stock' },
 ];
 
 /**
- * The stock summary (`meta.summary`): Tracked · Low stock · Out of stock, each
- * a white card with a coloured bar, the label and a large value. Skeleton
- * values until the first page arrives. Test IDs: `<prefix>-summary-<key>`.
+ * The stock summary (`meta.summary`) as stat cards (MASTER §3): Tracked
+ * (neutral), Low stock and Out of stock (the orange stock accent); "—" until
+ * the first page arrives. Test IDs: `<prefix>-summary-<key>`.
  */
 export const StockSummaryCards = memo(function StockSummaryCards({ summary, testIDPrefix }: { summary: InventorySummary | null; testIDPrefix: string }) {
   const { isPhone } = useResponsive();
   return (
     <View style={[styles.summary, isPhone && styles.summaryPhone]} accessibilityRole="summary" testID={`${testIDPrefix}-summary`}>
-      {SUMMARY_TILES.map((tile) => {
-        const value = summary ? formatCount(summary[tile.key]) : null;
-        return (
-          <View
-            key={tile.key}
-            style={[styles.tile, isPhone && styles.tilePhone]}
-            accessible
-            accessibilityLabel={value === null ? `${tile.label}, loading` : `${tile.label}: ${value}`}
-            testID={`${testIDPrefix}-summary-${tile.key}`}
-          >
-            <View style={[styles.bar, isPhone && styles.barPhone, { backgroundColor: tile.bar }]} />
-            <View style={styles.tileText}>
-              <Text style={styles.tileLabel} numberOfLines={1}>
-                {isPhone ? tile.short : tile.label}
-              </Text>
-              {value === null ? (
-                <Skeleton width="60%" height={sizes.skeleton.lineLarge} />
-              ) : (
-                <Text style={[styles.tileValue, isPhone && styles.tileValuePhone]} numberOfLines={1} adjustsFontSizeToFit>
-                  {value}
-                </Text>
-              )}
-            </View>
-          </View>
-        );
-      })}
+      {SUMMARY_TILES.map((tile) => (
+        <StatCard
+          key={tile.key}
+          label={isPhone ? tile.short : tile.label}
+          value={summary ? formatCount(summary[tile.key]) : '—'}
+          icon={tile.icon}
+          accent={tile.accent}
+          testID={`${testIDPrefix}-summary-${tile.key}`}
+        />
+      ))}
     </View>
   );
 });
@@ -96,8 +79,8 @@ type StockListBodyProps<T> = {
 /**
  * An inventory list (products or ingredients) with every state: skeleton rows
  * on first load, error with Retry (403 → "No access"), empty with a helpful
- * message, pull-to-refresh, and infinite scroll (a footer spinner, or Retry
- * when a page fails). Tablets: a `DataTable`; phones: the stock cards.
+ * message, pull-to-refresh, infinite scroll and the "Showing n" footer with
+ * Load more. The table in landscape; the stock cards in portrait and on phones (MASTER §6).
  */
 export function StockListBody<T>({
   items,
@@ -149,22 +132,6 @@ export function StockListBody<T>({
     if (grid.hasNextPage && !grid.isFetchingNextPage && !grid.nextPageError) grid.fetchNextPage();
   }
 
-  let footer: ReactElement | null = null;
-  if (grid.isFetchingNextPage) {
-    footer = (
-      <View style={styles.footer} testID={`${testID}-loading-more`}>
-        <ActivityIndicator color={colors.primaryBright} />
-      </View>
-    );
-  } else if (grid.nextPageError) {
-    footer = (
-      <View style={[styles.footer, styles.footerError]} testID={`${testID}-more-error`}>
-        <Banner message={getErrorMessage(grid.nextPageError)} />
-        <Button title="Load more" leftIcon="refresh" variant="secondary" onPress={grid.fetchNextPage} />
-      </View>
-    );
-  }
-
   return (
     <DataTable
       columns={columns}
@@ -175,6 +142,14 @@ export function StockListBody<T>({
       rowAccessibilityHint={rowAccessibilityHint}
       rowTestID={rowTestID}
       renderCard={renderCard}
+      cardsInPortrait
+      pagination={{
+        shown: items.length,
+        hasNextPage: grid.hasNextPage,
+        isFetchingNextPage: grid.isFetchingNextPage,
+        nextPageError: grid.nextPageError,
+        fetchNextPage: grid.fetchNextPage,
+      }}
       loading={grid.loading && items.length === 0}
       empty={<EmptyState {...empty} testID={`${testID}-empty`} />}
       ListHeaderComponent={
@@ -183,7 +158,6 @@ export function StockListBody<T>({
           {grid.updating ? <ActivityIndicator color={colors.primaryBright} testID={`${testID}-updating`} /> : null}
         </View>
       }
-      ListFooterComponent={footer}
       refreshControl={refreshControl}
       onEndReached={loadMore}
       contentContainerStyle={[
@@ -208,61 +182,11 @@ const styles = StyleSheet.create({
   summaryPhone: {
     gap: spacing.sm,
   },
-  tile: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: sizes.borderWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  tilePhone: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  bar: {
-    width: sizes.summaryBar.tablet,
-    alignSelf: 'stretch',
-    minHeight: spacing.xxxl,
-    borderRadius: radius.pill,
-  },
-  barPhone: {
-    width: sizes.summaryBar.phone,
-  },
-  tileText: {
-    flex: 1,
-    minWidth: 0,
-    gap: spacing.xxs,
-  },
-  tileLabel: {
-    ...typography.label,
-    color: colors.textSecondary,
-  },
-  tileValue: {
-    ...typography.metricValue,
-    color: colors.text,
-  },
-  tileValuePhone: {
-    fontSize: typography.heading.fontSize,
-    lineHeight: typography.heading.lineHeight,
-  },
   header: {
     gap: spacing.sm,
   },
   content: {
     width: '100%',
     alignSelf: 'center',
-  },
-  footer: {
-    paddingVertical: spacing.lg,
-    alignItems: 'stretch',
-  },
-  footerError: {
-    gap: spacing.md,
   },
 });

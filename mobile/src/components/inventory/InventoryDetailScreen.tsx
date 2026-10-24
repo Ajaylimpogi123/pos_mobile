@@ -1,24 +1,16 @@
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View, type ListRenderItemInfo } from 'react-native';
+import { ActivityIndicator, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ReorderLevelDialog, StockMovementDialog } from '@/components/inventory/InventoryDialogs';
 import { INVENTORY_OFFLINE_MESSAGE, MOVEMENT_TYPES, reorderText, STOCK_STATUS_CHIP } from '@/components/inventory/inventoryLabels';
-import { MovementRow } from '@/components/inventory/MovementRow';
-import {
-  HistoryCardEnd,
-  HistoryCardStart,
-  HistoryHeader,
-  historyFooter,
-  historyState,
-  StockActions,
-  StockHeaderCard,
-  type StockAction,
-} from '@/components/inventory/StockDetailParts';
+import { MovementCard, movementColumns, movementTestID, productMovementView } from '@/components/inventory/MovementRow';
+import { HistoryHeader, historyPagination, historyState, StockActions, StockSummary, type StockAction } from '@/components/inventory/StockDetailParts';
 import { RecordLoadState } from '@/components/shared/RecordLoadState';
 import { Banner } from '@/components/ui/Banner';
 import { Card } from '@/components/ui/Card';
+import { DataTable } from '@/components/ui/DataTable';
 import { IconButton } from '@/components/ui/IconButton';
 import { Screen } from '@/components/ui/Screen';
 import { TopBar } from '@/components/ui/TopBar';
@@ -31,9 +23,9 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { ApiError, getErrorMessage, isApiError } from '@/services/api';
 import type { InventoryMovement, StockMovementType } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
-import { formatBranchDateTime } from '@/utils/businessDay';
-import { formatPeso } from '@/utils/money';
-import { formatCount } from '@/utils/numbers';
+import { formatBranchDateTime } from '@pos/core/businessDay';
+import { formatPeso } from '@pos/core/money';
+import { formatCount, NO_VALUE } from '@pos/core/numbers';
 import { goBackOr } from '@/utils/navigation';
 
 function backToInventory() {
@@ -44,6 +36,10 @@ function movementKey(movement: InventoryMovement): string {
   return movement.ulid;
 }
 
+function rowTestID(movement: InventoryMovement): string {
+  return movementTestID(movement.ulid);
+}
+
 function openOrder(orderUlid: string) {
   router.push(orderRoute(orderUlid));
 }
@@ -51,16 +47,18 @@ function openOrder(orderUlid: string) {
 const NOT_FOUND = new ApiError('This product was not found.', { status: 404, kind: 'http' });
 
 /**
- * One product's stock (`/inventory/[productId]`; `inventory.adjust` or `report.view`).
- * - The header card: the name and status chip, the on hand and cost tiles,
- *   the reorder level with **Edit** (`inventory.adjust`), stock value and last movement.
- * - **Stock in** (tonal), **Count** and **Wastage** (`inventory.adjust`), each an
- *   idempotent dialog.
- * - The history: an infinite list, newest first, with a type filter; each row
- *   has a soft icon tile coloured by its kind and a signed delta. Sale, void
- *   and refund movements show their order reference, which opens the order.
- * - After any write the summary and history refresh, and a stock sync runs
- *   (the Sell badges). Pull-to-refresh; a centred column (max 640).
+ * One product's stock (`/inventory/[productId]`; `inventory.adjust` or `report.view`),
+ * structured like the web stock page:
+ * - the header: the name with its status badge, category · SKU, the last
+ *   movement, and **Stock in** (green) / **Count** / **Wastage** (outline;
+ *   `inventory.adjust`), each an idempotent dialog;
+ * - stat cards: On hand (orange only when Low / Out), Cost, Stock value and
+ *   the reorder level with **Edit** (`inventory.adjust`);
+ * - the history, newest first, with a type filter: a table in tablet
+ *   landscape, cards in portrait and on phones, then "Showing n" and
+ *   **Load more**. Sale, void and refund movements link to their order.
+ * After any write the summary and history refresh, and a stock sync runs
+ * (the Sell badges). Pull-to-refresh.
  */
 export function InventoryDetailScreen({ productId }: { productId: number | null }) {
   const itemQuery = useInventoryItem(productId);
@@ -69,7 +67,7 @@ export function InventoryDetailScreen({ productId }: { productId: number | null 
   const { canAdjust, canOpenOrders } = useInventoryPermissions();
   const timeZone = useSessionStore((state) => state.user?.branch.timezone ?? '');
   const online = useIsOnline();
-  const { screenPaddingX, screenPaddingY, gutter } = useResponsive();
+  const { screenPaddingX, screenPaddingY, gutter, isTablet, contentMaxWidth } = useResponsive();
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -83,16 +81,13 @@ export function InventoryDetailScreen({ productId }: { productId: number | null 
   const reorder = useReorderLevelDialog(item, setNotice);
 
   const onOpenReference = canOpenOrders ? openOrder : undefined;
-  const renderItem = useCallback(
-    ({ item: movement }: ListRenderItemInfo<InventoryMovement>) => (
-      <MovementRow movement={movement} timeZone={timeZone} onOpenReference={onOpenReference} />
-    ),
-    [timeZone, onOpenReference],
-  );
+  const toView = useCallback((movement: InventoryMovement) => productMovementView(movement, timeZone, onOpenReference), [timeZone, onOpenReference]);
+  const columns = useMemo(() => movementColumns(toView), [toView]);
+  const renderCard = useCallback((movement: InventoryMovement) => <MovementCard {...toView(movement)} />, [toView]);
 
   const actions = useMemo<StockAction[]>(
     () => [
-      { key: 'receipt', title: 'Stock in', icon: 'arrow-down-circle-outline', variant: 'tonal', onPress: stockIn.open, testID: 'inventory-action-receipt' },
+      { key: 'receipt', title: 'Stock in', icon: 'arrow-down-circle-outline', variant: 'primary', onPress: stockIn.open, testID: 'inventory-action-receipt' },
       { key: 'count', title: 'Count', icon: 'clipboard-outline', variant: 'secondary', onPress: count.open, testID: 'inventory-action-count' },
       { key: 'wastage', title: 'Wastage', icon: 'trash-outline', variant: 'secondary', onPress: wastage.open, testID: 'inventory-action-wastage' },
     ],
@@ -120,32 +115,40 @@ export function InventoryDetailScreen({ productId }: { productId: number | null 
 
   const state = historyState(history, typeFilter !== null, 'Stock in, sales, counts and wastage show here, newest first.', 'inventory-history');
   const hasRows = state === null;
-  const loadMoreFooter = historyFooter(history, 'inventory-history');
 
   function loadMore() {
     if (history.hasNextPage && !history.isFetchingNextPage && !history.grid.nextPageError) history.grid.fetchNextPage();
   }
 
   const header = (
-    <View style={[styles.header, { gap: gutter }]}>
+    <View style={{ gap: gutter }}>
       {online ? null : <Banner variant="warning" message={INVENTORY_OFFLINE_MESSAGE} testID="inventory-detail-offline" />}
       {notice ? <Banner variant="success" message={notice} testID="inventory-notice" /> : null}
       {itemQuery.isError && item ? <Banner variant="warning" message={getErrorMessage(itemQuery.error)} /> : null}
       {item ? (
-        <StockHeaderCard
+        <StockSummary
           name={item.name}
           caption={`${item.category.name}${item.sku ? ` · ${item.sku}` : ''}`}
           status={STOCK_STATUS_CHIP[item.status]}
-          metrics={[
-            { label: 'On hand', value: formatCount(item.qty), danger: item.qty <= 0, testID: 'inventory-summary-qty' },
-            { label: 'Cost', value: formatPeso(item.cost_cents), testID: 'inventory-summary-cost' },
-          ]}
-          reorderText={reorderText(item.reorder_level)}
-          onEditReorder={canAdjust ? reorder.open : undefined}
-          stockValue={formatPeso(item.stock_value_cents)}
+          stockStatus={item.status}
           lastMovement={item.last_movement_at ? (formatBranchDateTime(item.last_movement_at, timeZone) ?? item.last_movement_at) : null}
+          actions={canAdjust ? <StockActions actions={actions} testID="inventory-actions" /> : null}
+          stats={[
+            { key: 'qty', label: 'On hand', value: formatCount(item.qty), icon: 'cube-outline', testID: 'inventory-summary-qty' },
+            { key: 'cost', label: 'Cost', value: formatPeso(item.cost_cents), icon: 'pricetag-outline', testID: 'inventory-summary-cost' },
+            { key: 'value', label: 'Stock value', value: formatPeso(item.stock_value_cents), icon: 'cash-outline', testID: 'inventory-summary-value' },
+            {
+              key: 'reorder',
+              label: 'Reorder level',
+              value: item.reorder_level === null ? NO_VALUE : formatCount(item.reorder_level),
+              icon: 'notifications-outline',
+              footnote: reorderText(item.reorder_level),
+              testID: 'inventory-summary-reorder-level',
+              footnoteTestID: 'inventory-summary-reorder',
+              action: canAdjust ? { title: 'Edit', onPress: reorder.open, testID: 'inventory-reorder-edit' } : null,
+            },
+          ]}
           testID="inventory-summary"
-          editTestID="inventory-reorder-edit"
         />
       ) : (
         <Card style={styles.state} testID="inventory-not-tracked">
@@ -153,7 +156,6 @@ export function InventoryDetailScreen({ productId }: { productId: number | null 
           <Text style={styles.stateText}>Its past movements still show below.</Text>
         </Card>
       )}
-      {canAdjust && item ? <StockActions actions={actions} testID="inventory-actions" /> : null}
       <HistoryHeader
         types={MOVEMENT_TYPES}
         value={typeFilter}
@@ -162,8 +164,6 @@ export function InventoryDetailScreen({ productId }: { productId: number | null 
         testID="inventory-history-types"
       />
       {history.grid.updating ? <ActivityIndicator color={colors.primaryBright} testID="inventory-history-updating" /> : null}
-      {state}
-      {hasRows ? <HistoryCardStart /> : null}
     </View>
   );
 
@@ -176,24 +176,24 @@ export function InventoryDetailScreen({ productId }: { productId: number | null 
         testID="inventory-detail-header"
       />
       <SafeAreaView edges={['left', 'right']} style={styles.fill}>
-        <FlatList
-          data={hasRows ? history.items : []}
+        <DataTable
+          columns={columns}
+          rows={hasRows ? history.items : []}
           keyExtractor={movementKey}
-          renderItem={renderItem}
+          rowTestID={rowTestID}
+          rowAccessible={false}
+          renderCard={renderCard}
+          cardsInPortrait
+          rowHeight="auto"
+          empty={state}
+          pagination={hasRows ? historyPagination(history) : null}
           ListHeaderComponent={header}
-          ListFooterComponent={
-            <>
-              {hasRows ? <HistoryCardEnd /> : null}
-              {loadMoreFooter}
-            </>
-          }
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
-          initialNumToRender={12}
-          windowSize={11}
           contentContainerStyle={[
             styles.content,
             {
+              maxWidth: isTablet ? Math.min(contentMaxWidth, layout.formWideMaxWidth) : layout.receiptMaxWidth,
               paddingHorizontal: screenPaddingX,
               paddingTop: screenPaddingY,
               paddingBottom: insets.bottom + screenPaddingY + layout.tabBarHeight,
@@ -202,7 +202,6 @@ export function InventoryDetailScreen({ productId }: { productId: number | null 
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} colors={[colors.primaryBright]} tintColor={colors.primaryBright} />
           }
-          keyboardShouldPersistTaps="handled"
           testID="inventory-history"
         />
       </SafeAreaView>
@@ -225,11 +224,7 @@ const styles = StyleSheet.create({
   },
   content: {
     width: '100%',
-    maxWidth: layout.receiptMaxWidth,
     alignSelf: 'center',
-  },
-  header: {
-    paddingBottom: spacing.none,
   },
   state: {
     alignItems: 'center',

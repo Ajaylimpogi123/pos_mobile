@@ -196,6 +196,51 @@ it('adds today\'s voids and refunds to the dashboard', function () {
     ]);
 });
 
+it('counts voids and refunds on their own business day inside the dashboard period (v1.28)', function () {
+    voidAndPartialRefund();
+
+    // The next business day: a second refund of sale A and a void of sale C (both from the 27th).
+    Carbon::setTestNow('2026-09-28 04:00:00');
+    [, , $teaLine] = array_column($this->saleA['items'], 'id');
+    postRefund($this->marcoToken, $this->saleA['ulid'], refundBody($this->shift['ulid'], [[$teaLine, 1]], [
+        ['method' => 'cash', 'amount_cents' => 3369],
+    ]))->assertCreated();
+    postVoid($this->marcoToken, $this->saleC['ulid'], voidBody())->assertOk();
+
+    $sales = fn (array $query) => $this->withToken(tokenFor($this->owner))
+        ->getJson('/api/v1/dashboard?'.http_build_query($query))->assertOk()->json('data.sales');
+
+    // The 27th: sales A only now (B and C voided, both on the order's day); the first refund.
+    expect($sales(['period' => 'day', 'date' => '2026-09-27']))->toMatchArray([
+        'orders_count' => 1,
+        'net_sales_cents' => 25700,
+        'voids_count' => 2,
+        'refunds_cents' => 7701,
+        'net_after_refunds_cents' => 25700 - 7701,
+    ]);
+
+    // The 28th (today): no sale, no void, the second refund.
+    $secondRefund = 3369; // accepted above: client_refund_cents matches the server's amount
+    expect($sales(['period' => 'day', 'date' => '2026-09-28']))->toMatchArray([
+        'business_date' => '2026-09-28',
+        'orders_count' => 0,
+        'voids_count' => 0,
+        'refunds_cents' => $secondRefund,
+        'net_after_refunds_cents' => -$secondRefund,
+    ]);
+
+    // The month holds both days.
+    expect($sales(['period' => 'month']))->toMatchArray([
+        'date_from' => '2026-09-01',
+        'date_to' => '2026-09-28',
+        'orders_count' => 1,
+        'net_sales_cents' => 25700,
+        'voids_count' => 2,
+        'refunds_cents' => 7701 + $secondRefund,
+        'net_after_refunds_cents' => 25700 - 7701 - $secondRefund,
+    ]);
+});
+
 describe('sales reports', function () {
     beforeEach(function () {
         voidAndPartialRefund();
@@ -320,7 +365,7 @@ describe('sales reports', function () {
             $queries = array_column(DB::getQueryLog(), 'query');
             DB::disableQueryLog();
 
-            expect(count(array_filter($queries, fn (string $q) => str_contains($q, '`orders`'))))->toBe(2, $group);
+            expect(count(array_filter($queries, fn (string $q) => str_contains($q, DB::getQueryGrammar()->wrapTable('orders')))))->toBe(2, $group);
         }
     });
 });

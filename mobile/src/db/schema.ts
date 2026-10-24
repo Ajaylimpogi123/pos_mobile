@@ -118,9 +118,14 @@ export const printJobs = sqliteTable(
      * order's ULID and its `Order` JSON; a refund slip keeps the **refund's**
      * ULID in `order_ulid` and a `RefundSlipDocument` (`{ order, refund }`), so
      * each refund's first print is deduplicated on its own.
+     *
+     * Dine-in Tables & Tabs adds `tab_round` (a round's kitchen ticket, one per
+     * station), `tab_void` (a cancelled tab item's VOID ticket, one per station)
+     * and `bill` (receipt printer); see `@/printing/tabDocuments`. A text
+     * column with no CHECK: no migration is needed.
      */
     kind: text('kind', {
-      enum: ['receipt', 'kitchen', 'x_read', 'z_read', 'void_slip', 'kitchen_void', 'refund_slip'],
+      enum: ['receipt', 'kitchen', 'x_read', 'z_read', 'void_slip', 'kitchen_void', 'refund_slip', 'tab_round', 'tab_void', 'bill'],
     }).notNull(),
     printer_id: integer('printer_id').notNull(),
     /** Snapshots for labels, in case the printer is renamed or deleted later. */
@@ -352,6 +357,27 @@ export const localRefunds = sqliteTable(
   ],
 );
 
+/**
+ * Hardening & Pilot (Phase 8) §F: app errors waiting for `POST /client-errors`.
+ * Each row is one `ClientError`, already redacted, as JSON. At most 200 rows
+ * (the oldest are dropped first); drained in batches of 20 by
+ * `@/errors/errorQueue`. A 429 or network error keeps the rows.
+ */
+export const errorQueue = sqliteTable(
+  'error_queue',
+  {
+    /** FIFO order. */
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /** The error's ULID (the idempotency key). */
+    ulid: text('ulid').notNull(),
+    /** The redacted `ClientError`, as JSON. */
+    payload: text('payload').notNull(),
+    /** ISO 8601 UTC. */
+    created_at: text('created_at').notNull(),
+  },
+  (table) => [uniqueIndex('error_queue_ulid_unique').on(table.ulid)],
+);
+
 export type CategoryRow = typeof categories.$inferSelect;
 export type ProductRow = typeof products.$inferSelect;
 export type SyncStateRow = typeof syncState.$inferSelect;
@@ -365,3 +391,4 @@ export type OutboxEntity = OutboxRow['entity'];
 export type ShiftRow = typeof shifts.$inferSelect;
 export type CashMovementRow = typeof cashMovements.$inferSelect;
 export type LocalRefundRow = typeof localRefunds.$inferSelect;
+export type ErrorQueueRow = typeof errorQueue.$inferSelect;

@@ -36,7 +36,7 @@ class InventoryQuery
     public function items(int $branchId): Builder
     {
         $lastMovement = DB::table('stock_movements')
-            ->selectRaw('MAX(stock_movements.occurred_at)')
+            ->selectRaw('MAX('.$this->col('stock_movements.occurred_at').')')
             ->where('stock_movements.branch_id', $branchId)
             ->whereColumn('stock_movements.product_id', 'products.id');
 
@@ -46,7 +46,7 @@ class InventoryQuery
 
         return $query
             ->select('products.*')
-            ->selectRaw('CAST(COALESCE('.self::QTY.', 0) AS SIGNED) AS level_qty')
+            ->selectRaw('CAST(COALESCE('.$this->col(self::QTY).', 0) AS SIGNED) AS level_qty')
             ->addSelect(self::REORDER_LEVEL.' as level_reorder_level')
             ->selectSub($lastMovement, 'last_movement_at')
             ->withCasts([
@@ -94,7 +94,7 @@ class InventoryQuery
             ->selectRaw('COUNT(*) AS tracked')
             ->selectRaw("COALESCE(SUM(CASE WHEN {$status} = ? THEN 1 ELSE 0 END), 0) AS low", [StockStatus::LOW])
             ->selectRaw("COALESCE(SUM(CASE WHEN {$status} = ? THEN 1 ELSE 0 END), 0) AS `out`", [StockStatus::OUT])
-            ->selectRaw('CAST(COALESCE(SUM(GREATEST(COALESCE('.self::QTY.', 0), 0) * products.cost_cents), 0) AS SIGNED) AS stock_value_cents')
+            ->selectRaw('CAST(COALESCE(SUM(GREATEST(COALESCE('.$this->col(self::QTY).', 0), 0) * '.$this->col('products.cost_cents').'), 0) AS SIGNED) AS stock_value_cents')
             ->first();
 
         return [
@@ -110,7 +110,16 @@ class InventoryQuery
      */
     public function statusSql(): string
     {
-        return StockStatus::sql(self::QTY, self::REORDER_LEVEL);
+        return StockStatus::sql($this->col(self::QTY), $this->col(self::REORDER_LEVEL));
+    }
+
+    /**
+     * A qualified column for a raw expression, wrapped by the query grammar so its table gets
+     * the connection's table prefix, as the builder's own columns do.
+     */
+    public function col(string $column): string
+    {
+        return DB::getQueryGrammar()->wrap($column);
     }
 
     /**

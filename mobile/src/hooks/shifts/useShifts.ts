@@ -7,7 +7,7 @@ import { getShift, listShifts } from '@/services/shifts';
 import type { Shift } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
 import { printServerShift, type PrintOutcome } from '@/shifts/shiftActions';
-import { addBusinessDays, businessDateAt } from '@/utils/businessDay';
+import { addBusinessDays, businessDateAt } from '@pos/core/businessDay';
 
 /** TanStack Query keys for shifts. Everything lives under `['shifts']`. */
 export const shiftKeys = {

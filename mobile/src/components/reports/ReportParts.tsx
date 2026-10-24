@@ -8,12 +8,12 @@ import type { InventoryTableMode } from '@/components/reports/InventoryReportPar
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { CellText, type DataTableColumn, type DataTableFooter } from '@/components/ui/DataTable';
-import { chart, colors, layout, radius, sizes, spacing, typography } from '@/constants/theme';
+import { chart, colors, layout, radius, shadows, sizes, spacing, statAccent, typography, type StatAccentKey } from '@/constants/theme';
 import type { Responsive } from '@/hooks/useResponsive';
 import type { SalesReportGroupBy, SalesReportRow, SalesReportTotals } from '@/services/types';
 import { formatBusinessDate } from '@/utils/dates';
-import { formatCompactPesos, formatPeso } from '@/utils/money';
-import { formatCount, NO_VALUE } from '@/utils/numbers';
+import { formatCompactPesos, formatPeso } from '@pos/core/money';
+import { formatCount, NO_VALUE } from '@pos/core/numbers';
 
 const [SLOT_1] = chart.series;
 
@@ -31,7 +31,7 @@ type ReportToolbarProps = {
   exportTestID: string;
 };
 
-/** The report's summary line ("7 days · 12 products") and its **Export CSV** action (download + share sheet). */
+/** The report's summary line ("7 days · 12 products") and its **Export CSV** outline button (download + share sheet), in a white card over the band. */
 export const ReportToolbar = memo(function ReportToolbar({ summary, summaryTestID, onExport, exporting, disabled, exportTestID }: ReportToolbarProps) {
   return (
     <View style={styles.toolbar}>
@@ -41,7 +41,7 @@ export const ReportToolbar = memo(function ReportToolbar({ summary, summaryTestI
       <Button
         title="Export CSV"
         leftIcon="download-outline"
-        variant="strong"
+        variant="secondary"
         onPress={onExport}
         loading={exporting}
         disabled={disabled || exporting}
@@ -78,41 +78,51 @@ export type ReportTotal = {
   label: string;
   value: string;
   testID: string;
-  /** The report's headline figure: white on the deep emerald (one per report). */
+  /** The report's headline figure (net sales): drawn in the `sales` accent. */
   emphasis?: boolean;
+  /** MASTER §1.4: the figure's accent (net sales green, orders blue, average purple, stock orange); others stay neutral. */
+  accent?: StatAccentKey;
 };
+
+function accentOf(total: ReportTotal): StatAccentKey | null {
+  if (total.accent) return total.accent;
+  return total.emphasis ? 'sales' : null;
+}
 
 /** A total card keeps at least this width before the row wraps (≈ 5 across on a tablet). */
 const TOTAL_MIN_WIDTH = layout.reportNumberColumnWidth + spacing.giant + spacing.lg;
 
 /**
- * The totals as a row of small cards (Sage "Reports" board): a 13 / 600
- * label over a 22 / 800 tabular value; the headline figure is emphasised
- * (deep emerald, white text). Cards wrap to as many rows as they need.
+ * The totals as a row of small white cards: a label over a 22 / 700 tabular
+ * value; the §1.4 figures (net sales, orders) take their accent colour, the
+ * rest stay neutral. Cards wrap to as many rows as they need.
  */
 export const ReportTotalCards = memo(function ReportTotalCards({ totals, testID }: { totals: readonly ReportTotal[]; testID: string }) {
   return (
     <View style={styles.totals} accessibilityLabel="Totals" testID={testID}>
-      {totals.map((total) => (
-        <View
-          key={total.key}
-          style={[styles.total, total.emphasis && styles.totalEmphasis]}
-          accessible
-          accessibilityLabel={`${total.label}: ${total.value}`}
-        >
-          <Text style={[styles.totalLabel, total.emphasis && styles.totalLabelEmphasis]} numberOfLines={2}>
-            {total.label}
-          </Text>
-          <Text
-            style={[styles.totalValue, total.emphasis && styles.totalValueEmphasis]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            testID={total.testID}
+      {totals.map((total) => {
+        const accent = accentOf(total);
+        return (
+          <View
+            key={total.key}
+            style={styles.total}
+            accessible
+            accessibilityLabel={`${total.label}: ${total.value}`}
           >
-            {total.value}
-          </Text>
-        </View>
-      ))}
+            <Text style={styles.totalLabel} numberOfLines={2}>
+              {total.label}
+            </Text>
+            <Text
+              style={[styles.totalValue, accent ? { color: statAccent[accent].color } : null]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              testID={total.testID}
+            >
+              {total.value}
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 });
@@ -126,7 +136,7 @@ export const ReportTotalsCard = memo(function ReportTotalsCard({ totals }: { tot
   const items = useMemo(() => {
     const list: ReportTotal[] = [
       { key: 'net', label: 'Net sales', value: formatPeso(totals.net_sales_cents), testID: 'report-total-net', emphasis: true },
-      { key: 'orders', label: 'Orders', value: formatCount(totals.orders_count), testID: 'report-total-orders' },
+      { key: 'orders', label: 'Orders', value: formatCount(totals.orders_count), testID: 'report-total-orders', accent: 'orders' },
       { key: 'items', label: 'Items sold', value: formatCount(totals.items_sold), testID: 'report-total-items' },
       { key: 'gross', label: 'Gross sales', value: formatPeso(totals.gross_sales_cents), testID: 'report-total-gross' },
       { key: 'discounts', label: 'Discounts', value: formatPeso(totals.discounts_cents), testID: 'report-total-discounts' },
@@ -141,6 +151,10 @@ export const ReportTotalsCard = memo(function ReportTotalsCard({ totals }: { tot
     ];
     if ((totals.sc_pwd_vat_relief_cents ?? 0) !== 0) {
       list.push({ key: 'sc-pwd-vat', label: 'VAT exempted (SC/PWD)', value: formatPeso(totals.sc_pwd_vat_relief_cents), testID: 'report-total-sc-pwd-vat' });
+    }
+    // Dine-in Tables & Tabs: the service charge (part of Net sales), when there is one.
+    if ((totals.service_charge_cents ?? 0) !== 0) {
+      list.push({ key: 'service-charge', label: 'Service charge', value: formatPeso(totals.service_charge_cents), testID: 'report-total-service-charge' });
     }
     // Voids & Refunds (Phase 7).
     list.push(
@@ -225,6 +239,7 @@ export const ReportDayChart = memo(function ReportDayChart({
         table={model.table}
         formatValue={formatPeso}
         formatTick={formatCompactPesos}
+        area
         testID="report-chart"
       />
     </SectionCard>
@@ -368,6 +383,12 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: sizes.borderWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    ...shadows.sm,
   },
   summary: {
     ...typography.bodyStrong,
@@ -391,23 +412,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  totalEmphasis: {
-    backgroundColor: colors.primaryDark,
-    borderColor: colors.primaryDark,
-  },
   totalLabel: {
     ...typography.label,
     color: colors.textSecondary,
   },
-  totalLabelEmphasis: {
-    color: colors.onGradientMuted,
-  },
   totalValue: {
     ...typography.metricValue,
     color: colors.text,
-  },
-  totalValueEmphasis: {
-    color: colors.onPrimary,
   },
   note: {
     ...typography.bodySm,

@@ -7,7 +7,7 @@
 import { act, renderHook } from '@testing-library/react-native';
 
 import { useScPwdEditor } from '@/hooks/sell/useScPwdEditor';
-import { buildOrderRequest, priceCart } from '@/sale/order';
+import { buildOrderRequest, priceCart } from '@pos/core/sale/order';
 import { classifyOrderError } from '@/sale/orderErrors';
 import {
   describeConflicts,
@@ -15,7 +15,7 @@ import {
   scPwdConflicts,
   TICK_ITEMS_MESSAGE,
   type ScPwdDraft,
-} from '@/sale/scPwd';
+} from '@pos/core/sale/scPwd';
 import { ApiValidationError } from '@/services/api';
 import type { ScPwdRequest } from '@/services/types';
 import { resetCart, useCartStore } from '@/stores/cart';

@@ -34,6 +34,8 @@ export function makeSettings(overrides: Partial<BranchSettings> = {}): BranchSet
     auto_print_receipt: true,
     receipt_copies: 1,
     print_kitchen_tickets: true,
+    dine_in_enabled: false,
+    service_charge_bps: 0,
     updated_at: null,
     ...overrides,
   };

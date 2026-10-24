@@ -10,7 +10,21 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { isPinComplete } from '@/utils/pin';
 
 type ApprovalDialogProps = {
-  checkout: CheckoutState;
+  /** The pay-now checkout, or a dine-in tab's settlement. */
+  checkout: Pick<
+    CheckoutState,
+    | 'approval'
+    | 'submitting'
+    | 'approvers'
+    | 'approversLoading'
+    | 'approversError'
+    | 'retryApprovers'
+    | 'chooseApprover'
+    | 'backToApprovers'
+    | 'setApprovalPin'
+    | 'approve'
+    | 'cancelApproval'
+  >;
 };
 
 const DEFAULT_REASON = 'This discount is above your limit. A manager must approve it with their PIN.';

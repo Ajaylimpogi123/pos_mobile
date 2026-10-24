@@ -2,16 +2,16 @@
  * The cart as a sale: its pricing (the same algorithm the server runs) and
  * the `POST /api/v1/orders` body built from it.
  */
-import { priceSale, type SalePricing } from '@/sale/pricing';
-import { pricingScPwd, scPwdRequestOf } from '@/sale/scPwd';
+import { priceSale, type SalePricing } from './pricing';
+import { pricingScPwd, scPwdRequestOf } from './scPwd';
 import type {
   DiscountAuthorization,
   OrderCreateRequest,
   OrderPaymentRequest,
   SaleDiscount,
   ScPwdRequest,
-} from '@/services/types';
-import type { CartCustomer, CartLine } from '@/stores/cart';
+} from '../contract/types';
+import type { CartCustomer, CartLine } from './cart';
 
 /**
  * Prices the cart's lines, order discount and SC/PWD (see `@/sale/pricing`).

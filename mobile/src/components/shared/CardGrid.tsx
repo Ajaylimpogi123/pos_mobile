@@ -2,12 +2,12 @@ import { useState, type ReactElement, type ReactNode } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Banner } from '@/components/ui/Banner';
-import { Button } from '@/components/ui/Button';
+import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import type { IconName } from '@/components/ui/Icon';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { LoadMoreFooter } from '@/components/ui/LoadMoreFooter';
 import { colors, layout, spacing } from '@/constants/theme';
 import { useGridScrollRestore } from '@/hooks/useGridScrollRestore';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -20,6 +20,24 @@ export type GridEmptyProps = {
   icon?: IconName;
   actionLabel?: string;
   onAction?: () => void;
+};
+
+/**
+ * The list as a data table (MASTER §3 / §6): shown instead of the cards on
+ * tablets in landscape (`useResponsive().listTable`). Row test IDs usually
+ * reuse the card's, so a row keeps the same name in both layouts.
+ */
+export type GridTable<T> = {
+  columns: readonly DataTableColumn<T>[];
+  onRowPress?: (item: T) => void;
+  rowAccessibilityLabel?: (item: T) => string;
+  rowAccessibilityHint?: string | ((item: T) => string);
+  /** `false`: a row with inline buttons doesn't group its cells (they stay reachable). */
+  rowAccessible?: boolean;
+  rowTestID?: (item: T) => string;
+  /** The ⋯ cell (row menu). */
+  rowActions?: (item: T) => ReactNode;
+  rowHeight?: number | 'auto';
 };
 
 type CardGridProps<T> = {
@@ -43,6 +61,8 @@ type CardGridProps<T> = {
   header?: ReactNode;
   /** New results are loading while the previous ones stay visible (e.g. after a search). */
   updating?: boolean;
+  /** The table for tablets in landscape (MASTER §6). Without it the cards show everywhere. */
+  table?: GridTable<T>;
   testID: string;
 };
 
@@ -56,10 +76,13 @@ function describeError(error: unknown): { title: string; icon: IconName } {
  * Responsive, cursor-paginated card grid with every list state:
  * - loading (first load), error with Retry (403 → "No access"), empty with a
  *   helpful message, pull-to-refresh (also on the empty and error states)
- * - infinite scroll via `onEndReached` (+ a footer spinner, or a Retry when a page fails)
+ * - infinite scroll via `onEndReached`, plus the "Showing n" footer with a
+ *   **Load more** button (MASTER §6), a spinner, or the page error with Load more
  * - `useResponsive().columns` columns; the FlatList is keyed by the column
  *   count and `useGridScrollRestore` keeps the first visible card on rotation
  * - bottom padding includes the safe-area inset (and any tab bar)
+ * - with `table`, tablets in landscape show the data table instead (same
+ *   states and footer); portrait and phones keep the cards (MASTER §6)
  */
 export function CardGrid<T>({
   items,
@@ -76,9 +99,10 @@ export function CardGrid<T>({
   empty,
   header,
   updating = false,
+  table,
   testID,
 }: CardGridProps<T>) {
-  const { columns, gutter, screenPaddingX, screenPaddingY, contentMaxWidth } = useResponsive();
+  const { columns, gutter, screenPaddingX, screenPaddingY, contentMaxWidth, listTable } = useResponsive();
   const insets = useSafeAreaInsets();
   const { listRef, listKey, onViewableItemsChanged, viewabilityConfig, onScrollToIndexFailed } =
     useGridScrollRestore<GridSlot<T>>(columns);
@@ -133,21 +157,54 @@ export function CardGrid<T>({
     if (hasNextPage && !isFetchingNextPage && !nextPageError) fetchNextPage();
   }
 
-  let footer: ReactElement | null = null;
-  if (isFetchingNextPage) {
-    footer = (
-      <View style={styles.footer} testID={`${testID}-loading-more`}>
-        <ActivityIndicator color={colors.primaryBright} />
-      </View>
-    );
-  } else if (nextPageError) {
-    footer = (
-      <View style={[styles.footer, { gap: spacing.md }]} testID={`${testID}-more-error`}>
-        <Banner message={getErrorMessage(nextPageError)} />
-        <Button title="Load more" leftIcon="refresh" variant="secondary" onPress={fetchNextPage} />
-      </View>
+  if (table && listTable) {
+    return (
+      <DataTable
+        columns={table.columns}
+        rows={items}
+        keyExtractor={keyOf}
+        onRowPress={table.onRowPress}
+        rowAccessibilityLabel={table.rowAccessibilityLabel}
+        rowAccessibilityHint={table.rowAccessibilityHint}
+        rowAccessible={table.rowAccessible}
+        rowTestID={table.rowTestID}
+        rowActions={table.rowActions}
+        rowHeight={table.rowHeight ?? 'auto'}
+        pagination={{ shown: items.length, hasNextPage, isFetchingNextPage, nextPageError, fetchNextPage }}
+        ListHeaderComponent={
+          header || updating ? (
+            <View style={styles.headerStack}>
+              {updating ? <ActivityIndicator color={colors.primaryBright} testID={`${testID}-updating`} /> : null}
+              {header}
+            </View>
+          ) : null
+        }
+        refreshControl={refreshControl}
+        onEndReached={loadMore}
+        contentContainerStyle={[
+          styles.content,
+          {
+            maxWidth: contentMaxWidth,
+            paddingHorizontal: screenPaddingX,
+            paddingTop: gutter,
+            paddingBottom: insets.bottom + screenPaddingY + layout.tabBarHeight,
+          },
+        ]}
+        testID={testID}
+      />
     );
   }
+
+  const footer: ReactElement = (
+    <LoadMoreFooter
+      shown={items.length}
+      hasNextPage={hasNextPage}
+      isFetchingNextPage={isFetchingNextPage}
+      nextPageError={nextPageError}
+      fetchNextPage={fetchNextPage}
+      testID={`${testID}-more`}
+    />
+  );
 
   return (
     <FlatList
@@ -211,9 +268,5 @@ const styles = StyleSheet.create({
   },
   cellMulti: {
     flex: 1,
-  },
-  footer: {
-    paddingVertical: spacing.lg,
-    alignItems: 'stretch',
   },
 });

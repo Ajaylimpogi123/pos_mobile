@@ -17,8 +17,8 @@ import { useSessionStore } from '@/stores/session';
 import { cashierUser, mockResponse, secureStoreMock } from '@/test-utils';
 import { jsonBody, managerUser, page, renderWithQuery, routeFetch, type FetchCall, type Route } from '@/test-utils/catalog';
 import { makeIngredient, makeIngredientMovement, UNIT_CATALOG } from '@/test-utils/purchasing';
-import { costPerBaseUnit, formatCostRate, stockValueCents } from '@/utils/quantity';
-import { ingredientUnitChoices, type UnitChoices } from '@/utils/units';
+import { costPerBaseUnit, formatCostRate, stockValueCents } from '@pos/core/quantity';
+import { ingredientUnitChoices, type UnitChoices } from '@pos/core/units';
 import { isUlid } from '@/utils/ulid';
 
 const FUTURE = '2099-09-25T01:30:00Z';

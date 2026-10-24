@@ -11,7 +11,8 @@ import { usePrintJobs } from '@/hooks/printing/usePrintJobs';
 import { useCurrentShift } from '@/hooks/shifts/useCurrentShift';
 import { useCanReachServer } from '@/hooks/useIsOnline';
 import { printRefundSlip, type ReversalPrintResult } from '@/printing/printActions';
-import { centsToInputText } from '@/utils/money';
+import { centsToInputText } from '@pos/core/money';
+import { VAT_RATE_BPS } from '@pos/core/sale/pricing';
 import {
   buildRefundRequest,
   clampSelection,
@@ -25,10 +26,10 @@ import {
   validateRefundSplit,
   type RefundSplitDraft,
   type RefundSplitErrors,
-} from '@/sale/refunds';
+} from '@pos/core/sale/refunds';
 import { findRefund, recordRefundOnTablet } from '@/sale/reversalActions';
 import { classifyReversalError, type ReversalFieldErrors } from '@/sale/reversalErrors';
-import { giveBackLines, REFUND_NO_SHIFT_MESSAGE, REFUND_UNCONFIRMED_MESSAGE, REVERSAL_OFFLINE_MESSAGE } from '@/sale/reversals';
+import { giveBackLines, REFUND_NO_SHIFT_MESSAGE, REFUND_UNCONFIRMED_MESSAGE, REVERSAL_OFFLINE_MESSAGE } from '@pos/core/sale/reversals';
 import { isApiError } from '@/services/api';
 import { getOrder, refundOrder } from '@/services/orders';
 import type { Order, Refund, RefundCreateRequest } from '@/services/types';
@@ -127,7 +128,12 @@ export function useRefundScreen(orderUlid: string | null) {
   const effective = useMemo(() => clampSelection(items, selection), [items, selection]);
   // Senior Citizen / PWD Discount: a VAT-exempt SC/PWD part is refunded VAT-exempt.
   const scPwdVatExempt = order?.sc_pwd?.vat_exempt === true;
-  const pricing = useMemo(() => priceRefund(items, effective, scPwdVatExempt), [items, effective, scPwdVatExempt]);
+  // Dine-in §E: the refund that leaves nothing refundable also returns the service charge.
+  const serviceChargeCents = order?.service_charge_cents ?? 0;
+  const pricing = useMemo(
+    () => priceRefund(items, effective, scPwdVatExempt, VAT_RATE_BPS, serviceChargeCents),
+    [items, effective, scPwdVatExempt, serviceChargeCents],
+  );
   const refundable = useMemo(() => (order ? refundableByMethod(order) : { cash: 0, gcash: 0 }), [order]);
   const autoSplit = defaultRefundSplit(pricing.amount_cents, refundable);
   const draft: RefundSplitDraft = splitDraft ?? {

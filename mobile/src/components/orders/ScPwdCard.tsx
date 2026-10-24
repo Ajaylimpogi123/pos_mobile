@@ -5,7 +5,7 @@ import { DetailRow } from '@/components/shared/InfoCard';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { colors, spacing, typography } from '@/constants/theme';
-import { personTypeLabel, scPwdModeLabel, sharedMealLine } from '@/sale/scPwd';
+import { personTypeLabel, scPwdModeLabel, sharedMealLine } from '@pos/core/sale/scPwd';
 import type { OrderScPwd } from '@/services/types';
 
 type ScPwdCardProps = {

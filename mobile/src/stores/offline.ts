@@ -23,17 +23,23 @@ type OfflineState = {
   localVersion: number;
   /** Bumped after every change to `stock_cache`. */
   stockVersion: number;
+  /** Phase 8 §E: when the outbox last finished a run cleanly (ISO 8601 UTC, this session). */
+  lastOutboxSyncAt: string | null;
+  /** Phase 8 §E: `server_time` of the last stock-cache refresh (this session). */
+  lastStockSyncAt: string | null;
 
   setCounts: (counts: OutboxCounts) => void;
   startSync: () => void;
   finishSync: (error: string | null) => void;
   markLocalChanged: () => void;
   markStockChanged: () => void;
+  setLastOutboxSyncAt: (at: string) => void;
+  setLastStockSyncAt: (at: string) => void;
   /** Test helper: back to the initial state. */
   reset: () => void;
 };
 
-const initialState = { pending: 0, needsAttention: 0, syncing: false, lastError: null, localVersion: 0, stockVersion: 0 };
+const initialState = { pending: 0, needsAttention: 0, syncing: false, lastError: null, localVersion: 0, stockVersion: 0, lastOutboxSyncAt: null, lastStockSyncAt: null };
 
 export const useOfflineStore = create<OfflineState>()((set) => ({
   ...initialState,
@@ -42,5 +48,7 @@ export const useOfflineStore = create<OfflineState>()((set) => ({
   finishSync: (error) => set({ syncing: false, lastError: error }),
   markLocalChanged: () => set((state) => ({ localVersion: state.localVersion + 1 })),
   markStockChanged: () => set((state) => ({ stockVersion: state.stockVersion + 1 })),
+  setLastOutboxSyncAt: (lastOutboxSyncAt) => set({ lastOutboxSyncAt }),
+  setLastStockSyncAt: (lastStockSyncAt) => set({ lastStockSyncAt }),
   reset: () => set(initialState),
 }));

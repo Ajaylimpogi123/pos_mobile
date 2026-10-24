@@ -5,9 +5,9 @@
  * ID line per person, the shared-meal line and the signature line; every
  * figure from the `Order` / `ShiftReport`.
  */
-import { buildReceipt } from '@/printing/documents/receipt';
-import { buildShiftRead } from '@/printing/documents/shiftRead';
-import { buildVoidSlip } from '@/printing/documents/voidSlip';
+import { buildReceipt } from '@pos/core/printing/documents/receipt';
+import { buildShiftRead } from '@pos/core/printing/documents/shiftRead';
+import { buildVoidSlip } from '@pos/core/printing/documents/voidSlip';
 import { printedLines } from '@/test-utils/escpos';
 import { mockVatBreakdown } from '@/test-utils/features';
 import { makeSettings } from '@/test-utils/printing';

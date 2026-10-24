@@ -89,6 +89,6 @@ return new class extends Migration
     {
         $quoted = implode(', ', array_map(fn (string $column) => "`{$column}`", $columns));
 
-        DB::statement("ALTER TABLE `{$table}` DROP INDEX `{$index}`, ADD INDEX `{$index}` ({$quoted})");
+        DB::statement('ALTER TABLE '.DB::getQueryGrammar()->wrapTable($table)." DROP INDEX `{$index}`, ADD INDEX `{$index}` ({$quoted})");
     }
 };

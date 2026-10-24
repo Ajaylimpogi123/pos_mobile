@@ -32,6 +32,7 @@ class OrderSummaryResource extends JsonResource
             'order_no' => $order->order_no,
             'queue_no' => $order->queue_no,
             'table_no' => $order->table_no,
+            ...OrderResource::dineInFields($order),
             'business_date' => $order->business_date,
             'status' => $order->status,
             'placed_at' => $order->placed_at->toIso8601ZuluString(),

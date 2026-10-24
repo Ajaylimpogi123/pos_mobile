@@ -3,9 +3,9 @@
  * CP437 encoding with transliteration and control stripping, exact builder
  * bytes, and the fixed-width layout helpers.
  */
-import { EscPosBuilder } from '@/printing/escpos/builder';
-import { decodeCp437Byte, encodeCp437, isCp437, toPrintable } from '@/printing/escpos/cp437';
-import { centre, columnsFor, divider, joinOrWrap, keyValue, twoColumns, wrap } from '@/printing/escpos/layout';
+import { EscPosBuilder } from '@pos/core/printing/escpos/builder';
+import { decodeCp437Byte, encodeCp437, isCp437, toPrintable } from '@pos/core/printing/escpos/cp437';
+import { centre, columnsFor, divider, joinOrWrap, keyValue, twoColumns, wrap } from '@pos/core/printing/escpos/layout';
 
 function bytes(...values: number[]): Uint8Array {
   return Uint8Array.from(values);

@@ -12,21 +12,31 @@ import { SellHeader } from '@/components/sell/SellHeader';
 import { OpenShiftGate } from '@/components/shifts/OpenShiftGate';
 import { ShiftDialogs } from '@/components/shifts/ShiftDialogs';
 import { useShell } from '@/components/shell/ShellContext';
+import { TablesView } from '@/components/tables/TablesView';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Screen } from '@/components/ui/Screen';
-import { spacing } from '@/constants/theme';
+import { SegmentedControl, type SegmentOption } from '@/components/ui/SegmentedControl';
+import { layout, spacing } from '@/constants/theme';
 import type { MenuProduct } from '@/db/menuQueries';
 import { useCartEditors } from '@/hooks/sell/useCartEditors';
 import { useSellScreen, type SellScreenState } from '@/hooks/sell/useSellScreen';
 import { useShiftControls } from '@/hooks/shifts/useShiftControls';
+import { useDineInEnabled } from '@/hooks/tables/useDineIn';
+import { useSellModeStore, type SellMode } from '@/hooks/tables/useTablesView';
 import { sellLayoutFor, useResponsive } from '@/hooks/useResponsive';
 import { useSessionStore } from '@/stores/session';
 import { hasPermission, PERMISSIONS } from '@/utils/permissions';
 
 const SYNC_FAILED_FALLBACK = "Couldn't sync the menu. Please try again.";
+
+/** Dine-in Tables & Tabs §I: the switch at the top of Sell while dine-in is on. */
+const MODES: readonly SegmentOption<SellMode>[] = [
+  { value: 'pay', label: 'Pay now', icon: 'cart-outline', testID: 'sell-mode-pay' },
+  { value: 'tables', label: 'Tables', icon: 'restaurant-outline', testID: 'sell-mode-tables' },
+];
 
 type SellBodyProps = {
   screen: SellScreenState;
@@ -144,14 +154,15 @@ function SellBody({ screen, columns, onPressTile, notice, padBottomInset, showCa
  * "Unavailable" / stock states). Users with `sale.create` also get the cart:
  * a tap on an available tile adds one; everyone else keeps the read-only screen.
  *
- * Layout (from `sellLayoutFor`, built on `useResponsive`):
- * - tablet landscape: the order panel is a **permanently visible**, full-height
- *   column on the right (never hidden behind a breakpoint); the top bar
- *   (search + status chips) and the tiles take the rest. The category rail
- *   stays at the side while the tiles still get 3 columns, else it becomes
- *   the pill row above the tiles.
- * - phones and portrait: a floating dark "View order" bar opens the cart in
- *   a sheet, and each tile shows its in-cart count.
+ * Layout (sell.md, from `sellLayoutFor`, built on `useResponsive`): the
+ * header with the band and the search, the category tab tiles in a white card,
+ * then the product cards (4 columns in landscape, 3 in portrait, gap 12).
+ * - tablet landscape: the Current Order card is a **permanently visible**,
+ *   full-height 360 dp column on the right (never hidden behind a breakpoint).
+ * - tablet portrait: the menu sits above the always-visible card, and a
+ *   pinned bottom bar shows "n items · ₱total · Checkout".
+ * - phones: the bottom bar opens the card in a sheet (no room to show it),
+ *   its Checkout goes straight to checkout, and each card shows its in-cart count.
  * Printing (Phase 4): a failure banner above the menu and a printer chip in
  * the top bar. Shifts (Phase 6): with `sale.create`, sales need this tablet's
  * open shift; without one the body is the **Open a shift** gate.
@@ -170,12 +181,18 @@ export function SellScreen() {
   const shiftControls = useShiftControls();
   // Phase 6: no open shift on this tablet (or still reading it) → the gate instead of the menu and the cart.
   const gated = canSell && shiftControls.shift === null;
-  const layout = sellLayoutFor(responsive, { cart: canSell && !gated, sidebarWidth });
+  // Dine-in Tables & Tabs: with dine-in on, a Pay now | Tables switch; Pay now is this screen, unchanged.
+  const dineIn = useDineInEnabled();
+  const mode = useSellModeStore((state) => state.mode);
+  const setMode = useSellModeStore((state) => state.setMode);
+  const showModes = canSell && dineIn && !gated;
+  const tablesMode = showModes && mode === 'tables';
+  const sellLayout = sellLayoutFor(responsive, { cart: canSell && !gated && !tablesMode, sidebarWidth });
   const editors = useCartEditors();
   const { categories } = screen.menu;
 
-  // The side panel replaces the sheet: one left open when rotating to tablet landscape closes.
-  if (layout.cartSide && editors.sheetOpen) editors.closeSheet();
+  // The card is on screen on tablets: a sheet left open when rotating to a tablet layout closes.
+  if (!sellLayout.cartBar && editors.sheetOpen) editors.closeSheet();
 
   // A stable tile handler (the grid and tiles are memoised) that always calls the latest `addProduct`.
   const addProductRef = useRef(editors.addProduct);
@@ -184,7 +201,7 @@ export function SellScreen() {
   });
   const addProduct = useCallback((product: MenuProduct) => addProductRef.current(product), []);
 
-  const showFilters = !gated && screen.menu.hasData && screen.menu.error === null;
+  const showFilters = !gated && !tablesMode && screen.menu.hasData && screen.menu.error === null;
   const search = useMemo(
     () => (showFilters ? { value: screen.search, onChange: screen.setSearch, searching: screen.searching } : null),
     [showFilters, screen.search, screen.setSearch, screen.searching],
@@ -192,8 +209,8 @@ export function SellScreen() {
 
   return (
     <Screen edges={[]} testID="sell-screen">
-      <View style={[styles.fill, layout.cartSide ? styles.row : styles.column]}>
-        <View style={styles.fill}>
+      <View style={[styles.fill, sellLayout.cartSide ? styles.row : styles.column]}>
+        <View style={sellLayout.cartBelow ? styles.menuAbove : styles.fill}>
           <SellHeader
             sync={screen.sync}
             onSyncNow={screen.syncNow}
@@ -202,36 +219,42 @@ export function SellScreen() {
             search={search}
           />
           <SafeAreaView edges={['left', 'right']} style={styles.body}>
-            {showFilters && layout.categoryRailSide ? (
-              <CategoryRail variant="side" categories={categories} selectedId={screen.categoryId} onChange={screen.setCategoryId} />
-            ) : null}
             <View style={styles.fill}>
               <PrintFailureBanner />
-              {shiftControls.flash && !gated ? (
-                <View style={[styles.flash, { paddingHorizontal: responsive.screenPaddingX }]}>
-                  <Banner variant="success" message={shiftControls.flash} testID="shift-flash" />
+              {showFilters ? (
+                <CategoryRail categories={categories} selectedId={screen.categoryId} onChange={screen.setCategoryId} />
+              ) : null}
+              {showModes ? (
+                <View style={[styles.modes, { paddingHorizontal: responsive.screenPaddingX }]}>
+                  <SegmentedControl<SellMode>
+                    options={MODES}
+                    value={tablesMode ? 'tables' : 'pay'}
+                    onChange={setMode}
+                    size="compact"
+                    accessibilityLabel="Pay now or tables"
+                    style={styles.modesControl}
+                    testID="sell-mode"
+                  />
                 </View>
               ) : null}
-              {showFilters && !layout.categoryRailSide ? (
-                <CategoryRail variant="row" categories={categories} selectedId={screen.categoryId} onChange={screen.setCategoryId} />
-              ) : null}
-              {showFilters && layout.categoryRailSide ? <View style={styles.railGap} /> : null}
               {gated ? (
                 <OpenShiftGate controls={shiftControls} />
+              ) : tablesMode ? (
+                <TablesView active />
               ) : (
                 <SellBody
                   screen={screen}
-                  columns={layout.tileColumns}
+                  columns={sellLayout.tileColumns}
                   onPressTile={canSell ? addProduct : undefined}
                   notice={editors.notice}
-                  padBottomInset={!layout.cartBar}
-                  showCartQty={layout.cartBar}
+                  padBottomInset={!sellLayout.checkoutBar && !sellLayout.cartBelow}
+                  showCartQty={sellLayout.cartBar}
                 />
               )}
             </View>
           </SafeAreaView>
         </View>
-        {canSell ? <SellCartArea layout={layout} editors={editors} /> : null}
+        {canSell && !tablesMode ? <SellCartArea layout={sellLayout} editors={editors} /> : null}
       </View>
 
       {canSell ? (
@@ -262,11 +285,14 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingBottom: spacing.md,
   },
-  flash: {
+  menuAbove: {
+    flex: layout.portraitMenuFlex,
+  },
+  modes: {
     paddingTop: spacing.md,
   },
-  railGap: {
-    height: spacing.lg,
+  modesControl: {
+    maxWidth: layout.segmentedMaxWidth,
   },
   syncError: {
     gap: spacing.sm,

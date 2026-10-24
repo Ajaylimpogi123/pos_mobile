@@ -1,4 +1,4 @@
-import { centsToInputText, formatAmount, formatPeso, parsePesoInput } from '@/utils/money';
+import { centsToInputText, formatAmount, formatPeso, parsePesoInput } from '@pos/core/money';
 
 describe('formatPeso', () => {
   it.each([

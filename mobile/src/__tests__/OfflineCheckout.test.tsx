@@ -36,7 +36,7 @@ import { decodeEscPos } from '@/test-utils/escpos';
 import { createFakeTransport, makePrintConfig, type FakeTransport } from '@/test-utils/printing';
 import { fillCartWithExampleB, HOT_DOG, ICED_TEA } from '@/test-utils/sale';
 import { seedMenu } from '@/test-utils/sync';
-import { businessDateAt } from '@/utils/businessDay';
+import { businessDateAt } from '@pos/core/businessDay';
 
 jest.mock('@/db/client', () => ({
   // eslint-disable-next-line @typescript-eslint/no-require-imports

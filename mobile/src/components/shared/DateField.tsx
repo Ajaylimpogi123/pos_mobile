@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { IconButton } from '@/components/ui/IconButton';
 import { colors, radius, sizes, spacing, typography } from '@/constants/theme';
 import { useSessionStore } from '@/stores/session';
-import { addBusinessDays, businessDateAt } from '@/utils/businessDay';
+import { addBusinessDays, businessDateAt } from '@pos/core/businessDay';
 import { formatBusinessDate } from '@/utils/dates';
 
 type DateFieldProps = {

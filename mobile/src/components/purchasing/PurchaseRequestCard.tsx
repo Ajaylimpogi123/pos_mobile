@@ -5,10 +5,10 @@ import { chipFor, PO_STATUS, PR_STATUS } from '@/components/purchasing/purchasin
 import { Chip } from '@/components/ui/Chip';
 import { colors, radius, sizes, spacing, typography } from '@/constants/theme';
 import type { PurchaseDecision, PurchaseRequest, PurchaseRequestItem } from '@/services/types';
-import { formatBranchDateTime } from '@/utils/businessDay';
+import { formatBranchDateTime } from '@pos/core/businessDay';
 import { formatBusinessDate } from '@/utils/dates';
-import { formatPeso } from '@/utils/money';
-import { lineTotalCents } from '@/utils/quantity';
+import { formatPeso } from '@pos/core/money';
+import { lineTotalCents } from '@pos/core/quantity';
 
 /** `Flour, Eggs +2`. */
 export function itemNames(names: readonly string[], shown = 2): string {

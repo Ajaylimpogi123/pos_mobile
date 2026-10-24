@@ -11,7 +11,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { colors, numeric, spacing, typography } from '@/constants/theme';
 import { STOCK_LIMITS, useStockAdjustment, type StockMode } from '@/hooks/menu/useStockAdjustment';
 import type { AdminProduct } from '@/services/types';
-import { formatCount } from '@/utils/numbers';
+import { formatCount } from '@pos/core/numbers';
 
 type StockCardProps = {
   /** A `track_stock` product (its `stock_qty` is never null then). */

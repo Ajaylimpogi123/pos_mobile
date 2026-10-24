@@ -20,9 +20,9 @@ import type {
   SupplierRef,
   Unit,
 } from '@/services/types';
-import { centsToInputText, parsePesoInput } from '@/utils/money';
-import { isWholeQty, parseQtyInput, PRODUCT_WHOLE_MESSAGE, qtyProblemMessage } from '@/utils/quantity';
-import { findUnit, itemUnitChoices, type UnitChoices } from '@/utils/units';
+import { centsToInputText, parsePesoInput } from '@pos/core/money';
+import { isWholeQty, parseQtyInput, PRODUCT_WHOLE_MESSAGE, qtyProblemMessage } from '@pos/core/quantity';
+import { findUnit, itemUnitChoices, type UnitChoices } from '@pos/core/units';
 
 /** Contract limits (§F): 1..100 items. Remarks have no stated limit: 255 is a UI cap. */
 export const PR_LIMITS = { items: 100, remarks: 255 } as const;

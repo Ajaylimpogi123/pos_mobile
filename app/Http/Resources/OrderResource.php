@@ -37,6 +37,7 @@ class OrderResource extends JsonResource
             'order_no' => $order->order_no,
             'queue_no' => $order->queue_no,
             'table_no' => $order->table_no,
+            ...self::dineInFields($order),
             'business_date' => $order->business_date,
             'status' => $order->status,
             'placed_at' => $order->placed_at->toIso8601ZuluString(),
@@ -106,6 +107,22 @@ class OrderResource extends JsonResource
             'vat_exempt' => $order->sc_pwd_vat_exempt,
             'vat_relief_cents' => $order->sc_pwd_vat_relief_cents,
             'discount_cents' => $order->sc_pwd_discount_cents,
+        ];
+    }
+
+    /**
+     * The Dine-in Tables & Tabs fields shared by `Order` and `OrderSummary` (right after
+     * `table_no`): `tab_ulid` (null for pay-now sales), `service_charge_cents` (`S`, part of
+     * `total_cents`) and `split_count` (null unless split equally). Load `tab:id,ulid`.
+     *
+     * @return array{tab_ulid: string|null, service_charge_cents: int, split_count: int|null}
+     */
+    public static function dineInFields(Order $order): array
+    {
+        return [
+            'tab_ulid' => $order->tab?->ulid,
+            'service_charge_cents' => $order->service_charge_cents,
+            'split_count' => $order->split_count,
         ];
     }
 

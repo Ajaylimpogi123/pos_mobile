@@ -217,7 +217,7 @@ describe('outbox and stock triggers', () => {
 describe('registerThisDevice', () => {
   const realRegister = jest.requireActual<typeof import('@/sync/deviceRegistration')>('@/sync/deviceRegistration').registerThisDevice;
 
-  it('sends the install_id (made once, then reused), the name and the app version; caches {id, code} for this server and branch', async () => {
+  it('sends the install_id (made once, then reused), the name and the app version; caches {id, code, name} for this server and branch', async () => {
     useSessionStore.getState().setSignedIn(cashierUser, FUTURE);
     const { calls } = routeFetch([
       { method: 'POST', path: '/api/v1/devices/register', reply: () => mockResponse(200, { data: { id: 1, code: 'T01', name: 'Galaxy Tab' } }) },
@@ -232,7 +232,8 @@ describe('registerThisDevice', () => {
     expect(first.name.length).toBeGreaterThan(0);
     expect(first.name.length).toBeLessThanOrEqual(60);
     expect(Object.keys(first).sort()).toEqual(['app_version', 'install_id', 'name']);
-    expect(useDeviceStore.getState().device).toEqual({ id: 1, code: 'T01', apiOrigin: 'http://192.168.1.50:8000', branchId: 1 });
+    // Q-044: the server's name is cached (an existing device keeps its name).
+    expect(useDeviceStore.getState().device).toEqual({ id: 1, code: 'T01', name: 'Galaxy Tab', apiOrigin: 'http://192.168.1.50:8000', branchId: 1 });
     expect(JSON.parse((await secureStoreMock().getItemAsync('pos.device.registered')) as string)).toMatchObject({ code: 'T01' });
   });
 

@@ -55,6 +55,7 @@ describe('computeShiftReport', () => {
       sc_pwd_orders_count: 0,
       sc_pwd_vat_relief_cents: 0,
       sc_pwd_discount_cents: 0,
+      service_charge_cents: 0,
     });
   });
 

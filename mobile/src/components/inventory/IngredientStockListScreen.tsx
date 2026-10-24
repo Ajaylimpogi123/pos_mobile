@@ -10,6 +10,7 @@ import { StockListBody, StockSummaryCards } from '@/components/inventory/StockLi
 import type { GridEmptyProps } from '@/components/shared/CardGrid';
 import { ListFilters, ListSearch } from '@/components/shared/ListFilters';
 import { ListHeader } from '@/components/shared/ListHeader';
+import { ListToolbar } from '@/components/shared/ListToolbar';
 import { Chip } from '@/components/ui/Chip';
 import { CellText, type DataTableColumn } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -21,9 +22,9 @@ import { useIngredientStockListScreen } from '@/hooks/ingredients/useIngredientS
 import type { InventorySegment } from '@/hooks/inventory/useInventory';
 import { useResponsive } from '@/hooks/useResponsive';
 import type { Ingredient, InventorySummary } from '@/services/types';
-import { formatPeso } from '@/utils/money';
-import { formatCount } from '@/utils/numbers';
-import { formatQty, friendlyQty } from '@/utils/quantity';
+import { formatPeso } from '@pos/core/money';
+import { formatCount } from '@pos/core/numbers';
+import { formatQty, friendlyQty } from '@pos/core/quantity';
 
 function keyOf(ingredient: Ingredient): string {
   return String(ingredient.id);
@@ -186,6 +187,7 @@ export function IngredientStockListScreen() {
   return (
     <Screen edges={[]} testID="ingredient-stock-list-screen">
       <ListHeader
+        band
         title="Inventory"
         subtitle={tracked === undefined ? undefined : `${formatCount(tracked)} ${tracked === 1 ? 'ingredient' : 'ingredients'}`}
         testIDPrefix="ingredient-stock"
@@ -205,6 +207,7 @@ export function IngredientStockListScreen() {
         <InventoryKindSwitch kind="ingredients" />
       </ListHeader>
       <SafeAreaView edges={['left', 'right']} style={styles.body}>
+        <ListToolbar testID="ingredient-stock-toolbar">
         <ListFilters<InventorySegment>
           search={screen.search}
           onSearchChange={screen.setSearch}
@@ -220,6 +223,7 @@ export function IngredientStockListScreen() {
             testID: 'ingredient-stock-segment',
           }}
         />
+        </ListToolbar>
         {screen.online ? (
           <StockListBody
             items={screen.list.items}

@@ -253,7 +253,7 @@ describe('GET /reports/sales', function () {
             $queries = array_column(DB::getQueryLog(), 'query');
             DB::disableQueryLog();
 
-            return [count($queries), count(array_filter($queries, fn (string $q) => str_contains($q, '`orders`')))];
+            return [count($queries), count(array_filter($queries, fn (string $q) => str_contains($q, DB::getQueryGrammar()->wrapTable('orders'))))];
         };
 
         foreach (['day', 'product', 'category', 'payment', 'cashier'] as $group) {

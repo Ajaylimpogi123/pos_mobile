@@ -3,9 +3,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 
 import { ChartFrame, ChartTooltip, Legend, type TableData } from '@/components/charts/ChartParts';
-import { linePath, linePoints, niceTicks } from '@/components/charts/chartMath';
+import { areaPath, linePath, linePoints, niceTicks } from '@/components/charts/chartMath';
 import { chart, colors, spacing, typography } from '@/constants/theme';
-import { formatCount } from '@/utils/numbers';
+import { formatCount } from '@pos/core/numbers';
 
 export type LineSeries = {
   key: string;
@@ -31,6 +31,8 @@ type LineChartProps = {
   formatValue?: (value: number) => string;
   /** Y-axis tick labels (default: counts); must fit the narrow axis. */
   formatTick?: (value: number) => string;
+  /** Fill the area under each line with its colour at 18 % (MASTER §1.4: an area chart). */
+  area?: boolean;
 };
 
 const TOP_PAD = spacing.sm;
@@ -51,6 +53,7 @@ export const LineChart = memo(function LineChart({
   testID,
   formatValue = formatCount,
   formatTick = formatCount,
+  area = false,
 }: LineChartProps) {
   const [selected, setSelected] = useState<number | null>(null);
   const count = xLabels.length;
@@ -71,6 +74,9 @@ export const LineChart = memo(function LineChart({
         const plotWidth = Math.max(0, width - chart.yAxisWidth);
         const plotHeight = chart.plotHeight;
         const column = count > 0 ? plotWidth / count : 0;
+        // Dense series (e.g. 31 days): label every n-th column so labels never truncate; each column stays tappable.
+        const labelEvery = column > 0 ? Math.max(1, Math.ceil(chart.xLabelMinWidth / column)) : 1;
+        const labelWidth = Math.max(column, chart.xLabelMinWidth);
         const toY = (value: number) => TOP_PAD + plotHeight - (value / ticks.max) * plotHeight;
         const pointsBySeries = series.map((entry) =>
           linePoints(entry.values, plotWidth, plotHeight, ticks.max).map((point) => ({
@@ -108,6 +114,17 @@ export const LineChart = memo(function LineChart({
                   testID={`${testID}-crosshair`}
                 />
               ) : null}
+              {area
+                ? series.map((entry, seriesIndex) => (
+                    <Path
+                      key={`area-${entry.key}`}
+                      d={areaPath(pointsBySeries[seriesIndex], TOP_PAD + plotHeight)}
+                      fill={entry.color}
+                      fillOpacity={chart.areaOpacity}
+                      testID={`${testID}-area-${entry.key}`}
+                    />
+                  ))
+                : null}
               {series.map((entry, seriesIndex) => (
                 <Path
                   key={entry.key}
@@ -146,19 +163,25 @@ export const LineChart = memo(function LineChart({
               </Text>
             ))}
 
-            {xLabels.map((label, index) => (
+            {xLabels.map((label, index) =>
+              index % labelEvery !== 0 ? null : (
               <Text
                 key={`${label}-${index}`}
                 style={[
                   styles.xLabel,
-                  { left: chart.yAxisWidth + index * column, width: column, top: TOP_PAD + plotHeight + spacing.xs },
+                  {
+                    left: chart.yAxisWidth + (index + 0.5) * column - labelWidth / 2,
+                    width: labelWidth,
+                    top: TOP_PAD + plotHeight + spacing.xs,
+                  },
                   selected === index && styles.xLabelSelected,
                 ]}
                 numberOfLines={1}
               >
                 {label}
               </Text>
-            ))}
+              ),
+            )}
 
             {xLabels.map((label, index) => (
               <Pressable

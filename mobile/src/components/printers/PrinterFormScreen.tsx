@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { StyleSheet, Text, type TextInput } from 'react-native';
 
 import { PrinterCategoryField } from '@/components/printers/PrinterCategoryField';
+import { FormFooter } from '@/components/shared/FormFooter';
 import { FormLayout } from '@/components/shared/FormLayout';
 import { FormSection, SectionDivider } from '@/components/shared/FormSection';
 import { Banner } from '@/components/ui/Banner';
@@ -10,6 +11,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Input } from '@/components/ui/Input';
 import { SegmentedControl, type SegmentOption } from '@/components/ui/SegmentedControl';
 import { SwitchRow } from '@/components/ui/SwitchRow';
+import { focusField } from '@/components/ui/ErrorSummary';
 import { ROUTES } from '@/constants/routes';
 import { colors, spacing, typography } from '@/constants/theme';
 import { useAllAdminPrinters } from '@/hooks/printers/useAdminPrinters';
@@ -19,6 +21,7 @@ import { getPrintTransport } from '@/printing/transport';
 import type { PaperWidthMm, Printer, PrinterRole } from '@/services/types';
 import { usePrintingStore } from '@/stores/printing';
 import { goBackOr } from '@/utils/navigation';
+import { showToast } from '@/stores/toast';
 
 type PrinterFormScreenProps = {
   /** The printer to edit; omitted when creating. */
@@ -40,6 +43,12 @@ function backToList() {
   goBackOr(ROUTES.printers);
 }
 
+/** MASTER §6: save success is a toast. */
+function savedAndBack() {
+  showToast('Printer saved.');
+  backToList();
+}
+
 /**
  * Create / edit a printer (`settings.manage`; docs/api-contract.md → Printing
  * → Screens): name, role and paper width selectors, address and port, the
@@ -48,7 +57,7 @@ function backToList() {
  * test page to the address being edited, before saving.
  */
 export function PrinterFormScreen({ printer }: PrinterFormScreenProps) {
-  const form = usePrinterForm({ initial: printer, onSaved: backToList, onDeleted: backToList });
+  const form = usePrinterForm({ initial: printer, onSaved: savedAndBack, onDeleted: backToList });
   // Keyboard "Next" moves through the fields.
   const printerPortRef = useRef<TextInput>(null);
   const { values, setField, fieldErrors, busy } = form;
@@ -68,6 +77,19 @@ export function PrinterFormScreen({ printer }: PrinterFormScreenProps) {
       subtitle={form.isEdit ? form.saved?.name : null}
       onBack={backToList}
       banner={form.bannerError}
+      fieldErrors={fieldErrors}
+      onSelectError={(field) => focusField(field, { port: printerPortRef })}
+      footer={
+          <FormFooter
+            onCancel={backToList}
+            cancelDisabled={form.submitting}
+            saveTitle={form.isEdit ? 'Save changes' : 'Create printer'}
+            onSave={form.submit}
+            saving={form.submitting}
+            saveDisabled={busy}
+            saveTestID="printer-save"
+          />
+      }
       testID="printer-form-screen"
       main={
         <>
@@ -190,15 +212,6 @@ export function PrinterFormScreen({ printer }: PrinterFormScreenProps) {
             ) : null}
           </FormSection>
 
-          <Button
-            title={form.isEdit ? 'Save changes' : 'Create printer'}
-            leftIcon="checkmark"
-            size="lg"
-            onPress={form.submit}
-            loading={form.submitting}
-            disabled={busy}
-            testID="printer-save"
-          />
           {form.isEdit ? (
             <Button
               title="Delete printer"

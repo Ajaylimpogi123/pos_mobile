@@ -5,6 +5,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { DetailColumns, RecordHeaderCard } from '@/components/purchasing/PurchaseDetailParts';
 import { lineTestID, PurchaseOrderLineCard, ReceiptHistoryCard, usePurchaseOrderLineColumns } from '@/components/purchasing/PurchaseOrderParts';
+import { PdfButton, PdfErrorBanner, PurchasePdfSheet } from '@/components/purchasing/PurchasePdf';
 import { SupplierPickerField } from '@/components/purchasing/PurchasePickers';
 import { chipFor, PO_RECEIVING_STATUS, PO_STATUS, PURCHASING_OFFLINE_MESSAGE } from '@/components/purchasing/purchasingLabels';
 import { TimelineCard } from '@/components/purchasing/TimelineCard';
@@ -23,20 +24,22 @@ import { IconButton } from '@/components/ui/IconButton';
 import { Input } from '@/components/ui/Input';
 import { Screen } from '@/components/ui/Screen';
 import { TopBar } from '@/components/ui/TopBar';
+import { ErrorSummary, errorItemsFrom } from '@/components/ui/ErrorSummary';
 import { purchaseRequestRoute, receiveRoute, ROUTES } from '@/constants/routes';
 import { colors, layout, spacing, typography } from '@/constants/theme';
 import { PO_LIMITS, usePurchaseOrder, usePurchaseOrderActions, type PurchaseOrderActionsState } from '@/hooks/purchasing/usePurchaseOrders';
+import { usePurchasePdf } from '@/hooks/purchasing/usePurchasePdf';
 import { usePurchasingPermissions } from '@/hooks/purchasing/usePurchasingPermissions';
 import { useIsOnline } from '@/hooks/useIsOnline';
 import { useResponsive } from '@/hooks/useResponsive';
 import { ApiError } from '@/services/api';
 import type { PurchaseOrderLine } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
-import { formatBranchDateTime } from '@/utils/businessDay';
+import { formatBranchDateTime } from '@pos/core/businessDay';
 import { formatBusinessDate } from '@/utils/dates';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 import { goBackOr } from '@/utils/navigation';
-import { formatQtyUnit } from '@/utils/quantity';
+import { formatQtyUnit } from '@pos/core/quantity';
 
 function backToList() {
   goBackOr(ROUTES.purchaseOrders);
@@ -52,6 +55,15 @@ function lineAccessibilityLabel(line: PurchaseOrderLine): string {
 }
 
 const NOT_FOUND = new ApiError('This purchase order was not found.', { status: 404, kind: 'http' });
+
+const LINE_LABELS = { qty: 'Quantity', unit: 'Unit', price: 'Unit price', supplier: 'Supplier' };
+const DELIVERY_LABELS = { date: 'Expected delivery', remarks: 'Remarks' };
+
+/** MASTER §4: the in-place edits (line, delivery) show the error summary above their fields after a failed save. */
+function DialogErrorSummary({ errors, labels }: { errors: Readonly<Record<string, unknown>> | undefined; labels: Readonly<Record<string, string>> }) {
+  const items = errorItemsFrom(errors, labels);
+  return items.length > 0 ? <ErrorSummary items={items} /> : null;
+}
 
 /** Edit one line while the order is pending: qty + unit (live base preview), unit price, supplier. */
 function LineEditDialog({ actions }: { actions: PurchaseOrderActionsState }) {
@@ -73,6 +85,7 @@ function LineEditDialog({ actions }: { actions: PurchaseOrderActionsState }) {
       onCancel={actions.line.cancel}
       testID="po-line-dialog"
     >
+      <DialogErrorSummary errors={edit?.errors} labels={LINE_LABELS} />
       {edit && choices ? (
         <QtyUnitField
           label="Quantity"
@@ -120,13 +133,14 @@ function LineEditDialog({ actions }: { actions: PurchaseOrderActionsState }) {
  * the decline reason, expected delivery, remarks, the total), **Approve**
  * (primary) / **Decline** (outlined red, with a reason) while pending, line
  * and delivery edits while pending, **Receive** once approved, the lines
- * table (cards on phones), then the receipts beside the timeline (tablet
+ * table (cards in portrait and on phones), then the receipts beside the timeline (tablet
  * landscape). Needs a connection.
  */
 export function PurchaseOrderDetailScreen({ ulid }: { ulid: string | null }) {
   const query = usePurchaseOrder(ulid);
   const po = query.data ?? null;
   const actions = usePurchaseOrderActions(po);
+  const pdf = usePurchasePdf();
   const permissions = usePurchasingPermissions();
   const online = useIsOnline();
   const timeZone = useSessionStore((state) => state.user?.branch.timezone ?? '');
@@ -178,6 +192,7 @@ export function PurchaseOrderDetailScreen({ ulid }: { ulid: string | null }) {
       {online ? null : <Banner variant="warning" message={PURCHASING_OFFLINE_MESSAGE} testID="po-detail-offline" />}
       {actions.notice ? <Banner variant="success" message={actions.notice} testID="po-detail-notice" /> : null}
       {actions.banner ? <Banner message={actions.banner} testID="po-detail-banner" /> : null}
+      <PdfErrorBanner pdf={pdf} testID="po-detail-pdf-error" />
 
       <RecordHeaderCard
         title={po.po_no}
@@ -278,6 +293,7 @@ export function PurchaseOrderDetailScreen({ ulid }: { ulid: string | null }) {
         title={po.po_no}
         subtitle={status.label}
         left={<IconButton icon="arrow-back" variant="bar" accessibilityLabel="Back" onPress={backToList} testID="po-detail-back" />}
+        right={<PdfButton pdf={pdf} target={{ kind: 'po', ulid: po.ulid, po }} accessibilityLabel={`PDF of ${po.po_no}`} testID="po-detail-pdf" />}
         testID="po-detail-header"
       />
       <SafeAreaView edges={['left', 'right']} style={styles.fill}>
@@ -289,6 +305,7 @@ export function PurchaseOrderDetailScreen({ ulid }: { ulid: string | null }) {
           rowAccessibilityLabel={lineAccessibilityLabel}
           rowAccessible={false}
           renderCard={renderCard}
+          cardsInPortrait
           rowHeight="auto"
           extraData={actions.busy}
           ListHeaderComponent={header}
@@ -346,6 +363,7 @@ export function PurchaseOrderDetailScreen({ ulid }: { ulid: string | null }) {
         />
       </ConfirmDialog>
       <LineEditDialog actions={actions} />
+      <PurchasePdfSheet pdf={pdf} testID="po-pdf-sheet" />
       <ConfirmDialog
         visible={delivery !== null}
         title="Delivery & remarks"
@@ -357,6 +375,7 @@ export function PurchaseOrderDetailScreen({ ulid }: { ulid: string | null }) {
         onCancel={actions.delivery.cancel}
         testID="po-delivery-dialog"
       >
+        <DialogErrorSummary errors={delivery?.errors} labels={DELIVERY_LABELS} />
         <DateField
           label="Expected delivery (optional)"
           value={delivery?.date ?? null}

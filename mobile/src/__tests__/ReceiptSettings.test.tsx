@@ -11,7 +11,8 @@ import { resetPrintingForTests, whenPrintQueueIdle } from '@/printing/printActio
 import { getPrintTransport } from '@/printing/transport';
 import { usePrintingStore } from '@/stores/printing';
 import { useSessionStore } from '@/stores/session';
-import { mockResponse, secureStoreMock } from '@/test-utils';
+import { useToastStore } from '@/stores/toast';
+import { mockResponse, REFERENCE_SIZES, resetWindowSize, secureStoreMock, setWindowSize } from '@/test-utils';
 import { jsonBody, managerUser, renderWithQuery, routeFetch, type FetchCall } from '@/test-utils/catalog';
 import { freshTestDatabase } from '@/test-utils/database';
 import { printedLines } from '@/test-utils/escpos';
@@ -84,8 +85,8 @@ it('shows the saved settings, and PATCHes only what changed, then syncs the prin
   await fireEvent(screen.getByTestId('settings-kitchen-tickets'), 'valueChange', false);
   await fireEvent.press(screen.getByTestId('settings-save'));
 
-  const notice = await screen.findByTestId('form-notice');
-  expect(within(notice).getByText('Receipt settings saved. This tablet prints with them from now on.')).toBeOnTheScreen();
+  // MASTER §6: save success is a toast.
+  await waitFor(() => expect(useToastStore.getState().toast?.message).toBe('Receipt settings saved. This tablet prints with them from now on.'));
   expect(patchCalls(calls)).toHaveLength(1);
   expect(jsonBody(patchCalls(calls)[0])).toEqual({
     receipt_header_lines: ['Main Branch — Makati', '123 Rizal St., Makati', 'TIN 000-123-456-000'],
@@ -153,4 +154,28 @@ it('shows a load error with Retry', async () => {
   fail = false;
   await fireEvent.press(screen.getByTestId('record-error-retry'));
   expect(await screen.findByTestId('receipt-settings-screen')).toBeOnTheScreen();
+});
+
+describe('layout (tablet)', () => {
+  afterEach(() => {
+    resetWindowSize();
+  });
+
+  it('landscape: side nav + pane; rotating to portrait keeps the open pane and the typed text; back shows the list', async () => {
+    await openSettings();
+    expect(screen.getByTestId('settings-nav')).toBeOnTheScreen();
+    await fireEvent.changeText(screen.getByTestId('settings-header-0'), 'Typed before rotating');
+
+    await act(async () => setWindowSize(REFERENCE_SIZES.tabletPortrait.width, REFERENCE_SIZES.tabletPortrait.height));
+    expect(screen.queryByTestId('settings-nav')).toBeNull();
+    expect(screen.getByTestId('settings-header-0').props.value).toBe('Typed before rotating');
+
+    await fireEvent.press(screen.getByTestId('settings-pane-back'));
+    expect(screen.getByTestId('settings-nav')).toBeOnTheScreen();
+    expect(screen.queryByTestId('settings-pane-receipt')).toBeNull();
+
+    await fireEvent.press(screen.getByTestId('settings-nav-dine_in'));
+    expect(screen.getByTestId('settings-pane-dine_in')).toBeOnTheScreen();
+    expect(screen.queryByTestId('settings-nav')).toBeNull();
+  });
 });

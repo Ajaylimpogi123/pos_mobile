@@ -6,8 +6,8 @@
  * `unit_cost` is centavos per base unit (an ingredient's `avg_cost`, an own
  * product's `cost_cents`). The server's numbers replace the preview after a save.
  */
-import type { DecimalValue, Product, StockMode } from '@/services/types';
-import { decimalParts, divRoundHalfUp } from '@/utils/quantity';
+import type { DecimalValue, Product, StockMode } from './contract/types';
+import { decimalParts, divRoundHalfUp } from './quantity';
 
 /** §J: at most 50 lines per recipe. */
 export const RECIPE_MAX_LINES = 50;

@@ -16,8 +16,9 @@ import {
 } from '@/shifts/shiftActions';
 import { checkCashAmount, checkCloseNote, checkCountedCash, checkOpeningFloat, checkReason } from '@/shifts/shiftForms';
 import { varianceOf } from '@/shifts/shiftReport';
-import { formatPeso, parsePesoInput } from '@/utils/money';
+import { formatPeso, parsePesoInput } from '@pos/core/money';
 import { hasPermission, PERMISSIONS } from '@/utils/permissions';
+import { showToast } from '@/stores/toast';
 
 export type ShiftDialog = null | 'menu' | 'cash_in' | 'cash_out' | 'x_read' | 'close';
 
@@ -52,7 +53,6 @@ export function useShiftControls() {
   const awaitingConfirmation = useCartStore((state) => state.awaitingConfirmation);
   const gateNotice = useShiftStore((state) => state.gateNotice);
   const lastClose = useShiftStore((state) => state.lastClose);
-  const flash = useShiftStore((state) => state.flash);
 
   const canOpen = hasPermission(user, PERMISSIONS.shiftOpen);
   const canClose = hasPermission(user, PERMISSIONS.shiftClose);
@@ -89,7 +89,6 @@ export function useShiftControls() {
 
   function show(next: ShiftDialog) {
     if (busy) return;
-    useShiftStore.getState().setFlash(null);
     setDialog(next);
     if (next === 'cash_in' || next === 'cash_out') setCash(EMPTY_CASH);
     if (next === 'close') setClose(EMPTY_CLOSE);
@@ -140,7 +139,8 @@ export function useShiftControls() {
       return;
     }
     setDialog(null);
-    useShiftStore.getState().setFlash(`${type === 'in' ? 'Cash in' : 'Cash out'} of ${formatPeso(amount.value)} recorded.`);
+    // MASTER §6: save success is a toast.
+    showToast(`${type === 'in' ? 'Cash in' : 'Cash out'} of ${formatPeso(amount.value)} recorded.`);
   }
 
   async function submitXRead() {
@@ -207,8 +207,6 @@ export function useShiftControls() {
     closeBlocked: awaitingConfirmation,
     gateNotice,
     lastClose,
-    flash,
-    dismissFlash: () => useShiftStore.getState().setFlash(null),
     dialog,
     busy,
     show,

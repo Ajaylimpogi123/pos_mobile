@@ -1,6 +1,6 @@
 import { useCurrentShift } from '@/hooks/shifts/useCurrentShift';
 import { useCanReachServer } from '@/hooks/useIsOnline';
-import { reversalGate, type ReversalGate } from '@/sale/reversals';
+import { reversalGate, type ReversalGate } from '@pos/core/sale/reversals';
 import type { PrintableOrder } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
 import { hasAnyPermission, PERMISSIONS } from '@/utils/permissions';

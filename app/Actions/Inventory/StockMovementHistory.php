@@ -100,6 +100,9 @@ class StockMovementHistory
      */
     private function refundWaste(int $branchId, int $ingredientId): QueryBuilder
     {
+        // Qualified columns inside raw expressions go through the grammar (table prefix).
+        $col = fn (string $column): string => DB::getQueryGrammar()->wrap($column);
+
         return DB::table('refund_item_components')
             ->join('refunds', 'refunds.id', '=', 'refund_item_components.refund_id')
             ->join('orders', 'orders.id', '=', 'refunds.order_id')
@@ -110,23 +113,22 @@ class StockMovementHistory
                 'refunds.id', 'refunds.ulid', 'refunds.reason', 'refunds.refunded_at', 'refunds.refunded_by',
                 'orders.invoice_no', 'orders.order_no', 'ingredients.base_unit',
             )
-            ->selectRaw('-MIN(refund_item_components.id) AS id')
-            ->selectRaw('refunds.ulid AS ulid')
+            ->selectRaw('-MIN('.$col('refund_item_components.id').') AS id')
+            ->addSelect('refunds.ulid as ulid')
             ->selectRaw('? AS branch_id', [$branchId])
             ->selectRaw('NULL AS product_id')
             ->selectRaw('? AS ingredient_id', [$ingredientId])
             ->selectRaw('? AS type', [StockMovement::TYPE_WASTAGE])
             ->selectRaw('CAST(0 AS DECIMAL(15,3)) AS qty_delta')
-            ->selectRaw('SUM(refund_item_components.base_qty) AS entered_qty')
-            ->selectRaw('ingredients.base_unit AS entered_unit')
+            ->selectRaw('SUM('.$col('refund_item_components.base_qty').') AS entered_qty')
+            ->addSelect('ingredients.base_unit as entered_unit')
             ->selectRaw('NULL AS unit_cost_cents')
             ->selectRaw('0 AS value_cents')
             ->selectRaw('? AS reference_type', [(new Refund)->getMorphClass()])
-            ->selectRaw('refunds.id AS reference_id')
-            ->selectRaw("CONCAT('Refund ', COALESCE(orders.invoice_no, orders.order_no), ': ', refunds.reason) AS reason")
-            ->selectRaw('refunds.refunded_at AS occurred_at')
-            ->selectRaw('refunds.refunded_by AS created_by')
-            ->selectRaw('MIN(refund_item_components.created_at) AS created_at')
-            ->selectRaw('MIN(refund_item_components.updated_at) AS updated_at');
+            ->addSelect('refunds.id as reference_id')
+            ->selectRaw("CONCAT('Refund ', COALESCE({$col('orders.invoice_no')}, {$col('orders.order_no')}), ': ', {$col('refunds.reason')}) AS reason")
+            ->addSelect(['refunds.refunded_at as occurred_at', 'refunds.refunded_by as created_by'])
+            ->selectRaw('MIN('.$col('refund_item_components.created_at').') AS created_at')
+            ->selectRaw('MIN('.$col('refund_item_components.updated_at').') AS updated_at');
     }
 }

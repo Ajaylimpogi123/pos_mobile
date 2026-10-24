@@ -2,7 +2,7 @@ import { useLocalSearchParams } from 'expo-router';
 
 import { OrderDetailScreen } from '@/components/orders/OrderDetailScreen';
 import { RecordLoadState } from '@/components/shared/RecordLoadState';
-import { ROUTES } from '@/constants/routes';
+import { ROUTES, type OrderRouteAction } from '@/constants/routes';
 import { useOrderDetail } from '@/hooks/orders/useOrders';
 import { ApiError } from '@/services/api';
 import { goBackOr } from '@/utils/navigation';
@@ -14,15 +14,23 @@ import { isUlid } from '@/utils/ulid';
  * yet, its local order (Offline Sales).
  */
 export default function OrderRoute() {
-  const { ulid } = useLocalSearchParams<{ ulid: string }>();
+  const { ulid, action } = useLocalSearchParams<{ ulid: string; action?: string }>();
+  // The Orders row menu: open the Reprint chooser or the void dialog on arrival (still gated by the screen).
+  const initialAction: OrderRouteAction | null = action === 'reprint' || action === 'void' ? action : null;
   const raw = Array.isArray(ulid) ? ulid[0] : ulid;
   const orderUlid = raw && isUlid(raw) ? raw : null;
   const { source, query } = useOrderDetail(orderUlid);
 
   if (source?.kind === 'local') {
-    return <OrderDetailScreen order={source.order} local={{ badge: source.badge, lastError: source.lastError }} />;
+    return (
+      <OrderDetailScreen
+        order={source.order}
+        local={{ badge: source.badge, lastError: source.lastError }}
+        initialAction={initialAction}
+      />
+    );
   }
-  if (source) return <OrderDetailScreen order={source.order} />;
+  if (source) return <OrderDetailScreen order={source.order} initialAction={initialAction} />;
 
   const error = orderUlid === null ? new ApiError('This order does not exist.', { status: 404, kind: 'http' }) : query.error;
 

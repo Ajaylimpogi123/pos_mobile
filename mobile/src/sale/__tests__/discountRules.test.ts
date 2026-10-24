@@ -6,7 +6,7 @@ import {
   formatPercentValue,
   parseDiscountInput,
   resolveDiscountDraft,
-} from '@/sale/discountRules';
+} from '@pos/core/sale/discountRules';
 import type { PinUser } from '@/services/types';
 import { cashierUser } from '@/test-utils';
 import { managerUser } from '@/test-utils/catalog';

@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { ReceiptLinesEditor } from '@/components/settings/ReceiptLinesEditor';
+import { FormFooter } from '@/components/shared/FormFooter';
 import { FormLayout } from '@/components/shared/FormLayout';
 import { FormSection, SectionDivider } from '@/components/shared/FormSection';
 import { RecordLoadState } from '@/components/shared/RecordLoadState';
@@ -42,6 +43,18 @@ function ReceiptSettingsForm({ settings, embedded, onBack }: { settings: BranchS
       subtitle={embedded ? EMBEDDED_DESCRIPTION : null}
       onBack={onBack}
       banner={form.banner}
+      fieldErrors={errors}
+      footer={
+          <FormFooter
+            onCancel={embedded ? undefined : onBack}
+            cancelDisabled={submitting}
+            saveTitle={"Save settings"}
+            onSave={form.submit}
+            saving={submitting}
+            saveDisabled={submitting}
+            saveTestID="settings-save"
+          />
+      }
       notice={form.notice}
       embedded={embedded}
       testID="receipt-settings-screen"
@@ -127,15 +140,6 @@ function ReceiptSettingsForm({ settings, embedded, onBack }: { settings: BranchS
               <Banner variant={form.sample.ok ? 'success' : 'error'} message={form.sample.message} testID="settings-sample-result" />
             ) : null}
           </FormSection>
-          <Button
-            title="Save settings"
-            leftIcon="checkmark"
-            size="lg"
-            onPress={form.submit}
-            loading={submitting}
-            disabled={submitting}
-            testID="settings-save"
-          />
         </>
       }
     />

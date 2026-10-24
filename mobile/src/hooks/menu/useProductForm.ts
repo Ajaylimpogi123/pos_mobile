@@ -7,8 +7,8 @@ import {
 import { useCatalogForm } from '@/hooks/menu/useCatalogForm';
 import { useProductMutations } from '@/hooks/menu/useCatalogMutations';
 import type { AdminProduct, ProductCreateRequest, ProductUpdateRequest, StockMode } from '@/services/types';
-import { centsToInputText, formatPeso, parsePesoInput } from '@/utils/money';
-import { stockModeOf } from '@/utils/recipe';
+import { centsToInputText, formatPeso, parsePesoInput } from '@pos/core/money';
+import { stockModeOf } from '@pos/core/recipe';
 
 /** Request fields of POST/PATCH /api/v1/admin/products that have an input. */
 export type ProductField =

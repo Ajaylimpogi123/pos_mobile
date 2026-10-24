@@ -101,7 +101,7 @@ class BuildSalesReportAction
             vatSplit: false,
         )
             ->crossJoinSub(
-                SalesFigures::refundLines($branchId, $from, $to)->selectRaw(SalesFigures::REFUND_LINE_QTY.' AS refunded_qty'),
+                SalesFigures::refundLines($branchId, $from, $to)->selectRaw(SalesFigures::refundLineQty().' AS refunded_qty'),
                 'rq',
             )
             ->addSelect('rq.refunded_qty')
@@ -138,6 +138,8 @@ class BuildSalesReportAction
                 'sc_pwd_orders_count' => $totals['sc_pwd_orders_count'],
                 'sc_pwd_vat_relief_cents' => $totals['sc_pwd_vat_relief_cents'],
                 'sc_pwd_discount_cents' => $totals['sc_pwd_discount_cents'],
+                // Dine-in: Σ the service charge (part of `net_sales_cents`).
+                'service_charge_cents' => $totals['service_charge_cents'],
                 ...SalesFigures::reversalsFrom($totalsRow),
             ],
             rows: $rows,
@@ -165,7 +167,7 @@ class BuildSalesReportAction
         );
 
         return $this->summed($sales, $refunds)
-            ->selectRaw('CAST(u.group_id AS CHAR) AS row_key, CAST(u.group_id AS CHAR) AS label')
+            ->selectRaw("CAST({$this->col('u.group_id')} AS CHAR) AS row_key, CAST({$this->col('u.group_id')} AS CHAR) AS label")
             ->orderBy('u.group_id');
     }
 
@@ -192,7 +194,8 @@ class BuildSalesReportAction
         return $this->summed($sales, $refunds)
             ->join('users', 'users.id', '=', 'u.group_id')
             ->groupBy('users.name')
-            ->selectRaw('CAST(u.group_id AS CHAR) AS row_key, users.name AS label')
+            ->selectRaw("CAST({$this->col('u.group_id')} AS CHAR) AS row_key")
+            ->addSelect('users.name AS label')
             ->orderByDesc('net_sales_cents')
             ->orderBy('users.name')
             ->orderBy('u.group_id');
@@ -221,7 +224,7 @@ class BuildSalesReportAction
             ->forceIndex($idColumn === 'product_id' ? self::PRODUCT_LINES_INDEX : self::CATEGORY_LINES_INDEX)
             ->groupBy('order_items.business_date', "order_items.{$idColumn}")
             ->select("order_items.{$idColumn} AS group_id")
-            ->selectRaw('MAX(order_items.id) AS last_item_id');
+            ->selectRaw("MAX({$this->col('order_items.id')}) AS last_item_id");
 
         $voided = SalesFigures::voidedLines($branchId, $from, $to)
             ->groupBy("order_items.{$idColumn}")
@@ -233,11 +236,11 @@ class BuildSalesReportAction
         // (SaleCalculator), so Σ discounts = Σ gross − Σ net exactly, without a per-line sum.
         foreach ([[$lines, ''], [$voided, '-']] as [$part, $sign]) {
             $part
-                ->selectRaw($sign.SalesFigures::LINE_ORDERS_COUNT.' AS orders_count')
-                ->selectRaw($sign.SalesFigures::LINE_QTY.' AS qty')
-                ->selectRaw($sign.SalesFigures::LINE_GROSS_SALES.' AS gross_sales_cents')
+                ->selectRaw($sign.SalesFigures::lineOrdersCount().' AS orders_count')
+                ->selectRaw($sign.SalesFigures::lineQty().' AS qty')
+                ->selectRaw($sign.SalesFigures::lineGrossSales().' AS gross_sales_cents')
                 ->selectRaw('0 AS discounts_cents')
-                ->selectRaw($sign.SalesFigures::LINE_NET_SALES.' AS net_sales_cents')
+                ->selectRaw($sign.SalesFigures::lineNetSales().' AS net_sales_cents')
                 ->selectRaw('0 AS refunded_qty, 0 AS refunds_cents');
         }
 
@@ -246,29 +249,29 @@ class BuildSalesReportAction
             ->fromSub($lines, 'd')
             ->groupBy('d.group_id')
             ->select('d.group_id')
-            ->selectRaw('MAX(d.last_item_id) AS last_item_id, SUM(d.orders_count) AS orders_count, SUM(d.qty) AS qty')
-            ->selectRaw('SUM(d.gross_sales_cents) AS gross_sales_cents, 0 AS discounts_cents, SUM(d.net_sales_cents) AS net_sales_cents')
+            ->selectRaw("MAX({$this->col('d.last_item_id')}) AS last_item_id, SUM({$this->col('d.orders_count')}) AS orders_count, SUM({$this->col('d.qty')}) AS qty")
+            ->selectRaw("SUM({$this->col('d.gross_sales_cents')}) AS gross_sales_cents, 0 AS discounts_cents, SUM({$this->col('d.net_sales_cents')}) AS net_sales_cents")
             ->selectRaw('0 AS refunded_qty, 0 AS refunds_cents');
 
         $refunds = SalesFigures::refundLines($branchId, $from, $to)
             ->groupBy("refund_items.{$idColumn}")
             ->select("refund_items.{$idColumn} AS group_id")
-            ->selectRaw('MAX(refund_items.order_item_id) AS last_item_id')
+            ->selectRaw("MAX({$this->col('refund_items.order_item_id')}) AS last_item_id")
             ->selectRaw('0 AS orders_count, 0 AS qty, 0 AS gross_sales_cents, 0 AS discounts_cents, 0 AS net_sales_cents')
-            ->selectRaw(SalesFigures::REFUND_LINE_QTY.' AS refunded_qty')
-            ->selectRaw(SalesFigures::REFUND_LINE_AMOUNT.' AS refunds_cents');
+            ->selectRaw(SalesFigures::refundLineQty().' AS refunded_qty')
+            ->selectRaw(SalesFigures::refundLineAmount().' AS refunds_cents');
 
         $groups = $this->summed($lines, $voided, $refunds)
-            ->selectRaw('MAX(u.last_item_id) AS last_item_id')
-            ->havingRaw('SUM(u.orders_count) <> 0 OR SUM(u.refunded_qty) <> 0');
+            ->selectRaw("MAX({$this->col('u.last_item_id')}) AS last_item_id")
+            ->havingRaw("SUM({$this->col('u.orders_count')}) <> 0 OR SUM({$this->col('u.refunded_qty')}) <> 0");
 
         return DB::query()
             ->fromSub($groups, 'g')
             ->join('order_items AS latest', 'latest.id', '=', 'g.last_item_id')
-            ->selectRaw("CAST(g.group_id AS CHAR) AS row_key, latest.{$nameColumn} AS label")
-            ->selectRaw('g.orders_count, g.qty, g.gross_sales_cents')
-            ->selectRaw('g.gross_sales_cents - g.net_sales_cents AS discounts_cents')
-            ->selectRaw('g.net_sales_cents, g.refunded_qty, g.refunds_cents')
+            ->selectRaw("CAST({$this->col('g.group_id')} AS CHAR) AS row_key")
+            ->addSelect(["latest.{$nameColumn} AS label", 'g.orders_count', 'g.qty', 'g.gross_sales_cents'])
+            ->selectRaw("{$this->col('g.gross_sales_cents')} - {$this->col('g.net_sales_cents')} AS discounts_cents")
+            ->addSelect(['g.net_sales_cents', 'g.refunded_qty', 'g.refunds_cents'])
             ->orderByDesc('g.net_sales_cents')
             ->orderBy("latest.{$nameColumn}")
             ->orderBy('g.group_id');
@@ -295,9 +298,9 @@ class BuildSalesReportAction
 
         foreach ([[$payments, ''], [$voided, '-']] as [$part, $sign]) {
             $part
-                ->selectRaw($sign.SalesFigures::PAYMENT_ORDERS_COUNT.' AS orders_count')
+                ->selectRaw($sign.SalesFigures::paymentOrdersCount().' AS orders_count')
                 ->selectRaw('0 AS qty, 0 AS gross_sales_cents, 0 AS discounts_cents')
-                ->selectRaw($sign.SalesFigures::PAYMENT_AMOUNT.' AS net_sales_cents')
+                ->selectRaw($sign.SalesFigures::paymentAmount().' AS net_sales_cents')
                 ->selectRaw('0 AS refunded_qty, 0 AS refunds_cents');
         }
 
@@ -305,36 +308,36 @@ class BuildSalesReportAction
             ->groupBy('refund_payments.method')
             ->select('refund_payments.method AS group_id')
             ->selectRaw('0 AS orders_count, 0 AS qty, 0 AS gross_sales_cents, 0 AS discounts_cents, 0 AS net_sales_cents, 0 AS refunded_qty')
-            ->selectRaw(SalesFigures::REFUND_PAYMENT_AMOUNT.' AS refunds_cents');
+            ->selectRaw(SalesFigures::refundPaymentAmount().' AS refunds_cents');
 
         return $this->summed($payments, $voided, $refunds)
-            ->selectRaw('u.group_id AS row_key, u.group_id AS label');
+            ->addSelect(['u.group_id AS row_key', 'u.group_id AS label']);
     }
 
     /**
-     * Order-level sales figures grouped by `$groupExpression`, in the rows' column layout.
+     * Order-level sales figures grouped by the `$groupExpression` column, in the rows' column layout.
      */
     private function orderLevel(Builder $query, string $groupExpression): Builder
     {
         return $query
-            ->selectRaw("{$groupExpression} AS group_id")
+            ->addSelect("{$groupExpression} AS group_id")
             ->selectRaw(SalesFigures::ORDERS_COUNT.' AS orders_count')
-            ->selectRaw(SalesFigures::ITEMS_SOLD.' AS qty')
-            ->selectRaw(SalesFigures::GROSS_SALES.' AS gross_sales_cents')
-            ->selectRaw(SalesFigures::DISCOUNTS.' AS discounts_cents')
-            ->selectRaw(SalesFigures::NET_SALES.' AS net_sales_cents')
+            ->selectRaw(SalesFigures::itemsSold().' AS qty')
+            ->selectRaw(SalesFigures::grossSales().' AS gross_sales_cents')
+            ->selectRaw(SalesFigures::discounts().' AS discounts_cents')
+            ->selectRaw(SalesFigures::netSales().' AS net_sales_cents')
             ->selectRaw('0 AS refunded_qty, 0 AS refunds_cents');
     }
 
     /**
-     * Refunds (`refunds` rows) grouped by `$groupExpression`, in the rows' column layout.
+     * Refunds (`refunds` rows) grouped by the `$groupExpression` column, in the rows' column layout.
      */
     private function refundLevel(Builder $query, string $groupExpression): Builder
     {
         return $query
-            ->selectRaw("{$groupExpression} AS group_id")
+            ->addSelect("{$groupExpression} AS group_id")
             ->selectRaw('0 AS orders_count, 0 AS qty, 0 AS gross_sales_cents, 0 AS discounts_cents, 0 AS net_sales_cents, 0 AS refunded_qty')
-            ->selectRaw(SalesFigures::REFUNDS_AMOUNT.' AS refunds_cents');
+            ->selectRaw(SalesFigures::refundsAmount().' AS refunds_cents');
     }
 
     /**
@@ -353,10 +356,19 @@ class BuildSalesReportAction
             ->addSelect('u.group_id');
 
         foreach (self::FIGURES as $figure) {
-            $query->selectRaw("SUM(u.{$figure}) AS {$figure}");
+            $query->selectRaw("SUM({$this->col("u.{$figure}")}) AS {$figure}");
         }
 
         return $query;
+    }
+
+    /**
+     * A qualified column for a raw expression, wrapped by the query grammar so its table (or
+     * alias) gets the connection's table prefix, as the builder's own columns do.
+     */
+    private function col(string $column): string
+    {
+        return DB::getQueryGrammar()->wrap($column);
     }
 
     /**

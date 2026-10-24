@@ -5,11 +5,11 @@ import { Chip } from '@/components/ui/Chip';
 import { colors, pressedScale, radius, spacing, typography } from '@/constants/theme';
 import type { LocalOrderBadge, LocalOrderSummary } from '@/hooks/orders/useLocalOrders';
 import { orderNumberLabel, ticketNumberLabel } from '@/sale/localOrder';
-import { paymentMethodLabel } from '@/sale/payments';
-import { orderStatusLabel } from '@/sale/reversals';
+import { paymentMethodLabel } from '@pos/core/sale/payments';
+import { orderStatusLabel } from '@pos/core/sale/reversals';
 import { formatBusinessDate, formatClockTime } from '@/utils/dates';
-import { formatPeso } from '@/utils/money';
-import { formatCount } from '@/utils/numbers';
+import { formatPeso } from '@pos/core/money';
+import { formatCount } from '@pos/core/numbers';
 
 type OrderCardProps = {
   /** An `OrderSummary` from the API, or the summary of a sale saved on this tablet (no invoice number yet). */
@@ -91,13 +91,13 @@ export function OrderCard({ order, showDate, badge, onPress }: OrderCardProps) {
           {order.status === 'refunded' || order.status === 'partially_refunded' ? (
             <Chip
               label={order.refunded_cents > 0 ? `${orderStatusLabel(order.status)} · ${formatPeso(order.refunded_cents)}` : orderStatusLabel(order.status)}
-              variant="pending"
+              variant="processing"
               icon="return-down-back-outline"
               testID={`${testID}-status`}
             />
           ) : null}
           {/* Senior Citizen / PWD Discount (a local order stored before it has no flag). */}
-          {order.has_sc_pwd ? <Chip label="SC/PWD" variant="info" icon="id-card-outline" testID={`${testID}-sc-pwd`} /> : null}
+          {order.has_sc_pwd ? <Chip label="SC/PWD" icon="id-card-outline" testID={`${testID}-sc-pwd`} /> : null}
           {order.customer ? <Chip label={order.customer.full_name} icon="person-outline" testID={`${testID}-customer`} /> : null}
           <Chip label={items} icon="bag-handle-outline" />
           {order.payment_methods.map((method) => (

@@ -14,24 +14,26 @@
  *   (`OFFLINE_SETUP_MESSAGE`).
  * - One registration at a time: a call during one joins it.
  */
-import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 
-import { API_BASE_URL, getErrorMessage } from '@/services/api';
+import { setCaptureInstallId } from '@/errors/capture';
+import { API_BASE_URL, getErrorMessage, isApiError } from '@/services/api';
 import { registerDevice } from '@/services/devices';
+import { signOut } from '@/services/session';
 import { getCachedDevice, getInstallId, saveCachedDevice, saveInstallId, type CachedDevice } from '@/services/secureStorage';
 import type { RegisteredDevice } from '@/services/types';
 import { useDeviceStore } from '@/stores/device';
 import { useSessionStore } from '@/stores/session';
 import { DEVICE_CODE_PATTERN } from '@/sale/localOrder';
+import { APP_VERSION_MAX, appVersion } from '@/utils/appVersion';
 import { ulid } from '@/utils/ulid';
 
 /** Contract: shown when an offline sale is attempted on a tablet that never registered. */
 export const OFFLINE_SETUP_MESSAGE = 'Connect once to set up offline sales.';
 
-/** Contract limits of the body: `name` max 60, `app_version` max 20. */
+/** Contract limits of the body: `name` max 60 (`app_version` max 20: `@/utils/appVersion`). */
 export const DEVICE_NAME_MAX = 60;
-export const APP_VERSION_MAX = 20;
+export { APP_VERSION_MAX, appVersion };
 
 const FALLBACK_DEVICE_NAME = 'POS tablet';
 
@@ -41,6 +43,7 @@ export async function ensureInstallId(): Promise<string> {
   if (stored) return stored;
   const created = ulid();
   await saveInstallId(created);
+  setCaptureInstallId(created);
   return created;
 }
 
@@ -54,12 +57,6 @@ export function deviceDisplayName(): string {
   }
   const trimmed = (name ?? '').trim();
   return (trimmed === '' ? FALLBACK_DEVICE_NAME : trimmed).slice(0, DEVICE_NAME_MAX);
-}
-
-/** The app version from app.json (`expo.version`), or `null`. */
-export function appVersion(): string | null {
-  const version = Constants.expoConfig?.version?.trim();
-  return version ? version.slice(0, APP_VERSION_MAX) : null;
 }
 
 /** Whether a cached device belongs to this server and branch (and has a code `order_no` can carry). */
@@ -102,12 +99,19 @@ async function register(): Promise<RegisteredDevice | null> {
   try {
     const installId = await ensureInstallId();
     const device = await registerDevice({ install_id: installId, name: deviceDisplayName(), app_version: appVersion() });
-    const cached: CachedDevice = { id: device.id, code: device.code, apiOrigin: API_BASE_URL, branchId: user.branch.id };
+    // The server's name wins (Q-044: an existing device keeps its name), so cache what it answered.
+    const cached: CachedDevice = { id: device.id, code: device.code, name: device.name, apiOrigin: API_BASE_URL, branchId: user.branch.id };
     await saveCachedDevice(cached);
     useDeviceStore.getState().setRegistered(cached);
     return device;
   } catch (error) {
     useDeviceStore.getState().setRegistrationError(getErrorMessage(error));
+    if (isApiError(error) && error.status === 403) {
+      // Phase 8 §C: a retired tablet ("This tablet has been retired. Ask a manager to restore it.").
+      // Sign out; the login screen shows the server's message. The outbox is kept.
+      useSessionStore.getState().setLoginNotice(error.message);
+      await signOut();
+    }
     return null;
   }
 }

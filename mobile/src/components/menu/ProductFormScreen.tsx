@@ -6,6 +6,7 @@ import { CategoryPickerField } from '@/components/menu/CategoryPickerField';
 import { ImagePickerPanel } from '@/components/menu/ImagePickerPanel';
 import { RecipeSection } from '@/components/menu/RecipeSection';
 import { StockCard } from '@/components/menu/StockCard';
+import { FormFooter } from '@/components/shared/FormFooter';
 import { FormLayout } from '@/components/shared/FormLayout';
 import { FormSection } from '@/components/shared/FormSection';
 import { Button } from '@/components/ui/Button';
@@ -13,17 +14,19 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Input } from '@/components/ui/Input';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SwitchRow } from '@/components/ui/SwitchRow';
+import { focusField } from '@/components/ui/ErrorSummary';
 import { editProductRoute, ROUTES } from '@/constants/routes';
 import { colors, spacing, typography } from '@/constants/theme';
 import { PRODUCT_LIMITS, useProductForm } from '@/hooks/menu/useProductForm';
 import { useRecipeBuilder } from '@/hooks/menu/useRecipeBuilder';
 import type { AdminProduct, StockMode } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
-import { centsToInputText } from '@/utils/money';
+import { centsToInputText } from '@pos/core/money';
 import { goBackOr } from '@/utils/navigation';
-import { formatCount } from '@/utils/numbers';
+import { formatCount } from '@pos/core/numbers';
 import { hasPermission, PERMISSIONS } from '@/utils/permissions';
-import { STOCK_MODES, stockModeOf } from '@/utils/recipe';
+import { showToast } from '@/stores/toast';
+import { STOCK_MODES, stockModeOf } from '@pos/core/recipe';
 
 type ProductFormScreenProps = {
   /** The product to edit; omitted when creating. */
@@ -58,6 +61,7 @@ const STOCK_MODE_OPTIONS = STOCK_MODES.map((mode) => ({
 export function ProductFormScreen({ product }: ProductFormScreenProps) {
   const form = useProductForm({ initial: product, onSaved: handleSaved, onDeleted: backToList });
   // Keyboard "Next" moves through the fields.
+  const productNameRef = useRef<TextInput>(null);
   const productSkuRef = useRef<TextInput>(null);
   const productCostRef = useRef<TextInput>(null);
   const productSortOrderRef = useRef<TextInput>(null);
@@ -77,6 +81,8 @@ export function ProductFormScreen({ product }: ProductFormScreenProps) {
    * reopens as its edit screen) so its recipe can be built; otherwise back.
    */
   function handleSaved(saved: AdminProduct) {
+    // MASTER §6: save success is a toast.
+    showToast('Product saved.');
     const nowRecipe = stockModeOf(saved) === 'recipe';
     if (nowRecipe && !product) router.replace(editProductRoute(saved.id));
     else if (!nowRecipe || stockModeOf(product ?? saved) === 'recipe') backToList();
@@ -100,6 +106,19 @@ export function ProductFormScreen({ product }: ProductFormScreenProps) {
       subtitle={form.isEdit ? form.saved?.name : null}
       onBack={backToList}
       banner={form.bannerError}
+      fieldErrors={fieldErrors}
+      onSelectError={(field) => focusField(field, { name: productNameRef, sku: productSkuRef, cost_cents: productCostRef, sort_order: productSortOrderRef })}
+      footer={
+          <FormFooter
+            onCancel={backToList}
+            cancelDisabled={form.submitting}
+            saveTitle={saveLabel}
+            onSave={form.submit}
+            saving={form.submitting}
+            saveDisabled={busy}
+            saveTestID="product-save"
+          />
+      }
       testID="product-form-screen"
       // A recipe product: the recipe sits beside (tablet landscape) or below the product fields.
       asidePlacement={recipeSection ? 'end' : 'start'}
@@ -126,6 +145,7 @@ export function ProductFormScreen({ product }: ProductFormScreenProps) {
               returnKeyType="next"
               submitBehavior="submit"
               onSubmitEditing={() => productSkuRef.current?.focus()}
+              ref={productNameRef}
               testID="product-name"
             />
             <CategoryPickerField
@@ -264,16 +284,6 @@ export function ProductFormScreen({ product }: ProductFormScreenProps) {
             <Text style={styles.help}>Lower numbers show first on the menu.</Text>
           </FormSection>
 
-          <Button
-            title={saveLabel}
-            leftIcon="checkmark"
-            size="lg"
-            onPress={form.submit}
-            loading={form.submitting}
-            disabled={busy}
-            accessibilityLabel={saveLabel}
-            testID="product-save"
-          />
           {form.isEdit ? (
             <Button
               title="Delete product"

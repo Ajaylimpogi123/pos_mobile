@@ -16,7 +16,7 @@ import {
 } from '@/hooks/inventory/useInventoryActions';
 import { STOCK_LIMITS } from '@/hooks/menu/useStockAdjustment';
 import type { InventoryItem } from '@/services/types';
-import { formatCount } from '@/utils/numbers';
+import { formatCount } from '@pos/core/numbers';
 
 const DIALOG: Record<StockDialogKind, { title: string; confirm: string; icon: IconName; qtyLabel: string; placeholder: string }> = {
   receipt: { title: 'Stock in', confirm: 'Save stock in', icon: 'arrow-down-circle-outline', qtyLabel: 'Quantity received', placeholder: 'e.g. 24' },

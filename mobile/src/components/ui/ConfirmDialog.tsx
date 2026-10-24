@@ -31,7 +31,8 @@ type ConfirmDialogProps = {
 };
 
 /**
- * Themed confirmation modal for destructive or important actions, and small
+ * Themed confirmation modal for destructive or important actions (a `danger`
+ * confirm is drawn as the filled destructive button), and small
  * one-input forms (children). Buttons sit side by side, and stack (confirm on
  * top) on small phones. The dialog scrolls if a short landscape screen can't fit it.
  */
@@ -53,10 +54,13 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const { isSmallPhone, isCompactHeight } = useResponsive();
   const stacked = isSmallPhone;
+  // MASTER §3: a destructive confirmation uses the filled destructive button (the label names the action).
+  const destructive = confirmVariant === 'danger' || confirmVariant === 'destructive';
+  const variant: ButtonVariant = destructive ? 'destructive' : confirmVariant;
 
   return (
     <DialogFrame visible={visible} onRequestClose={onCancel} busy={busy} testID={testID}>
-      {icon && !isCompactHeight ? <IconBadge icon={icon} tone={confirmVariant === 'danger' ? 'danger' : 'primary'} /> : null}
+      {icon && !isCompactHeight ? <IconBadge icon={icon} tone={destructive ? 'danger' : 'primary'} /> : null}
       <Text style={styles.title} accessibilityRole="header">
         {title}
       </Text>
@@ -74,7 +78,7 @@ export function ConfirmDialog({
         />
         <Button
           title={confirmLabel}
-          variant={confirmVariant}
+          variant={variant}
           onPress={onConfirm}
           loading={busy}
           disabled={confirmDisabled}

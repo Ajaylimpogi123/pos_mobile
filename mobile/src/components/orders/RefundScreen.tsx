@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApproverPanel } from '@/components/pin/ApproverPanel';
 import { PrintJobRows } from '@/components/printing/PrintJobRows';
 import { AmountRow } from '@/components/shared/AmountRow';
+import { FormFooter } from '@/components/shared/FormFooter';
 import { Banner } from '@/components/ui/Banner';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -13,18 +14,18 @@ import { Input } from '@/components/ui/Input';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { QtyStepper } from '@/components/ui/QtyStepper';
 import { Screen } from '@/components/ui/Screen';
-import { showVatBreakdown } from '@/constants/features';
+import { showVatBreakdown } from '@pos/core/features';
 import { colors, layout, sizes, spacing, typography } from '@/constants/theme';
 import { orderRoute, ROUTES } from '@/constants/routes';
 import type { RefundScreenState } from '@/hooks/orders/useRefundScreen';
 import { useResponsive } from '@/hooks/useResponsive';
 import { orderNumberLabel } from '@/sale/localOrder';
-import { VAT_RATE_BPS } from '@/sale/pricing';
-import { REFUND_REFERENCE_MAX, remainingQty, REVERSAL_REASON_MAX } from '@/sale/refunds';
+import { VAT_RATE_BPS } from '@pos/core/sale/pricing';
+import { REFUND_REFERENCE_MAX, remainingQty, REVERSAL_REASON_MAX } from '@pos/core/sale/refunds';
 import type { Order } from '@/services/types';
-import { formatPeso } from '@/utils/money';
+import { formatPeso } from '@pos/core/money';
 import { goBackOr } from '@/utils/navigation';
-import { formatPercentBps } from '@/utils/numbers';
+import { formatPercentBps } from '@pos/core/numbers';
 
 type RefundScreenProps = {
   refund: RefundScreenState;
@@ -97,6 +98,9 @@ function AmountCard({ refund }: { refund: RefundScreenState }) {
   const { pricing } = refund;
   return (
     <Card style={styles.card} testID="refund-amount-card">
+      {pricing.service_charge_cents > 0 ? (
+        <AmountRow label="Service charge" cents={pricing.service_charge_cents} variant="summary" testID="refund-service-charge" />
+      ) : null}
       <AmountRow label="Refund" cents={pricing.amount_cents} variant="total" testID="refund-amount" />
       {showVatBreakdown() ? (
         <View style={styles.rows}>
@@ -223,7 +227,7 @@ function DoneCard({ refund }: { refund: RefundScreenState }) {
  * quantity left and **Refund everything**, the amount and its VAT split (only
  * while `SHOW_VAT_BREAKDOWN` is on, see `constants/features.ts`), the
  * cash / GCash split (cash first, never beyond what each method has left),
- * the reason, a manager's approval when needed, then **Refund**. Tablet
+ * the reason, a manager's approval when needed, then **Refund ₱…** in the sticky footer (with Cancel). Tablet
  * landscape shows the lines beside the rest; elsewhere one centred column.
  */
 export function RefundScreen({ refund, order }: RefundScreenProps) {
@@ -237,16 +241,6 @@ export function RefundScreen({ refund, order }: RefundScreenProps) {
       <ReasonCard refund={refund} />
       {refund.banner ? <Banner variant={refund.banner.variant} message={refund.banner.message} testID="refund-banner" /> : null}
       {refund.blocker ? <Banner variant="warning" message={refund.blocker} testID="refund-blocker" /> : null}
-      <Button
-        title={refund.awaiting ? 'Retry' : `Refund ${formatPeso(refund.pricing.amount_cents)}`}
-        leftIcon={refund.awaiting ? 'refresh' : 'return-down-back-outline'}
-        variant="danger"
-        size="lg"
-        onPress={refund.submit}
-        loading={refund.submitting}
-        disabled={!refund.canSubmit}
-        testID="refund-submit"
-      />
     </View>
   );
 
@@ -290,6 +284,25 @@ export function RefundScreen({ refund, order }: RefundScreenProps) {
             )}
           </View>
         </KeyboardScrollView>
+        {/* The sticky footer (back-office.md → Forms): Cancel and the destructive "Refund ₱…" (the label names the action). */}
+        {refund.done || nothingLeft ? null : (
+          <View style={[styles.footerBar, { paddingHorizontal: screenPaddingX }]} testID="refund-footer">
+            <View style={[styles.footerInner, { maxWidth: isTwoPane ? layout.formWideMaxWidth : layout.receiptMaxWidth }]}>
+              <FormFooter
+                onCancel={() => goBackOr(ROUTES.orders)}
+                cancelDisabled={refund.submitting}
+                saveTitle={refund.awaiting ? 'Retry' : `Refund ${formatPeso(refund.pricing.amount_cents)}`}
+                saveIcon={refund.awaiting ? 'refresh' : 'return-down-back-outline'}
+                destructive
+                onSave={refund.submit}
+                saving={refund.submitting}
+                saveDisabled={!refund.canSubmit}
+                saveTestID="refund-submit"
+                cancelTestID="refund-cancel"
+              />
+            </View>
+          </View>
+        )}
       </SafeAreaView>
     </Screen>
   );
@@ -298,6 +311,16 @@ export function RefundScreen({ refund, order }: RefundScreenProps) {
 const styles = StyleSheet.create({
   fill: {
     flex: 1,
+  },
+  footerBar: {
+    paddingVertical: spacing.md,
+    borderTopWidth: sizes.borderWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  footerInner: {
+    width: '100%',
+    alignSelf: 'center',
   },
   inner: {
     width: '100%',

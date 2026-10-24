@@ -10,17 +10,19 @@ import {
 } from '@/components/dashboard/DashboardCharts';
 import { DashboardGrid, type GridCell } from '@/components/dashboard/DashboardGrid';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
+import { DashboardPeriodFilter } from '@/components/dashboard/DashboardPeriodFilter';
 import { LowMarginList, RecentChangesList, RecentLoginsList } from '@/components/dashboard/DashboardLists';
 import { InsightsCard } from '@/components/dashboard/InsightsCard';
 import { KpiTiles } from '@/components/dashboard/KpiTiles';
 import { SalesCard } from '@/components/dashboard/SalesCard';
 import { PaymentMethodsCard, SalesTrendCard, TopProductsList } from '@/components/dashboard/SalesCharts';
+import { StockAlertsCard } from '@/components/dashboard/StockAlertsCard';
 import { Banner } from '@/components/ui/Banner';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Screen } from '@/components/ui/Screen';
 import { colors } from '@/constants/theme';
-import { hasSalesInLast7Days, kpiTiles } from '@/hooks/dashboard/dashboardModel';
+import { canSeeStockAlerts, hasSalesInTrend, kpiTiles, stockAlerts } from '@/hooks/dashboard/dashboardModel';
 import { useDashboardScreen } from '@/hooks/dashboard/useDashboardScreen';
 import { getErrorMessage, isApiError } from '@/services/api';
 import type { Dashboard } from '@/services/types';
@@ -30,8 +32,9 @@ import { hasPermission, PERMISSIONS } from '@/utils/permissions';
  * The dashboard: the main content area of the app shell. It shows only real
  * figures from GET /api/v1/dashboard; a section the user may not see is `null`
  * and is simply not rendered (no empty gaps). `sales` (with `report.view`)
- * leads with today's sales, or an honest "No sales yet today".
- * - The compact top bar (name, business date, branch, updated time), then the KPI tiles (2 / 3 / 3 / 5 per row), then a grid of
+ * leads with the chosen period's sales (Day · Month · Year filter in the band,
+ * v1.28; Day / today on open), or an honest "No sales on this day".
+ * - The header and the band (greeting, business date, branch, updated time, New sale), then the stat cards (2 / 3 / 3 / 5 per row), then a grid of
  *   section cards (1 column on phone portrait, 2 on phone landscape and tablet
  *   portrait, 2–3 on tablet landscape depending on the sidebar), all within
  *   the content max width.
@@ -42,10 +45,10 @@ import { hasPermission, PERMISSIONS } from '@/utils/permissions';
 export function DashboardScreen() {
   const screen = useDashboardScreen();
   const insets = useSafeAreaInsets();
-  const { query, user, responsive, columns, tables, toggleTable } = screen;
+  const { query, user, responsive, columns, tables, toggleTable, period } = screen;
   const { screenPaddingX, screenPaddingY, gutter, contentMaxWidth, kpiColumns } = responsive;
   const data = query.data;
-  const tiles = useMemo(() => (data ? kpiTiles(data) : []), [data]);
+  const tiles = useMemo(() => (data ? kpiTiles(data, user) : []), [data, user]);
 
   if (!user) {
     return (
@@ -62,6 +65,20 @@ export function DashboardScreen() {
       businessDate={data?.business_date ?? null}
       generatedAt={data?.generated_at ?? null}
       hour={new Date(now).getHours()}
+      filter={
+        period.visible ? (
+          <DashboardPeriodFilter
+            value={period.value}
+            label={period.label}
+            canGoBack={period.canGoBack}
+            canGoForward={period.canGoForward}
+            loading={period.loading}
+            setPeriod={period.setPeriod}
+            stepBack={period.stepBack}
+            stepForward={period.stepForward}
+          />
+        ) : null
+      }
     />
   );
   const offline = screen.isOffline ? (
@@ -155,10 +172,10 @@ function sectionCells(data: Dashboard, { now, canEditProducts, user, tables, tog
   const cells: GridCell[] = [];
   const { catalog, staff, activity, sales } = data;
 
-  // Real sales only: today's card (or "No sales yet today"); the charts and the list only when there is data.
+  // Real sales only: the period's card (or its "No sales …" state); the charts and the list only when there is data.
   if (sales) cells.push({ key: 'sales', span: wide, node: <SalesCard sales={sales} /> });
   cells.push({ key: 'insights', node: <InsightsCard insights={data.insights} user={user} /> });
-  if (sales && hasSalesInLast7Days(sales)) {
+  if (sales && hasSalesInTrend(sales)) {
     cells.push({
       key: 'sales-trend',
       span: wide,
@@ -177,6 +194,10 @@ function sectionCells(data: Dashboard, { now, canEditProducts, user, tables, tog
       ),
     });
     if (sales.top_products.length > 0) cells.push({ key: 'top-products', node: <TopProductsList sales={sales} /> });
+  }
+  // back-office.md: Stock alerts (Low and Out), for users the stock insights are built for.
+  if (canSeeStockAlerts(user)) {
+    cells.push({ key: 'stock-alerts', node: <StockAlertsCard alerts={stockAlerts(data)} canOpenInventory /> });
   }
 
   if (catalog) {

@@ -19,9 +19,9 @@
  * ```
  * Every amount is a field of the server's `Order`; nothing is computed here.
  */
-import { orderNumberLabel } from '@/sale/localOrder';
-import type { Order } from '@/services/types';
-import { formatAmount, formatPeso } from '@/utils/money';
+import { orderNumberLabel } from '../../sale/orderNumbers';
+import type { Order } from '../../contract/types';
+import { formatAmount, formatPeso } from '../../money';
 
 import { EscPosBuilder } from '../escpos/builder';
 import { formatPrintedDateTime, printedDiscountLabel } from './format';

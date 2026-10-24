@@ -1,4 +1,4 @@
-import type { AuthUser } from '@/services/types';
+import type { AuthUser } from './contract/types';
 
 /** Permission slugs the app checks (contract: Roles & permissions). UI hints only: the server enforces them. */
 export const PERMISSIONS = {
@@ -33,6 +33,8 @@ export const PERMISSIONS = {
   purchaseReceive: 'purchase.receive',
   /** §E: manage suppliers. */
   supplierManage: 'supplier.manage',
+  /** Hardening & Pilot (Phase 8) §A: admin Devices and the Error log (Owner and Manager). */
+  systemManage: 'system.manage',
 } as const;
 
 /** §E: "any purchase permission" (with `report.view`, the purchasing reads). */
@@ -57,4 +59,38 @@ export function hasPermission(user: AuthUser | null | undefined, slug: Permissio
 /** True when the user holds at least one of `slugs` (e.g. Orders: `sale.create` or `report.view`). */
 export function hasAnyPermission(user: AuthUser | null | undefined, slugs: readonly PermissionSlug[]): boolean {
   return slugs.some((slug) => hasPermission(user, slug));
+}
+
+/**
+ * Plain-words description of every seeded slug (Q-040). It mirrors the server's
+ * `RolesAndPermissionsSeeder::PERMISSIONS` word for word; change both together.
+ */
+export const PERMISSION_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  'branch.all': 'Act across all branches (owner override of branch scoping)',
+  'customer.manage': 'Delete customer records',
+  'discount.apply': 'Apply a discount within the role limit',
+  'discount.override': "Authorize a discount above another user's limit",
+  'inventory.adjust': 'Adjust stock levels',
+  'order.review': 'Review flagged offline sales',
+  'product.manage': 'Create and edit products and categories',
+  'purchase.approve': 'Decide purchase request items; approve or decline purchase orders',
+  'purchase.approve_own': 'Decide or approve a purchase request or order you created',
+  'purchase.receive': 'Record goods receipts',
+  'purchase.request': 'Create or edit purchase requests',
+  'report.view': 'View reports',
+  'report.zread': 'Run the Z-read (end-of-day) report',
+  'sale.create': 'Ring up sales',
+  'sale.refund': 'Refund a completed sale',
+  'sale.void': 'Void a completed sale',
+  'settings.manage': 'Manage printers and receipt settings',
+  'shift.close': 'Close a cash shift',
+  'shift.open': 'Open a cash shift',
+  'supplier.manage': 'Manage suppliers',
+  'system.manage': 'Manage tablets and the error log',
+  'user.manage': 'Manage staff accounts',
+};
+
+/** The description of a slug, or `null` for one this build doesn't know (shown as the bare slug). */
+export function permissionDescription(slug: string): string | null {
+  return Object.prototype.hasOwnProperty.call(PERMISSION_DESCRIPTIONS, slug) ? PERMISSION_DESCRIPTIONS[slug] : null;
 }

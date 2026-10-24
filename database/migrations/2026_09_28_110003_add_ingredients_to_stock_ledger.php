@@ -53,8 +53,9 @@ return new class extends Migration
             );
         });
 
-        DB::statement('ALTER TABLE stock_levels ADD CONSTRAINT stock_levels_one_item_check CHECK ((product_id IS NULL) <> (ingredient_id IS NULL))');
-        DB::statement('ALTER TABLE stock_movements ADD CONSTRAINT stock_movements_one_item_check CHECK ((product_id IS NULL) <> (ingredient_id IS NULL))');
+        foreach (['stock_levels', 'stock_movements'] as $table) {
+            DB::statement('ALTER TABLE '.DB::getQueryGrammar()->wrapTable($table)." ADD CONSTRAINT {$table}_one_item_check CHECK ((product_id IS NULL) <> (ingredient_id IS NULL))");
+        }
     }
 
     /**
@@ -63,8 +64,9 @@ return new class extends Migration
      */
     public function down(): void
     {
-        DB::statement('ALTER TABLE stock_movements DROP CHECK stock_movements_one_item_check');
-        DB::statement('ALTER TABLE stock_levels DROP CHECK stock_levels_one_item_check');
+        foreach (['stock_movements', 'stock_levels'] as $table) {
+            DB::statement('ALTER TABLE '.DB::getQueryGrammar()->wrapTable($table)." DROP CHECK {$table}_one_item_check");
+        }
 
         Schema::table('stock_movements', function (Blueprint $table) {
             $table->dropIndex('stock_movements_ingredient_report_index');

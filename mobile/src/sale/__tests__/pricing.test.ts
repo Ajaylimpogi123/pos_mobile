@@ -3,7 +3,7 @@
  * must agree with the server to the centavo, so both sides test the
  * contract's worked examples A and B.
  */
-import { allocateOrderDiscount, MAX_SUBTOTAL_CENTS, priceSale, rhu, type PricingLine } from '@/sale/pricing';
+import { allocateOrderDiscount, MAX_SUBTOTAL_CENTS, priceSale, rhu, type PricingLine } from '@pos/core/sale/pricing';
 
 function line(unit_price_cents: number, qty: number, is_vatable = true, discount: PricingLine['discount'] = null): PricingLine {
   return { unit_price_cents, qty, is_vatable, discount };

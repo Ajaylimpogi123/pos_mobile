@@ -5,9 +5,9 @@
 import type { ChipVariant } from '@/components/ui/Chip';
 import type { IconName } from '@/components/ui/Icon';
 import type { Ingredient, IngredientMovementType, StockMovementType, StockStatus } from '@/services/types';
-import { formatPeso } from '@/utils/money';
-import { formatCount, NO_VALUE } from '@/utils/numbers';
-import { costDisplayUnit, costForBaseUnits } from '@/utils/quantity';
+import { formatPeso } from '@pos/core/money';
+import { formatCount, NO_VALUE } from '@pos/core/numbers';
+import { costDisplayUnit, costForBaseUnits } from '@pos/core/quantity';
 
 /** `₱46.67 / kg` from `avg_cost` (centavos per base unit), rounded half up; `—` when it can't be read. */
 export function averageCostText(ingredient: Pick<Ingredient, 'avg_cost' | 'base_unit'>): string {

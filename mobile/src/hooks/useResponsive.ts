@@ -3,12 +3,12 @@ import { useWindowDimensions } from 'react-native';
 import { layout, sizes, spacing } from '@/constants/theme';
 
 /**
- * How the app-shell sidebar shows by default:
- * - `expanded`: persistent, labelled panel (tablet landscape; the user may collapse it to the rail)
- * - `rail`: persistent icon rail (tablet portrait, phone landscape; its chevron expands it as an overlay)
+ * How the app-shell sidebar shows (MASTER §2.2 / §6):
+ * - `rail`: the persistent 64 dp icon rail (tablets in both orientations, phone
+ *   landscape); its chevron opens the 256 dp labelled panel as an overlay
  * - `drawer`: no persistent sidebar; a ☰ button opens a slide-in drawer (phone portrait)
  */
-export type SidebarMode = 'expanded' | 'rail' | 'drawer';
+export type SidebarMode = 'rail' | 'drawer';
 
 export type Responsive = {
   width: number;
@@ -42,14 +42,18 @@ export type Responsive = {
   cardPadding: number;
   /** Vertical padding of the toolbar row just below the top bar (search, tabs, chips). */
   headerPaddingY: number;
-  /** Height of the compact top bar, without the safe area: 56 on phones, 64 on tablets. */
+  /** Height of the header, without the safe area: 56 on phones, 48 on tablets (MASTER §6). */
   topBarHeight: number;
   /** The top bar shows its optional subtitle (tablets, not on short landscape heights). */
   showBarSubtitle: boolean;
   /** Top-bar status chips show a short text label (tablets and landscape); else icon-only. */
   statusChipLabels: boolean;
-  /** Default app-shell sidebar mode for this size (see `SidebarMode`). */
+  /** App-shell sidebar mode for this size (see `SidebarMode`). */
   sidebarMode: SidebarMode;
+  /** The decorative header band's height (MASTER §2.3 / §6): 200 on tablets, 120 below 600 dp of height and on phones. */
+  bandHeight: number;
+  /** The band's title uses the compact size (short heights). */
+  bandCompact: boolean;
   /** Dashboard KPI tiles per row: phone portrait 2, phone landscape / tablet portrait 3, tablet landscape 5. */
   kpiColumns: 2 | 3 | 5;
   /**
@@ -60,11 +64,8 @@ export type Responsive = {
   dashboardColumns: 1 | 2 | 3;
   /** Sell-screen product tiles per row: phone portrait 2, phone landscape / tablet portrait 3, tablet landscape 4. */
   tileColumns: 2 | 3 | 4;
-  /**
-   * Sell screen: the category rail is a vertical side column (tablet
-   * landscape) instead of a horizontal chip row above the tiles.
-   */
-  categoryRailSide: boolean;
+  /** Back-office lists (MASTER §6): the data table on tablets in landscape; cards in portrait and on phones. */
+  listTable: boolean;
 };
 
 /**
@@ -80,9 +81,8 @@ export function getResponsive(width: number, height: number): Responsive {
 
   const columns: 1 | 2 | 3 = isTablet ? (isLandscape ? 3 : 2) : isLandscape ? 2 : 1;
 
-  let sidebarMode: SidebarMode = 'drawer';
-  if (isTablet) sidebarMode = isLandscape ? 'expanded' : 'rail';
-  else if (isLandscape) sidebarMode = 'rail';
+  const sidebarMode: SidebarMode = isTablet || isLandscape ? 'rail' : 'drawer';
+  const bandCompact = !isTablet || height < layout.bandShortMaxHeight;
 
   let kpiColumns: 2 | 3 | 5 = 3;
   if (isTablet && isLandscape) kpiColumns = 5;
@@ -135,17 +135,20 @@ export function getResponsive(width: number, height: number): Responsive {
     showBarSubtitle: isTablet && !isCompactHeight,
     statusChipLabels: isTablet || isLandscape,
     sidebarMode,
+    bandHeight: bandCompact ? sizes.band.short : sizes.band.regular,
+    bandCompact,
     kpiColumns,
     dashboardColumns: columns,
     tileColumns,
-    categoryRailSide: isTablet && isLandscape,
+    listTable: isTablet && isLandscape,
   };
 }
 
 /**
- * Dashboard section columns once the sidebar is known: on tablet landscape the
- * persistent expanded sidebar (240) leaves room for 2 readable chart columns,
- * the collapsed rail for 3. Every other size uses `dashboardColumns` as is.
+ * Dashboard section columns once the sidebar is known: a wide persistent
+ * sidebar leaves room for 2 readable chart columns, the rail for 3. Every
+ * other size uses `dashboardColumns` as is. (The tablet rail is always 64 dp
+ * since MASTER §6, so `sidebarExpanded` is false in the app shell.)
  */
 export function dashboardColumnsFor(responsive: Responsive, sidebarExpanded: boolean): 1 | 2 | 3 {
   if (responsive.dashboardColumns === 3 && sidebarExpanded) return 2;
@@ -153,45 +156,44 @@ export function dashboardColumnsFor(responsive: Responsive, sidebarExpanded: boo
 }
 
 export type SellLayout = {
-  /** The cart is a permanently visible side panel (tablet landscape): never hidden behind a breakpoint. */
+  /** Tablet landscape: the Current Order card is a fixed 360 dp column on the right, never hidden. */
   cartSide: boolean;
-  /** Phones and portrait: a bottom bar ("Cart · n items · ₱total") opens the cart. */
+  /** Tablet portrait: the Current Order card sits under the menu, always visible (sell.md). */
+  cartBelow: boolean;
+  /** Phones: no room for the card, so the bottom bar opens it in a sheet. */
   cartBar: boolean;
-  /** The category filter is a vertical rail beside the tiles (else a chip row above them). */
-  categoryRailSide: boolean;
+  /** The pinned bottom bar "n items · ₱total · Checkout" (tablet portrait and phones). */
+  checkoutBar: boolean;
   /** Product tiles per row. */
   tileColumns: 2 | 3 | 4;
 };
 
 /**
- * The Sell screen's layout once the cart and the app-shell sidebar are known.
- * - The cart: a side panel on tablet landscape, a bottom bar everywhere else
- *   (only for users who get a cart, i.e. with `sale.create`).
- * - Tiles: as many columns as fit at `layout.sellTileMinWidth`, capped by
- *   `tileColumns` (2 / 3 / 4 by size), never fewer than 2.
- * - The side category rail stays on tablet landscape while the tiles beside
- *   it still get 3 columns; when the cart panel and a wide sidebar leave less
- *   room, the categories become the chip row above the tiles instead.
+ * The Sell screen's layout once the cart and the app-shell sidebar are known
+ * (design-system/pos/pages/sell.md):
+ * - tablet landscape: the menu, then the Current Order card fixed at 360;
+ *   4 tile columns;
+ * - tablet portrait: the menu above the always-visible card, and a pinned
+ *   bottom bar with **Checkout**; 3 tile columns;
+ * - phones: the bottom bar opens the card in a sheet (no room to show it), its
+ *   **Checkout** goes straight to checkout; as many columns as fit at
+ *   `layout.sellTileMinWidth` (2 or 3).
+ * The cart parts only show for users who get a cart (`sale.create`).
  */
 export function sellLayoutFor(responsive: Responsive, options: { cart: boolean; sidebarWidth: number }): SellLayout {
-  const cartSide = options.cart && responsive.isTablet && responsive.isLandscape;
-  const available =
-    responsive.width - options.sidebarWidth - (cartSide ? layout.cartPanelWidth : 0) - 2 * responsive.screenPaddingX;
+  const { cart } = options;
+  const cartSide = cart && responsive.isTablet && responsive.isLandscape;
+  const cartBelow = cart && responsive.isTablet && responsive.isPortrait;
+  const cartBar = cart && responsive.isPhone;
 
-  const fit = (width: number): 2 | 3 | 4 => {
-    const columns = Math.floor((width + responsive.gutter) / (layout.sellTileMinWidth + responsive.gutter));
-    return Math.max(2, Math.min(responsive.tileColumns, columns)) as 2 | 3 | 4;
-  };
+  let tileColumns: 2 | 3 | 4 = responsive.tileColumns;
+  if (responsive.isPhone) {
+    const available = responsive.width - options.sidebarWidth - 2 * responsive.screenPaddingX;
+    const columns = Math.floor((available + responsive.gutter) / (layout.sellTileMinWidth + responsive.gutter));
+    tileColumns = Math.max(2, Math.min(responsive.tileColumns, columns)) as 2 | 3 | 4;
+  }
 
-  let categoryRailSide = responsive.categoryRailSide;
-  if (categoryRailSide && cartSide && fit(available - layout.categoryRailWidth) < 3) categoryRailSide = false;
-
-  return {
-    cartSide,
-    cartBar: options.cart && !cartSide,
-    categoryRailSide,
-    tileColumns: fit(available - (categoryRailSide ? layout.categoryRailWidth : 0)),
-  };
+  return { cartSide, cartBelow, cartBar, checkoutBar: cartBelow || cartBar, tileColumns };
 }
 
 /**

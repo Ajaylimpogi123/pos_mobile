@@ -35,14 +35,15 @@ return new class extends Migration
                 ->constrained('purchase_order_lines')->restrictOnDelete();
         });
 
-        DB::statement(
-            'UPDATE purchase_request_items pri JOIN purchase_requests pr ON pr.id = pri.purchase_request_id '
-            .'SET pri.branch_id = pr.branch_id, pri.requested_at = pr.created_at',
-        );
-        DB::statement(
-            'UPDATE purchase_request_items pri JOIN purchase_order_lines pol ON pol.purchase_request_item_id = pri.id '
-            .'SET pri.purchase_order_line_id = pol.id',
-        );
+        // Through the builder, so the tables and aliases get the connection's table prefix.
+        $column = fn (string $column) => DB::raw(DB::getQueryGrammar()->wrap($column));
+
+        DB::table('purchase_request_items as pri')
+            ->join('purchase_requests as pr', 'pr.id', '=', 'pri.purchase_request_id')
+            ->update(['pri.branch_id' => $column('pr.branch_id'), 'pri.requested_at' => $column('pr.created_at')]);
+        DB::table('purchase_request_items as pri')
+            ->join('purchase_order_lines as pol', 'pol.purchase_request_item_id', '=', 'pri.id')
+            ->update(['pri.purchase_order_line_id' => $column('pol.id')]);
 
         Schema::table('purchase_request_items', function (Blueprint $table) {
             $table->index(

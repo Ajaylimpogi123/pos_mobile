@@ -10,7 +10,7 @@ import { useNow } from '@/hooks/useNow';
 import { getOrder, listOrders } from '@/services/orders';
 import type { OrderStatus, OrderSummary, PrintableOrder } from '@/services/types';
 import { useSessionStore } from '@/stores/session';
-import { addBusinessDays, businessDateAt } from '@/utils/businessDay';
+import { addBusinessDays, businessDateAt } from '@pos/core/businessDay';
 import { hasPermission, PERMISSIONS } from '@/utils/permissions';
 
 /** Orders per page. */

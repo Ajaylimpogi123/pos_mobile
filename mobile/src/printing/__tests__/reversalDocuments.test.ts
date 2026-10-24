@@ -4,10 +4,10 @@
  * the X/Z-read's Voids / Refunds / Net after refunds and Cash refunds lines.
  * Every figure comes from the server's `Order` / `Refund` / `ShiftReport`.
  */
-import { buildKitchenVoid, kitchenNumberOf } from '@/printing/documents/kitchenVoid';
-import { buildRefundSlip } from '@/printing/documents/refundSlip';
-import { buildShiftRead } from '@/printing/documents/shiftRead';
-import { buildVoidSlip } from '@/printing/documents/voidSlip';
+import { buildKitchenVoid, kitchenNumberOf } from '@pos/core/printing/documents/kitchenVoid';
+import { buildRefundSlip } from '@pos/core/printing/documents/refundSlip';
+import { buildShiftRead } from '@pos/core/printing/documents/shiftRead';
+import { buildVoidSlip } from '@pos/core/printing/documents/voidSlip';
 import { jobLabel } from '@/printing/labels';
 import { decodeEscPos, printedLines } from '@/test-utils/escpos';
 import { mockVatBreakdown } from '@/test-utils/features';

@@ -2,7 +2,8 @@ import { memo, useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/ui/Icon';
-import { colors, iconSizes, numeric, opacity, pressedScale, radius, sizes, spacing, typography } from '@/constants/theme';
+import { colors, hitTarget, iconSizes, numeric, opacity, pressedScale, radius, sizes, spacing, typography } from '@/constants/theme';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 type QtyStepperProps = {
   value: number;
@@ -24,8 +25,12 @@ type StepButtonProps = {
   testID: string;
 };
 
+/** Grows each 44 dp step button's touch area to 48 (MASTER §6). */
+const STEP_SLOP = (hitTarget.primary - sizes.stepperButton) / 2;
+
 const StepButton = memo(function StepButton({ icon, tone, accessibilityLabel, disabled, onPress, testID }: StepButtonProps) {
   const plus = tone === 'plus';
+  const reduceMotion = useReducedMotion();
   return (
     <Pressable
       accessibilityRole="button"
@@ -33,20 +38,22 @@ const StepButton = memo(function StepButton({ icon, tone, accessibilityLabel, di
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
+      hitSlop={STEP_SLOP}
       testID={testID}
       style={({ pressed }) => [
         styles.button,
         plus ? styles.plus : styles.minus,
         pressed && (plus ? styles.plusPressed : styles.minusPressed),
+        pressed && !reduceMotion && styles.pressed,
         disabled && styles.disabled,
       ]}
     >
-      <Icon name={icon} size={iconSizes.sm} color={plus ? colors.primaryDark : colors.textResting} />
+      <Icon name={icon} size={iconSizes.sm} color={plus ? colors.onPrimary : colors.text} />
     </Pressable>
   );
 });
 
-/** − value + in one bordered group (44 dp buttons, radius 10); each end disables at its limit. */
+/** The round stepper (MASTER §1.6 / §3): − value + in one pill-shaped group (44 dp round buttons, a 48 touch area); each end disables at its limit. */
 export function QtyStepper({ value, onChange, min = 1, max, accessibilityLabel, disabled = false, testID }: QtyStepperProps) {
   const decrease = useCallback(() => onChange(value - 1), [onChange, value]);
   const increase = useCallback(() => onChange(value + 1), [onChange, value]);
@@ -90,28 +97,29 @@ const styles = StyleSheet.create({
     padding: spacing.xxs,
     borderWidth: sizes.borderWidth,
     borderColor: colors.border,
-    borderRadius: radius.md,
+    borderRadius: radius.pill,
     backgroundColor: colors.surface,
   },
   button: {
     width: sizes.stepperButton,
     height: sizes.stepperButton,
-    borderRadius: radius.inner,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   minus: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.accent,
   },
   minusPressed: {
-    backgroundColor: colors.surfacePressed,
-    transform: [{ scale: pressedScale }],
+    backgroundColor: colors.borderStrong,
   },
   plus: {
-    backgroundColor: colors.primarySoft,
+    backgroundColor: colors.green,
   },
   plusPressed: {
-    backgroundColor: colors.primarySoftPressed,
+    backgroundColor: colors.greenHover,
+  },
+  pressed: {
     transform: [{ scale: pressedScale }],
   },
   disabled: {
