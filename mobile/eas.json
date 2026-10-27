@@ -15,9 +15,11 @@
       "distribution": "internal",
       "channel": "production",
       "autoIncrement": true,
-      "environment": "production",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://pos.cravetechsolutions.com"
       }
     }
   }
