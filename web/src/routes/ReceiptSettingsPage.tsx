@@ -5,6 +5,7 @@
  * receipt printer. 422 messages sit under their lines.
  * Dine-in Tables & Tabs §I: the **Dine-in** card (on/off and the service
  * charge %); turning it off with open bills is a `409`, shown in the banner.
+ * Table Management §A/§F: **Hold reserved tables from** (minutes, 0–240).
  */
 import { ArrowDownIcon, ArrowUpIcon, ArmchairIcon, LoaderCircleIcon, PlusIcon, PrinterIcon, XIcon } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
@@ -29,6 +30,7 @@ import { useTestPrinting } from '@/hooks/useOrderPrinting';
 import { useBranchSettings, useSaveBranchSettings } from '@/hooks/usePrinters';
 import { getErrorMessage, isApiValidationError, type ApiValidationError } from '@/services/api';
 import type { BranchSettings } from '@/services/types';
+import { HOLD_MINUTES_LIMITS } from '@/utils/tables';
 import { formatPercentValue, parseDiscountInput } from '@pos/core/sale/discountRules';
 
 const MAX_LINES = 6;
@@ -48,6 +50,8 @@ type Draft = {
   dine_in_enabled: boolean;
   /** The service charge as typed, in percent (empty or 0: none). */
   service_charge: string;
+  /** Table Management §A: minutes before the booking time, as typed. */
+  reservation_hold_minutes: string;
 };
 
 function draftFrom(settings: BranchSettings): Draft {
@@ -59,7 +63,18 @@ function draftFrom(settings: BranchSettings): Draft {
     print_kitchen_tickets: settings.print_kitchen_tickets,
     dine_in_enabled: settings.dine_in_enabled,
     service_charge: settings.service_charge_bps > 0 ? formatPercentValue(settings.service_charge_bps).replace('%', '') : '0',
+    reservation_hold_minutes: String(settings.reservation_hold_minutes),
   };
+}
+
+/** §A: `reservation_hold_minutes` is a whole number from 0 to 240. */
+function parseHoldMinutes(text: string): { minutes: number; error: null } | { minutes: null; error: string } {
+  const trimmed = text.trim();
+  const minutes = /^\d{1,3}$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  if (Number.isNaN(minutes) || minutes < HOLD_MINUTES_LIMITS.min || minutes > HOLD_MINUTES_LIMITS.max) {
+    return { minutes: null, error: `Enter whole minutes from ${HOLD_MINUTES_LIMITS.min} to ${HOLD_MINUTES_LIMITS.max}.` };
+  }
+  return { minutes, error: null };
 }
 
 /** §A: the service charge is 0–20% (0–2000 basis points), up to 2 decimals; never through a float. */
@@ -180,6 +195,8 @@ function SettingsForm({ settings }: { settings: BranchSettings }) {
   const bannerError = save.error && !server ? getErrorMessage(save.error) : null;
   const hasBlankLine = [...draft.receipt_header_lines, ...draft.receipt_footer_lines].some((line) => line.trim() === '');
   const serviceCharge = parseServiceCharge(draft.service_charge);
+  const holdMinutes = parseHoldMinutes(draft.reservation_hold_minutes);
+  const invalid = hasBlankLine || serviceCharge.bps === null || holdMinutes.minutes === null;
 
   function change(update: Partial<Draft>) {
     setDraft((current) => ({ ...current, ...update }));
@@ -187,7 +204,7 @@ function SettingsForm({ settings }: { settings: BranchSettings }) {
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (hasBlankLine || serviceCharge.bps === null) return;
+    if (hasBlankLine || serviceCharge.bps === null || holdMinutes.minutes === null) return;
     save.mutate(
       {
         receipt_header_lines: draft.receipt_header_lines.map((line) => line.trim()),
@@ -197,6 +214,7 @@ function SettingsForm({ settings }: { settings: BranchSettings }) {
         print_kitchen_tickets: draft.print_kitchen_tickets,
         dine_in_enabled: draft.dine_in_enabled,
         service_charge_bps: serviceCharge.bps,
+        reservation_hold_minutes: holdMinutes.minutes,
       },
       { onSuccess: () => toast.success('Receipt settings saved.') },
     );
@@ -264,6 +282,8 @@ function SettingsForm({ settings }: { settings: BranchSettings }) {
           onChange={change}
           enabledError={server?.firstError('dine_in_enabled') ?? null}
           serviceChargeError={serviceCharge.error ?? server?.firstError('service_charge_bps') ?? null}
+          holdMinutes={draft.reservation_hold_minutes}
+          holdMinutesError={holdMinutes.error ?? server?.firstError('reservation_hold_minutes') ?? null}
         />
 
         <div className="flex flex-col gap-3 border-t border-border pt-4">
@@ -289,7 +309,7 @@ function SettingsForm({ settings }: { settings: BranchSettings }) {
         <Button variant="outline" size="lg" onClick={() => setDraft(draftFrom(settings))} disabled={save.isPending}>
           Cancel
         </Button>
-        <Button type="submit" variant="green" size="lg" disabled={save.isPending || hasBlankLine || serviceCharge.bps === null}>
+        <Button type="submit" variant="green" size="lg" disabled={save.isPending || invalid}>
           {save.isPending ? <LoaderCircleIcon className="animate-spin" aria-hidden="true" /> : null}
           {save.isPending ? 'Saving…' : 'Save'}
         </Button>
@@ -298,19 +318,23 @@ function SettingsForm({ settings }: { settings: BranchSettings }) {
   );
 }
 
-/** Dine-in Tables & Tabs §I: the on/off switch and the service charge %. */
+/** Dine-in Tables & Tabs §I: the on/off switch and the service charge %; Table Management §F: the reservation hold. */
 function DineInCard({
   enabled,
   serviceCharge,
   onChange,
   enabledError,
   serviceChargeError,
+  holdMinutes,
+  holdMinutesError,
 }: {
   enabled: boolean;
   serviceCharge: string;
   onChange: (update: Partial<Draft>) => void;
   enabledError: string | null;
   serviceChargeError: string | null;
+  holdMinutes: string;
+  holdMinutesError: string | null;
 }) {
   return (
     <section aria-labelledby="settings-dine-in-title" className="flex flex-col gap-4 rounded-lg border border-border p-4">
@@ -344,6 +368,20 @@ function DineInCard({
           maxLength={6}
           value={serviceCharge}
           onChange={(event) => onChange({ service_charge: event.target.value })}
+        />
+      </FormField>
+      <FormField
+        label="Hold reserved tables from (minutes before)"
+        error={holdMinutesError}
+        hint="How long before the booking time the table is kept free."
+        className="max-w-60"
+      >
+        <Input
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={3}
+          value={holdMinutes}
+          onChange={(event) => onChange({ reservation_hold_minutes: event.target.value })}
         />
       </FormField>
       <Link to="/tables" className="w-fit text-sm font-medium text-green underline-offset-4 hover:underline">

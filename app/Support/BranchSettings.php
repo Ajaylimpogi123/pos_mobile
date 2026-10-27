@@ -41,6 +41,14 @@ final class BranchSettings
     public const MAX_SERVICE_CHARGE_BPS = 2000;
 
     /**
+     * Table Management → A (TM2): a booked reservation holds its free table from this many
+     * minutes before its time.
+     */
+    public const RESERVATION_HOLD_MINUTES = 'reservation_hold_minutes';
+
+    public const MAX_RESERVATION_HOLD_MINUTES = 240;
+
+    /**
      * Every key, in the contract's order.
      */
     public const KEYS = [
@@ -51,6 +59,7 @@ final class BranchSettings
         self::PRINT_KITCHEN_TICKETS,
         self::DINE_IN_ENABLED,
         self::SERVICE_CHARGE_BPS,
+        self::RESERVATION_HOLD_MINUTES,
     ];
 
     public const DEFAULT_FOOTER_LINES = ['This is not an official receipt.'];
@@ -110,6 +119,7 @@ final class BranchSettings
             self::PRINT_KITCHEN_TICKETS => true,
             self::DINE_IN_ENABLED => false,
             self::SERVICE_CHARGE_BPS => 0,
+            self::RESERVATION_HOLD_MINUTES => 60,
         ];
     }
 
@@ -145,6 +155,7 @@ final class BranchSettings
                     : $default,
             self::AUTO_PRINT_RECEIPT, self::PRINT_KITCHEN_TICKETS, self::DINE_IN_ENABLED => is_bool($value) ? $value : $default,
             self::SERVICE_CHARGE_BPS => is_int($value) && $value >= 0 && $value <= self::MAX_SERVICE_CHARGE_BPS ? $value : $default,
+            self::RESERVATION_HOLD_MINUTES => is_int($value) && $value >= 0 && $value <= self::MAX_RESERVATION_HOLD_MINUTES ? $value : $default,
             self::RECEIPT_COPIES => is_int($value) && $value >= self::MIN_COPIES && $value <= self::MAX_COPIES ? $value : $default,
             default => $value,
         };
@@ -189,6 +200,11 @@ final class BranchSettings
     public function serviceChargeBps(): int
     {
         return $this->values[self::SERVICE_CHARGE_BPS];
+    }
+
+    public function reservationHoldMinutes(): int
+    {
+        return $this->values[self::RESERVATION_HOLD_MINUTES];
     }
 
     public function get(string $key): mixed

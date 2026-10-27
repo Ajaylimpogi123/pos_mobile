@@ -4,6 +4,9 @@
  * ULID made for this action (also the `Idempotency-Key`), reused on every
  * retry until a `201`. A `409` ("Table 5 already has an open bill.") shows
  * here and refreshes the Tables view.
+ *
+ * Table Management §E: **Seat now** opens the bill with `reservation_ulid`
+ * (guests start at the party size); the reservation becomes `seated`.
  */
 import { LoaderCircleIcon } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
@@ -19,34 +22,75 @@ import { QtyStepper } from '@/components/sell/SellParts';
 import { invalidateTables } from '@/hooks/useDiningTables';
 import { useTabAction, useTabCache } from '@/hooks/useTab';
 import { openTab } from '@/services/tabs';
-import type { Tab, TableView } from '@/services/types';
+import { invalidateReservations } from '@/hooks/useReservations';
+import type { Tab } from '@/services/types';
 import { TAB_LIMITS } from '@/utils/tables';
 
+/** The table to open a bill on (`seats`: `null` when unknown, e.g. from a reservation). */
+export type OpenTabTarget = { id: number; name: string; area: string | null; seats: number | null };
+
+/** A booked reservation being seated (Table Management §E). */
+export type SeatingReservation = { ulid: string; guest_name: string; party_size: number };
+
 type OpenTabDialogProps = {
-  table: TableView | null;
+  table: OpenTabTarget | null;
+  /** Seat this reservation (Seat now): the bill opens with its `reservation_ulid`. */
+  reservation?: SeatingReservation | null;
   onClose: () => void;
   onOpened: (tab: Tab) => void;
 };
 
-export function OpenTabDialog({ table, onClose, onOpened }: OpenTabDialogProps) {
+export function OpenTabDialog({ table, reservation = null, onClose, onOpened }: OpenTabDialogProps) {
   return (
     <Dialog open={table !== null} onOpenChange={(open) => (open ? null : onClose())}>
-      <DialogContent className="max-w-md">{table ? <OpenTabForm key={table.id} table={table} onClose={onClose} onOpened={onOpened} /> : null}</DialogContent>
+      <DialogContent className="max-w-md">
+        {table ? (
+          <OpenTabForm
+            key={`${table.id}-${reservation?.ulid ?? ''}`}
+            table={table}
+            reservation={reservation}
+            onClose={onClose}
+            onOpened={onOpened}
+          />
+        ) : null}
+      </DialogContent>
     </Dialog>
   );
 }
 
-function OpenTabForm({ table, onClose, onOpened }: { table: TableView; onClose: () => void; onOpened: (tab: Tab) => void }) {
+function clampGuests(value: number): number {
+  return Math.min(TAB_LIMITS.guestsMax, Math.max(TAB_LIMITS.guestsMin, value));
+}
+
+function OpenTabForm({
+  table,
+  reservation,
+  onClose,
+  onOpened,
+}: {
+  table: OpenTabTarget;
+  reservation: SeatingReservation | null;
+  onClose: () => void;
+  onOpened: (tab: Tab) => void;
+}) {
   const queryClient = useQueryClient();
   const saveTab = useTabCache();
-  const [guests, setGuests] = useState(Math.min(TAB_LIMITS.guestsMax, Math.max(TAB_LIMITS.guestsMin, table.seats)));
+  const [guests, setGuests] = useState(clampGuests(reservation?.party_size ?? table.seats ?? TAB_LIMITS.guestsMin));
   const [notes, setNotes] = useState('');
   const [conflict, setConflict] = useState<string | null>(null);
   const action = useTabAction({
-    run: (key, body: { guests: number; notes: string | null }) => openTab({ ulid: key, table_id: table.id, guests: body.guests, notes: body.notes }),
+    run: (key, body: { guests: number; notes: string | null }) =>
+      openTab({
+        ulid: key,
+        table_id: table.id,
+        guests: body.guests,
+        notes: body.notes,
+        ...(reservation ? { reservation_ulid: reservation.ulid } : {}),
+      }),
     onConflict: (message) => {
       setConflict(message);
-      invalidateTables(queryClient);
+      if (reservation) invalidateReservations(queryClient);
+      else invalidateTables(queryClient);
     },
   });
 
@@ -57,20 +101,24 @@ function OpenTabForm({ table, onClose, onOpened }: { table: TableView; onClose: 
     const tab = await action.send({ guests, notes: notes.trim() === '' ? null : notes.trim() });
     if (tab) {
       saveTab(tab);
+      if (reservation) invalidateReservations(queryClient);
       onOpened(tab);
     }
   }
 
+  // `table_id` ("This reservation is for Table 5.") and `reservation_ulid` have no field here.
   const otherField = Object.entries(action.fieldErrors).find(([field]) => field !== 'guests' && field !== 'notes')?.[1] ?? null;
+  const details = [table.area, table.seats !== null ? `${table.seats} ${table.seats === 1 ? 'seat' : 'seats'}` : null].filter(Boolean).join(' · ');
 
   return (
     <form className="flex flex-col gap-4" onSubmit={(event) => void onSubmit(event)} noValidate aria-busy={action.busy}>
       <ErrorSummary />
       <DialogHeader>
-        <DialogTitle>Open table {table.name}</DialogTitle>
+        <DialogTitle>{reservation ? `Seat ${reservation.guest_name} at table ${table.name}` : `Open table ${table.name}`}</DialogTitle>
         <DialogDescription>
-          {table.area ? `${table.area} · ` : ''}
-          {table.seats} {table.seats === 1 ? 'seat' : 'seats'}
+          {reservation
+            ? `Reserved for ${reservation.party_size} ${reservation.party_size === 1 ? 'guest' : 'guests'}${details ? ` · ${details}` : ''}`
+            : details}
         </DialogDescription>
       </DialogHeader>
       {conflict ? <Banner>{conflict}</Banner> : null}

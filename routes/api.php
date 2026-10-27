@@ -32,6 +32,7 @@ use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\PurchaseOrderController;
 use App\Http\Controllers\Api\V1\PurchaseRequestController;
 use App\Http\Controllers\Api\V1\ReportController;
+use App\Http\Controllers\Api\V1\ReservationController;
 use App\Http\Controllers\Api\V1\ShiftController;
 use App\Http\Controllers\Api\V1\SyncController;
 use App\Http\Controllers\Api\V1\TabController;
@@ -223,8 +224,25 @@ Route::prefix('v1')->name('v1.')->group(function () {
 
         // Dine-in Tables & Tabs (sale.create, via TabPolicy; 409 while dine-in is off in the
         // branch settings). Tab mutations are idempotent; `{ulid}` resolves within the caller's
-        // branch only (other branches → 404).
+        // branch only (other branches → 404). Table Management: GET /tables also allows
+        // report.view, and the status board summary needs report.view.
         Route::get('tables', [TableController::class, 'index'])->name('tables.index');
+        Route::get('tables/summary', [TableController::class, 'summary'])->name('tables.summary');
+
+        // Reservations (Table Management → E; sale.create, via TableReservationPolicy; 409 while
+        // dine-in is off). Mutations are idempotent; `{ulid}` resolves within the caller's
+        // branch only (other branches → 404).
+        Route::controller(ReservationController::class)
+            ->prefix('reservations')
+            ->name('reservations.')
+            ->whereUlid('ulid')
+            ->group(function () {
+                Route::get('/', 'index')->name('index');
+                Route::post('/', 'store')->middleware('idempotent')->name('store');
+                Route::patch('{ulid}', 'update')->middleware('idempotent')->name('update');
+                Route::post('{ulid}/cancel', 'cancel')->middleware('idempotent')->name('cancel');
+                Route::post('{ulid}/no-show', 'noShow')->middleware('idempotent')->name('no_show');
+            });
 
         Route::controller(TabController::class)
             ->prefix('tabs')
@@ -376,6 +394,8 @@ Route::prefix('v1')->name('v1.')->group(function () {
                 ->group(function () {
                     Route::get('/', 'index')->name('index');
                     Route::post('/', 'store')->name('store');
+                    // Table Management → B: one area's floor plan (before `{diningTable}`).
+                    Route::put('layout', 'layout')->name('layout');
                     Route::patch('{diningTable}', 'update')->name('update');
                     Route::delete('{diningTable}', 'destroy')->name('destroy');
                 });

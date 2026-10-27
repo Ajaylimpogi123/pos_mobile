@@ -6,6 +6,10 @@
  * - Every tab mutation takes an `Idempotency-Key`: a ULID made when the
  *   action starts (the body's `ulid` where the body has one), and the server
  *   replays the same response for it.
+ *
+ * Table Management (v1.29): the floor plan layout (§B, `settings.manage`) and
+ * the status board summary (§D, `report.view`). Reservations are in
+ * `@/services/reservations`.
  */
 import { api, buildQuery } from '@/services/api';
 import type {
@@ -25,6 +29,9 @@ import type {
   TabSettleResponse,
   TabTransferRequest,
   TabUpdateRequest,
+  TableLayoutRequest,
+  TableLayoutResponse,
+  TablesSummary,
   TableView,
   TableViewListParams,
 } from '@/services/types';
@@ -65,11 +72,27 @@ export async function deleteTable(id: number): Promise<void> {
   await api.delete<void>(`${ADMIN_TABLES}/${id}`);
 }
 
+/**
+ * PUT /api/v1/admin/tables/layout (Table Management §B): one area's plan,
+ * saved atomically → the area's tables in the admin order. `422` on
+ * `tables.{i}.id` / `tables.{i}.pos_x` names the table.
+ */
+export async function saveTableLayout(body: TableLayoutRequest): Promise<DiningTable[]> {
+  const response = await api.put<TableLayoutResponse>(`${ADMIN_TABLES}/layout`, body);
+  return response.data;
+}
+
 // --- §C Tables view ------------------------------------------------------------
 
 /** GET /api/v1/tables: the active tables in the admin order, each with its open tab (`null` = free). */
 export async function listTables(params: TableViewListParams = {}): Promise<CursorPage<TableView>> {
   return api.get<CursorPage<TableView>>(`${TABLES}${buildQuery({ per_page: params.per_page, cursor: params.cursor })}`);
+}
+
+/** GET /api/v1/tables/summary (Table Management §D; `report.view`; `409` while dine-in is off). */
+export async function getTablesSummary(): Promise<TablesSummary> {
+  const response = await api.get<DataEnvelope<TablesSummary>>(`${TABLES}/summary`);
+  return response.data;
 }
 
 // --- §D Tabs ---------------------------------------------------------------------

@@ -70,7 +70,7 @@ export const ROUTES = {
   newPrinter: staticRoute('/printers/new'),
   /** `(app)/(admin)/settings`: receipt settings, needs `settings.manage`. */
   settings: staticRoute('/settings'),
-  /** Dine-in Tables & Tabs §B: admin tables (`settings.manage`). */
+  /** Table Management §A: the Tables page (Board, Reservations, Floor plan, List; each by permission). */
   tables: staticRoute('/tables'),
   /** `(app)/(admin)/shifts`: needs `report.zread` (Phase 6). */
   shifts: staticRoute('/shifts'),
@@ -148,6 +148,15 @@ export function orderRoute(ulid: string, action?: OrderRouteAction): Href {
 export function tabRoute(ulid: string): Href {
   const pathname: string = '/tabs/[ulid]';
   return { pathname, params: { ulid } } as Href;
+}
+
+/** Table Management §A: the Tables page's tabs (`?tab=`). */
+export type TablesPageTab = 'board' | 'reservations' | 'floor' | 'list';
+
+/** `(app)/(admin)/tables` opened on one tab (e.g. Sell → Tables → **Reservations**). */
+export function tablesRoute(tab: TablesPageTab): Href {
+  const pathname: string = '/tables';
+  return { pathname, params: { tab } } as Href;
 }
 
 /** Dine-in Tables & Tabs: paying a tab (whole, by item or equally). */

@@ -190,12 +190,7 @@ const ReportsPage = lazy(() =>
         default: module.ReportsPage,
     })),
 );
-// Hardening & Pilot: This terminal (everyone), Devices and the Error log (`system.manage`).
-const TerminalPage = lazy(() =>
-    import("@/routes/TerminalPage").then((module) => ({
-        default: module.TerminalPage,
-    })),
-);
+// Hardening & Pilot: Devices and the Error log (`system.manage`).
 const DevicesPage = lazy(() =>
     import("@/routes/DevicesPage").then((module) => ({
         default: module.DevicesPage,
@@ -652,14 +647,6 @@ export function App() {
                                 element={
                                     <ModulePage module="tables">
                                         <TablesPage />
-                                    </ModulePage>
-                                }
-                            />
-                            <Route
-                                path="device"
-                                element={
-                                    <ModulePage module="device">
-                                        <TerminalPage />
                                     </ModulePage>
                                 }
                             />

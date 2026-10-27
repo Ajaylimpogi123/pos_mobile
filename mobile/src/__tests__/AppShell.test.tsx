@@ -182,11 +182,12 @@ describe('sidebar modules', () => {
 
     const ids = screen.getAllByTestId(/^sidebar-item-[a-z_]+$/).map((item) => item.props.testID);
     expect(ids).toEqual([
-      // MASTER §6: (no heading) Dashboard, POS, Order History, Shifts …
+      // MASTER §6: (no heading) Dashboard, POS, Order History, Shifts, Tables (always listed, Table Management §A)
       'sidebar-item-dashboard',
       'sidebar-item-sell',
       'sidebar-item-orders',
       'sidebar-item-shifts',
+      'sidebar-item-tables',
       // Catalogue: Products, Categories, Ingredients
       'sidebar-item-products',
       'sidebar-item-categories',

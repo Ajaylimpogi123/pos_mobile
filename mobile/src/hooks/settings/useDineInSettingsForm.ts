@@ -14,6 +14,18 @@ export const DINE_IN_SAVED_MESSAGE = 'Dine-in settings saved.';
 export const NOTHING_TO_SAVE_MESSAGE = 'Nothing changed.';
 export const SERVICE_CHARGE_RANGE_MESSAGE = 'Enter a percentage from 0 to 20, like 10 or 12.5.';
 
+/** Table Management §A (TM2): `reservation_hold_minutes` is `0–240`. */
+export const HOLD_MINUTES_MAX = 240;
+export const HOLD_MINUTES_RANGE_MESSAGE = `Enter 0 to ${HOLD_MINUTES_MAX} minutes.`;
+
+/** "60" → 60, "" → `null`; `null` unless a whole number of minutes from 0 to 240. */
+export function parseHoldMinutes(text: string): number | null {
+  const trimmed = text.trim();
+  if (!/^\d{1,3}$/.test(trimmed)) return null;
+  const minutes = Number(trimmed);
+  return minutes <= HOLD_MINUTES_MAX ? minutes : null;
+}
+
 /** "10" → 1000, "12.5" → 1250, "" → 0; `null` when it isn't a percentage from 0 to 20 with up to 2 decimals. No floats. */
 export function parseServiceChargePercent(text: string): number | null {
   const trimmed = text.trim().replace(/%$/, '').trim();
@@ -32,9 +44,9 @@ export function serviceChargeText(bps: number): string {
   return `${whole}.${String(fraction).padStart(2, '0').replace(/0$/, '')}`;
 }
 
-export type DineInErrors = { enabled: string | null; serviceCharge: string | null };
+export type DineInErrors = { enabled: string | null; serviceCharge: string | null; holdMinutes: string | null };
 
-const NO_ERRORS: DineInErrors = { enabled: null, serviceCharge: null };
+const NO_ERRORS: DineInErrors = { enabled: null, serviceCharge: null, holdMinutes: null };
 
 /**
  * Settings → **Dine-in** (`settings.manage`; Dine-in Tables & Tabs §A and
@@ -42,12 +54,14 @@ const NO_ERRORS: DineInErrors = { enabled: null, serviceCharge: null };
  * /api/v1/admin/settings (changed fields only). Turning it off while bills are
  * open answers `409 "Close the 3 open bills first."`, shown in the banner.
  * Saving syncs the print config, which carries both settings to Sell.
+ * Table Management (TM2) adds **Hold reserved tables from** (minutes).
  */
 export function useDineInSettingsForm(initial: BranchSettings) {
   const client = useQueryClient();
   const [saved, setSaved] = useState(initial);
   const [enabled, setEnabled] = useState(initial.dine_in_enabled);
   const [percent, setPercent] = useState(() => serviceChargeText(initial.service_charge_bps));
+  const [holdMinutes, setHoldMinutes] = useState(() => String(initial.reservation_hold_minutes));
   const [errors, setErrors] = useState<DineInErrors>(NO_ERRORS);
   const [banner, setBanner] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -68,9 +82,15 @@ export function useDineInSettingsForm(initial: BranchSettings) {
       setErrors({ ...NO_ERRORS, serviceCharge: SERVICE_CHARGE_RANGE_MESSAGE });
       return;
     }
+    const hold = parseHoldMinutes(holdMinutes);
+    if (hold === null) {
+      setErrors({ ...NO_ERRORS, holdMinutes: HOLD_MINUTES_RANGE_MESSAGE });
+      return;
+    }
     const changes: BranchSettingsUpdateRequest = {};
     if (enabled !== saved.dine_in_enabled) changes.dine_in_enabled = enabled;
     if (bps !== saved.service_charge_bps) changes.service_charge_bps = bps;
+    if (hold !== saved.reservation_hold_minutes) changes.reservation_hold_minutes = hold;
     if (Object.keys(changes).length === 0) {
       setNotice(NOTHING_TO_SAVE_MESSAGE);
       return;
@@ -83,6 +103,7 @@ export function useDineInSettingsForm(initial: BranchSettings) {
       setSaved(next);
       setEnabled(next.dine_in_enabled);
       setPercent(serviceChargeText(next.service_charge_bps));
+      setHoldMinutes(String(next.reservation_hold_minutes));
       client.setQueryData(printingKeys.settings(), next);
       void client.invalidateQueries({ queryKey: tableKeys.all });
       void requestPrintConfigSync();
@@ -93,8 +114,9 @@ export function useDineInSettingsForm(initial: BranchSettings) {
         const mapped: DineInErrors = {
           enabled: error.firstError('dine_in_enabled'),
           serviceCharge: error.firstError('service_charge_bps'),
+          holdMinutes: error.firstError('reservation_hold_minutes'),
         };
-        if (mapped.enabled || mapped.serviceCharge) setErrors(mapped);
+        if (mapped.enabled || mapped.serviceCharge || mapped.holdMinutes) setErrors(mapped);
         else setBanner(error.message);
       } else {
         setBanner(getErrorMessage(error));
@@ -108,6 +130,7 @@ export function useDineInSettingsForm(initial: BranchSettings) {
   return {
     enabled,
     percent,
+    holdMinutes,
     errors,
     banner,
     notice,
@@ -118,6 +141,10 @@ export function useDineInSettingsForm(initial: BranchSettings) {
     },
     setPercent: (text: string) => {
       setPercent(text);
+      touched();
+    },
+    setHoldMinutes: (text: string) => {
+      setHoldMinutes(text);
       touched();
     },
     submit: () => void submit(),

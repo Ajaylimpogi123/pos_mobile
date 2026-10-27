@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { FormFooter } from '@/components/shared/FormFooter';
 import { FormLayout } from '@/components/shared/FormLayout';
@@ -7,7 +7,7 @@ import { RecordLoadState } from '@/components/shared/RecordLoadState';
 import { Input } from '@/components/ui/Input';
 import { SwitchRow } from '@/components/ui/SwitchRow';
 import { ROUTES } from '@/constants/routes';
-import { spacing } from '@/constants/theme';
+import { colors, spacing, typography } from '@/constants/theme';
 import { useBranchSettings } from '@/hooks/settings/useReceiptSettingsForm';
 import { useDineInSettingsForm } from '@/hooks/settings/useDineInSettingsForm';
 import type { BranchSettings } from '@/services/types';
@@ -71,6 +71,24 @@ function DineInForm({ settings, embedded, onBack }: { settings: BranchSettings; 
               onSubmitEditing={form.submit}
               testID="dine-in-service-charge"
             />
+            <SectionDivider />
+            <View style={styles.field}>
+              <Input
+                label="Hold reserved tables from (minutes)"
+                value={form.holdMinutes}
+                onChangeText={form.setHoldMinutes}
+                error={form.errors.holdMinutes}
+                placeholder="60"
+                keyboardType="number-pad"
+                maxLength={3}
+                editable={!form.submitting}
+                returnKeyType="done"
+                onSubmitEditing={form.submit}
+                accessibilityHint="How long before the booking time the table is kept free."
+                testID="dine-in-hold-minutes"
+              />
+              <Text style={styles.help}>How long before the booking time the table is kept free.</Text>
+            </View>
           </FormSection>
         </>
       }
@@ -102,5 +120,12 @@ export function DineInSettingsScreen({ embedded = false, onBack = backToSettings
 const styles = StyleSheet.create({
   rows: {
     gap: spacing.md,
+  },
+  field: {
+    gap: spacing.xs,
+  },
+  help: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
 });

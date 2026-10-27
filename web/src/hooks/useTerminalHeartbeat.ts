@@ -32,11 +32,6 @@ export function heartbeatSoon(): void {
     });
 }
 
-/** Notes a heartbeat sent elsewhere ("This terminal" → Check now), so the timer doesn't double it. */
-export function noteHeartbeatSent(): void {
-  lastSentAt = Date.now();
-}
-
 export function useTerminalHeartbeat(): void {
   const deviceId = useSessionStore((state) => registeredDevice(state.device)?.id ?? null);
 

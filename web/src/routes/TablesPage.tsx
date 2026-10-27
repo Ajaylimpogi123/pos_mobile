@@ -1,238 +1,117 @@
 /**
- * Admin → Tables (Dine-in Tables & Tabs §B/§I; `settings.manage`): the
- * branch's dining tables grouped by area, with add, edit, activate or
- * deactivate and delete (confirmed). It works while dine-in is off, so tables
- * can be set up first (the sidebar item shows only while it is on; Settings
- * links here). A table with an open bill can't be deactivated or deleted
- * (`409`, shown in the dialog).
+ * Tables (Table Management §A/§F): always in the sidebar for `settings.manage`
+ * or `report.view`. Up to four tabs, each shown by permission, opening on the
+ * first one the user can see (`?tab=` keeps the choice in the address):
+ * - **Board** (`report.view`): the live status board;
+ * - **Reservations** (`sale.create`);
+ * - **Floor plan** (`settings.manage`): the editor; leaving it with unsaved
+ *   changes asks first;
+ * - **List** (`settings.manage`): the admin list of v1.26.
+ * The page only arranges them; the logic lives in the components and hooks.
  */
-import { EllipsisIcon, PencilIcon, PlusIcon, PowerIcon, TrashIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router';
-import { toast } from 'sonner';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
 
-import { Banner } from '@/components/common/Banner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
-import { EmptyState, ErrorState, LoadMoreFooter, LoadingRows } from '@/components/common/ListStates';
+import { EmptyState } from '@/components/common/ListStates';
 import { PageBand } from '@/components/common/PageBand';
 import { useShellHeader } from '@/components/shell/ShellHeaderContext';
-import { TableFormDialog } from '@/components/tables/TableFormDialog';
-import { StatusBadge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { DataTable, dataTableColumns, type DataTableColumn } from '@/components/ui/data-table';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { useAdminTableList, useDeleteTable, useDineIn, useSetTableActive } from '@/hooks/useDiningTables';
-import { getErrorMessage } from '@/services/api';
-import type { DiningTable } from '@/services/types';
-import { groupByArea, NO_AREA_LABEL } from '@/utils/tables';
+import { FloorPlanEditor } from '@/components/tables/FloorPlanEditor';
+import { ReservationsPanel } from '@/components/tables/ReservationsPanel';
+import { TablesBoard } from '@/components/tables/TablesBoard';
+import { TablesList } from '@/components/tables/TablesList';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useFloorPlanEditor } from '@/hooks/useFloorPlanEditor';
+import { useLeaveGuard } from '@/hooks/useLeaveGuard';
+import { useSessionStore } from '@/stores/session';
+import { hasPermission, PERMISSIONS, type PermissionSlug } from '@/utils/permissions';
 
-const column = dataTableColumns<DiningTable>();
+type TablesTab = 'board' | 'reservations' | 'floor' | 'list';
+
+const TABS: readonly { key: TablesTab; label: string; permission: PermissionSlug }[] = [
+  { key: 'board', label: 'Board', permission: PERMISSIONS.reportView },
+  { key: 'reservations', label: 'Reservations', permission: PERMISSIONS.saleCreate },
+  { key: 'floor', label: 'Floor plan', permission: PERMISSIONS.settingsManage },
+  { key: 'list', label: 'List', permission: PERMISSIONS.settingsManage },
+];
 
 export function TablesPage() {
   useShellHeader('Tables');
-  const list = useAdminTableList();
-  const dineIn = useDineIn();
-  const deletion = useDeleteTable();
-  const activation = useSetTableActive();
-  /** `undefined`: closed; `null`: a new table. */
-  const [editing, setEditing] = useState<DiningTable | null | undefined>(undefined);
-  const [newArea, setNewArea] = useState<string | null>(null);
-  const [toDelete, setToDelete] = useState<DiningTable | null>(null);
-  const [toToggle, setToToggle] = useState<DiningTable | null>(null);
+  const user = useSessionStore((state) => state.user);
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const visible = TABS.filter((tab) => hasPermission(user, tab.permission));
+  const requested = visible.find((tab) => tab.key === params.get('tab'));
+  const current = requested?.key ?? visible[0]?.key ?? null;
+  const [floorDirty, setFloorDirty] = useState(false);
+  const guard = useLeaveGuard(floorDirty);
 
-  const groups = useMemo(() => groupByArea(list.items), [list.items]);
-
-  function add(area: string | null) {
-    setNewArea(area);
-    setEditing(null);
+  function choose(next: string) {
+    if (next === current) return;
+    const go = () => {
+      setFloorDirty(false);
+      setParams({ tab: next }, { replace: true });
+    };
+    if (current === 'floor') guard.confirm(go);
+    else go();
   }
 
-  const columns = useMemo<DataTableColumn<DiningTable>[]>(
-    () => [
-      column.display({ id: 'name', header: 'Table', cell: ({ row }) => <span className="font-medium">{row.original.name}</span> }),
-      column.display({ id: 'seats', header: 'Seats', meta: { align: 'right' }, cell: ({ row }) => <span className="tabular">{row.original.seats}</span> }),
-      column.display({ id: 'sort', header: 'Sort order', meta: { align: 'right' }, cell: ({ row }) => <span className="tabular">{row.original.sort_order}</span> }),
-      column.display({
-        id: 'status',
-        header: 'Status',
-        cell: ({ row }) =>
-          row.original.is_active ? <StatusBadge tone="success" label="Active" /> : <StatusBadge tone="danger" label="Inactive" />,
-      }),
-      column.display({
-        id: 'actions',
-        header: '',
-        meta: { align: 'right', srLabel: 'Actions' },
-        cell: ({ row }) => (
-          <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon-sm" aria-label={`Actions for table ${row.original.name}`}>
-                  <EllipsisIcon aria-hidden="true" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => setEditing(row.original)}>
-                  <PencilIcon aria-hidden="true" />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setToToggle(row.original)}>
-                  <PowerIcon aria-hidden="true" />
-                  {row.original.is_active ? 'Deactivate' : 'Activate'}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" onSelect={() => setToDelete(row.original)}>
-                  <TrashIcon aria-hidden="true" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        ),
-      }),
-    ],
-    [],
-  );
-
   return (
-    <PageBand
-      title="Tables"
-      actions={
-        <Button variant="green" size="lg" onClick={() => add(null)}>
-          <PlusIcon aria-hidden="true" />
-          Add table
-        </Button>
-      }
-    >
-      {!dineIn.loading && !dineIn.enabled ? (
-        <Banner variant="info">
-          Dine-in is off, so these tables don't show on the POS yet. Turn it on in{' '}
-          <Link to="/printers/receipt-settings" className="font-semibold underline underline-offset-4">
-            Receipt settings
-          </Link>
-          .
-        </Banner>
-      ) : null}
-
-      {list.loading ? (
-        <Card>
-          <LoadingRows rows={5} label="Loading tables…" />
-        </Card>
-      ) : list.error ? (
-        <Card>
-          <ErrorState title="Couldn't load the tables" message={list.error} onRetry={list.retry} />
-        </Card>
-      ) : list.items.length === 0 ? (
-        <Card>
-          <EmptyState
-            title="No tables yet"
-            message="Add each dining table with its seats. Use an area (Patio, Upstairs) to group them."
-            action={
-              <Button variant="green" size="lg" onClick={() => add(null)}>
-                Add table
-              </Button>
-            }
-          />
-        </Card>
+    <PageBand title="Tables">
+      {current === null ? (
+        <EmptyState title="Nothing to show" message="Your role can't use any part of Tables. Ask a manager for access." />
       ) : (
-        <>
-          {groups.map((group) => (
-            <Card key={group.key} className="overflow-hidden">
-              <div className="flex items-center justify-between gap-3 border-b border-border p-4">
-                <h2 className="text-base font-semibold">
-                  {group.area ?? NO_AREA_LABEL}{' '}
-                  <span className="text-sm font-normal text-muted-foreground">
-                    · {group.tables.length} {group.tables.length === 1 ? 'table' : 'tables'}
-                  </span>
-                </h2>
-                <Button variant="outline" size="sm" onClick={() => add(group.area)}>
-                  <PlusIcon aria-hidden="true" />
-                  Add here
-                </Button>
-              </div>
-              <DataTable
-                label={`Tables in ${group.area ?? NO_AREA_LABEL}`}
-                columns={columns}
-                data={group.tables}
-                getRowId={(table) => String(table.id)}
-                onRowClick={(table) => setEditing(table)}
-                rowLabel={(table) => `Table ${table.name}, ${table.seats} seats`}
-              />
-            </Card>
-          ))}
-          <Card>
-            <LoadMoreFooter
-              shown={list.items.length}
-              hasMore={list.hasMore}
-              loading={list.loadingMore}
-              onLoadMore={list.loadMore}
-              error={list.loadMoreError}
-              noun="tables"
-            />
-          </Card>
-        </>
+        <Tabs value={current} onValueChange={choose} className="gap-5">
+          <TabsList aria-label="Tables">
+            {visible.map((tab) => (
+              <TabsTrigger key={tab.key} value={tab.key}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {current === 'board' ? (
+            <TabsContent value="board">
+              <TablesBoard />
+            </TabsContent>
+          ) : null}
+          {current === 'reservations' ? (
+            <TabsContent value="reservations">
+              <ReservationsPanel onSeated={(tab) => void navigate(`/sell?view=tables&tab=${encodeURIComponent(tab.ulid)}`)} />
+            </TabsContent>
+          ) : null}
+          {current === 'floor' ? (
+            <TabsContent value="floor">
+              <FloorTab confirmLeave={guard.confirm} onDirtyChange={setFloorDirty} />
+            </TabsContent>
+          ) : null}
+          {current === 'list' ? (
+            <TabsContent value="list">
+              <TablesList />
+            </TabsContent>
+          ) : null}
+        </Tabs>
       )}
-
-      <TableFormDialog
-        table={editing}
-        defaultArea={newArea}
-        onClose={() => {
-          setEditing(undefined);
-          setNewArea(null);
-        }}
-      />
-
       <ConfirmDialog
-        open={toToggle !== null}
-        onClose={() => {
-          setToToggle(null);
-          activation.reset();
-        }}
-        title={toToggle?.is_active ? `Deactivate table ${toToggle.name}` : `Activate table ${toToggle?.name ?? ''}`}
-        description={
-          toToggle?.is_active ? 'It no longer shows on the POS Tables view. Its past orders are kept.' : 'It shows on the POS Tables view again.'
-        }
-        confirmLabel={toToggle?.is_active ? 'Deactivate' : 'Activate'}
-        pendingLabel="Saving…"
-        pending={activation.isPending}
-        error={activation.error ? getErrorMessage(activation.error) : null}
-        destructive={toToggle?.is_active ?? false}
-        onConfirm={() => {
-          if (!toToggle) return;
-          activation.mutate(
-            { id: toToggle.id, active: !toToggle.is_active },
-            {
-              onSuccess: (saved) => {
-                toast.success(saved.is_active ? `Table ${saved.name} is active.` : `Table ${saved.name} is inactive.`);
-                setToToggle(null);
-              },
-            },
-          );
-        }}
-      />
-
-      <ConfirmDialog
-        open={toDelete !== null}
-        onClose={() => {
-          setToDelete(null);
-          deletion.reset();
-        }}
-        title={`Delete table ${toDelete?.name ?? ''}`}
-        description="It is removed from the POS. Orders already paid at this table keep its name."
-        confirmLabel="Delete table"
-        pendingLabel="Deleting…"
-        pending={deletion.isPending}
-        error={deletion.error ? getErrorMessage(deletion.error) : null}
-        onConfirm={() => {
-          if (!toDelete) return;
-          deletion.mutate(toDelete.id, {
-            onSuccess: () => {
-              toast.success(`Table ${toDelete.name} deleted.`);
-              setToDelete(null);
-            },
-          });
-        }}
+        open={guard.pending}
+        onClose={guard.stay}
+        title="Leave without saving?"
+        description="Your floor plan changes aren't saved. They are lost if you leave now."
+        confirmLabel="Discard changes"
+        pendingLabel="Leaving…"
+        pending={false}
+        error={null}
+        onConfirm={guard.leave}
       />
     </PageBand>
   );
+}
+
+/** The editor, reporting its unsaved state to the page (the leave guard). */
+function FloorTab({ confirmLeave, onDirtyChange }: { confirmLeave: (run: () => void) => void; onDirtyChange: (dirty: boolean) => void }) {
+  const editor = useFloorPlanEditor();
+  const dirty = editor.dirty;
+  useEffect(() => {
+    onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
+  return <FloorPlanEditor editor={editor} confirmLeave={confirmLeave} />;
 }

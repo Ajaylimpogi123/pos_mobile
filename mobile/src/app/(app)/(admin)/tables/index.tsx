@@ -1,6 +1,10 @@
-import { TableListScreen } from '@/components/tables/TableListScreen';
+import { TablesScreen } from '@/components/tables/TablesScreen';
 
-/** Tables (`settings.manage`; Dine-in Tables & Tabs §B): GET/POST/PATCH/DELETE /api/v1/admin/tables. */
+/**
+ * Tables (Table Management §A): Board (`report.view`), Reservations
+ * (`sale.create`), Floor plan and List (`settings.manage`), each shown by
+ * permission. `?tab=` opens one of them.
+ */
 export default function TablesRoute() {
-  return <TableListScreen />;
+  return <TablesScreen />;
 }

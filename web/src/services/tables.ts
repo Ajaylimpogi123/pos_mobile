@@ -2,8 +2,10 @@
  * Dine-in Tables & Tabs (v1.26) §B and §C: the branch's dining tables.
  * - Admin (`settings.manage`): list, create, update, delete. They work while
  *   dine-in is off, so tables can be set up first.
- * - `listTables` (`sale.create`): the active tables with their open tab
- *   summary; `409` while dine-in is off.
+ * - `listTables` (`sale.create` or `report.view`): the active tables with
+ *   their open tab summary; `409` while dine-in is off.
+ * Table Management (v1.29): `saveTableLayout` (§B, one area's floor plan) and
+ * `getTablesSummary` (§D, the status board; `report.view`).
  */
 import { api, buildQuery } from '@/services/api';
 import type {
@@ -13,6 +15,9 @@ import type {
   DiningTableCreateRequest,
   DiningTableListParams,
   DiningTableUpdateRequest,
+  TableLayoutRequest,
+  TableLayoutResponse,
+  TablesSummary,
   TableView,
   TableViewListParams,
 } from '@/services/types';
@@ -44,4 +49,21 @@ export async function deleteTable(id: number): Promise<void> {
 /** GET /api/v1/tables: the active tables, each with its open tab (`null` = free). */
 export async function listTables(params: TableViewListParams = {}): Promise<CursorPage<TableView>> {
   return api.get<CursorPage<TableView>>(`/api/v1/tables${buildQuery({ per_page: params.per_page, cursor: params.cursor })}`);
+}
+
+/**
+ * PUT /api/v1/admin/tables/layout (Table Management §B): one area's plan,
+ * saved atomically → 200 `{ data: DiningTable[] }` (the area's tables).
+ * `422` on `tables.{i}.id` / `tables.{i}.pos_x` for a table outside the area,
+ * off the grid or overlapping another.
+ */
+export async function saveTableLayout(body: TableLayoutRequest): Promise<DiningTable[]> {
+  const response = await api.put<TableLayoutResponse>(`${ADMIN_TABLES}/layout`, body);
+  return response.data;
+}
+
+/** GET /api/v1/tables/summary (Table Management §D; `report.view`; `409` while dine-in is off). */
+export async function getTablesSummary(): Promise<TablesSummary> {
+  const response = await api.get<DataEnvelope<TablesSummary>>('/api/v1/tables/summary');
+  return response.data;
 }

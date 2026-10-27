@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api\V1\Admin;
 use App\Actions\Tabs\CreateDiningTableAction;
 use App\Actions\Tabs\DeleteDiningTableAction;
 use App\Actions\Tabs\UpdateDiningTableAction;
+use App\Actions\Tabs\UpdateTableLayoutAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\Tables\ListDiningTablesRequest;
 use App\Http\Requests\Admin\Tables\StoreDiningTableRequest;
 use App\Http\Requests\Admin\Tables\UpdateDiningTableRequest;
+use App\Http\Requests\Admin\Tables\UpdateTableLayoutRequest;
 use App\Http\Resources\DiningTableResource;
 use App\Models\DiningTable;
 use App\Models\User;
@@ -69,6 +71,20 @@ class DiningTableController extends Controller
         $this->authorize('update', $diningTable);
 
         return new DiningTableResource($update->execute($diningTable, $request->validated(), $this->actor($request), $request->ip()));
+    }
+
+    /**
+     * PUT /api/v1/admin/tables/layout (Table Management → B)
+     *
+     * Saves one area's floor plan atomically; 200 with the area's tables in the admin order.
+     */
+    public function layout(UpdateTableLayoutRequest $request, UpdateTableLayoutAction $update): AnonymousResourceCollection
+    {
+        $this->authorize('updateLayout', DiningTable::class);
+
+        return DiningTableResource::collection(
+            $update->execute($this->actor($request), $request->area(), $request->entries(), $request->ip()),
+        );
     }
 
     /**

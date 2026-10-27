@@ -536,7 +536,7 @@ function branchSettingsKeys(): array
 {
     return [
         'receipt_header_lines', 'receipt_footer_lines', 'auto_print_receipt', 'receipt_copies',
-        'print_kitchen_tickets', 'dine_in_enabled', 'service_charge_bps', 'updated_at',
+        'print_kitchen_tickets', 'dine_in_enabled', 'service_charge_bps', 'reservation_hold_minutes', 'updated_at',
     ];
 }
 

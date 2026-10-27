@@ -14,6 +14,7 @@ const KEYS = {
   expiresAt: 'pos.auth.expires_at',
   user: 'pos.auth.user',
   sidebarCollapsed: 'pos.ui.sidebar_collapsed',
+  tablesView: 'pos.ui.tables_view',
   receiptPrinterId: 'pos.print.receipt_printer_id',
   installId: 'pos.device.install_id',
   registeredDevice: 'pos.device.registered',
@@ -124,6 +125,28 @@ export async function getSidebarCollapsed(): Promise<boolean | null> {
 export async function saveSidebarCollapsed(collapsed: boolean): Promise<void> {
   try {
     await SecureStore.setItemAsync(KEYS.sidebarCollapsed, collapsed ? '1' : '0');
+  } catch {
+    // A preference that can't be saved just falls back to the default next launch.
+  }
+}
+
+/** Table Management §C: Sell → Tables shows the floor plan or the grid on this device. */
+export type TablesViewPreference = 'floor' | 'grid';
+
+/** The Floor | Grid choice on this device; `null` when never set or unreadable. Never throws. */
+export async function getTablesViewPreference(): Promise<TablesViewPreference | null> {
+  try {
+    const raw = await SecureStore.getItemAsync(KEYS.tablesView);
+    return raw === 'floor' || raw === 'grid' ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort save of the Floor | Grid choice. Never throws. */
+export async function saveTablesViewPreference(view: TablesViewPreference): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(KEYS.tablesView, view);
   } catch {
     // A preference that can't be saved just falls back to the default next launch.
   }

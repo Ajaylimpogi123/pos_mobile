@@ -1,16 +1,14 @@
 import { memo } from 'react';
 import { Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ListHeader } from '@/components/shared/ListHeader';
 import { TableFormDialog } from '@/components/tables/TableFormDialog';
 import { seatsLabel, tableLabel } from '@/components/tables/tableLabels';
+import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Icon } from '@/components/ui/Icon';
 import { LoadingState } from '@/components/ui/LoadingState';
-import { Screen } from '@/components/ui/Screen';
 import { colors, hitTarget, iconSizes, layout, opacity, pressedScale, radius, sizes, spacing, typography } from '@/constants/theme';
 import { useAdminTables } from '@/hooks/tables/useAdminTables';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -47,17 +45,23 @@ const TableRow = memo(function TableRow({ table, onPress }: RowProps) {
 });
 
 /**
- * Admin → **Tables** (`settings.manage`; Dine-in Tables & Tabs §B and §I):
- * the branch's tables grouped by area (inactive ones included), with **New
- * table**, and a tap to edit, deactivate or delete. Every list state:
- * loading, empty, error with Retry and pull-to-refresh (all pages are read).
- * Works while dine-in is off, so tables can be set up first.
+ * Tables → **List** (`settings.manage`; Dine-in Tables & Tabs §B and §I,
+ * Table Management §A): the branch's tables grouped by area (inactive ones
+ * included), with **New table**, and a tap to edit, deactivate or delete.
+ * Every list state: loading, empty, error with Retry and pull-to-refresh (all
+ * pages are read). Works while dine-in is off, so tables can be set up first.
  */
-export function TableListScreen() {
+export function TableListPanel() {
   const screen = useAdminTables();
   const { screenPaddingX, screenPaddingY } = useResponsive();
   const { list, groups } = screen;
   const refresh = <RefreshControl refreshing={list.isRefetching && !list.isPending} onRefresh={() => void list.refetch()} />;
+
+  const newButton = (
+    <View style={styles.toolbar}>
+      <Button title="New table" leftIcon="add" onPress={screen.openNew} testID="tables-new" />
+    </View>
+  );
 
   let body;
   if (list.grid.loading) body = <LoadingState variant="list" message="Loading tables…" testID="tables-loading" />;
@@ -94,6 +98,7 @@ export function TableListScreen() {
           </Text>
         )}
         renderItem={({ item }) => <TableRow table={item} onPress={screen.openTable} />}
+        ListHeaderComponent={newButton}
         stickySectionHeadersEnabled={false}
         refreshControl={refresh}
         contentContainerStyle={[
@@ -106,19 +111,21 @@ export function TableListScreen() {
   }
 
   return (
-    <Screen edges={[]} testID="table-list-screen">
-      <ListHeader band title="Tables" subtitle="Dine-in tables by area" newLabel="New table" newTitle="New table" onNew={screen.openNew} testIDPrefix="tables" />
-      <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.body}>
-        {body}
-      </SafeAreaView>
+    <View style={styles.body} testID="table-list-screen">
+      {body}
       <TableFormDialog screen={screen} />
-    </Screen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   body: {
     flex: 1,
+  },
+  toolbar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingTop: spacing.md,
   },
   /** The list sits in a white card over the band (its section titles never land on the band). */
   content: {

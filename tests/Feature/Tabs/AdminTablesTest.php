@@ -31,7 +31,7 @@ describe('GET /admin/tables', function () {
             ->assertJsonStructure(['data', 'links', 'meta' => ['path', 'per_page', 'next_cursor', 'prev_cursor']]);
 
         expect(array_column($response->json('data'), 'name'))->toBe(['9', '3', '1', '2'])
-            ->and(array_keys($response->json('data.0')))->toBe(['id', 'name', 'area', 'seats', 'sort_order', 'is_active', 'updated_at'])
+            ->and(array_keys($response->json('data.0')))->toBe(['id', 'name', 'area', 'seats', 'pos_x', 'pos_y', 'width', 'height', 'shape', 'sort_order', 'is_active', 'updated_at'])
             ->and($response->json('data.0.area'))->toBeNull()
             ->and($response->json('data.1.is_active'))->toBeFalse()
             ->and($response->json('meta.per_page'))->toBe(100);

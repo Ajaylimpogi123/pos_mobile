@@ -586,6 +586,21 @@ export const layout = {
   rowActionsWidth: 48,
   /** Toasts: max width (tablets), centred at the top. */
   toastMaxWidth: 480,
+  /**
+   * Table Management floor plan (24 × 16 cells): a cell is never smaller than
+   * this (a 2 × 2 table stays a 48 dp target; narrower screens scroll the plan
+   * sideways) nor larger than the max (very wide screens).
+   */
+  floorCellMin: 24,
+  floorCellMax: 64,
+  /** Floor plan editor: the selection / Unplaced side panel beside the plan (tablet landscape). */
+  floorSidePanelWidth: 300,
+  /** Floor plan editor: a table in the Unplaced tray. */
+  floorTrayItemSize: 72,
+  /** Reservations: the time column of a reservation row. */
+  reservationTimeWidth: 84,
+  /** Table Management board: a stat card's preferred width before the cards wrap. */
+  boardStatBasis: 220,
 } as const;
 
 export const opacity = {

@@ -58,3 +58,26 @@ export function elapsedLabel(minutes: number): string {
 export function roundLabel(roundNo: number): string {
   return `Round ${roundNo}`;
 }
+
+// --- Table Management (v1.29) ---------------------------------------------------
+
+/** §C: a table's status word (always shown with its dot; colour is never the only cue). */
+export const TABLE_STATUS_LABELS = { free: 'Free', occupied: 'Occupied', reserved: 'Reserved' } as const;
+
+/** §E: a reservation's status word. */
+export const RESERVATION_STATUS_LABELS = { booked: 'Booked', seated: 'Seated', cancelled: 'Cancelled', no_show: 'No-show' } as const;
+
+/** §A: the tabs' messages while dine-in is off. */
+export const BOARD_DINE_IN_OFF = 'Turn on dine-in in Settings to use the board.';
+export const RESERVATIONS_DINE_IN_OFF = 'Turn on dine-in in Settings to take reservations.';
+
+/** §F: the floor plan on a phone. */
+export const FLOOR_PLAN_PHONE_NOTE = 'Edit the floor plan on a tablet or computer.';
+
+/** §D: the note under Pending payments. */
+export const PENDING_NOTE = 'Before discounts and service charge';
+
+/** "Reserved for Santos · 4 guests · 7:00 PM". */
+export function reservedForLabel(guestName: string, partySize: number, time: string): string {
+  return `Reserved for ${guestName} · ${guestsLabel(partySize)} · ${time}`;
+}

@@ -18,7 +18,6 @@ import {
   Clock,
   LayoutDashboard,
   LayoutGrid,
-  MonitorSmartphone,
   Printer,
   ReceiptText,
   Ruler,
@@ -54,7 +53,6 @@ export type ModuleKey =
   | 'reports'
   | 'printers'
   | 'tables'
-  | 'device'
   | 'devices'
   | 'errorLog';
 
@@ -137,16 +135,15 @@ export const MODULES: readonly AppModule[] = [
     group: 'main',
     ready: true,
   },
-  // Dine-in Tables & Tabs §B/§I: the branch's tables (settings.manage), in the sidebar only while dine-in is on.
+  // Table Management §A: always in the sidebar for settings.manage or report.view (Board, Reservations, Floor plan, List by permission).
   {
     key: 'tables',
     label: 'Tables',
     icon: Armchair,
     path: '/tables',
-    permissions: [PERMISSIONS.settingsManage],
+    permissions: [PERMISSIONS.settingsManage, PERMISSIONS.reportView],
     group: 'main',
     ready: true,
-    requires: 'dine_in',
   },
 
   // Catalogue
@@ -233,8 +230,6 @@ export const MODULES: readonly AppModule[] = [
     group: 'settings',
     ready: true,
   },
-  // Hardening & Pilot §I: "This terminal", for every signed-in user.
-  { key: 'device', label: 'This terminal', icon: MonitorSmartphone, path: '/device', permissions: null, group: 'settings', ready: true },
   // Hardening & Pilot §E: admin Devices and the Error log (`system.manage`).
   {
     key: 'devices',

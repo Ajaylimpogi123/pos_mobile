@@ -36,6 +36,7 @@ export function makeSettings(overrides: Partial<BranchSettings> = {}): BranchSet
     print_kitchen_tickets: true,
     dine_in_enabled: false,
     service_charge_bps: 0,
+    reservation_hold_minutes: 60,
     updated_at: null,
     ...overrides,
   };

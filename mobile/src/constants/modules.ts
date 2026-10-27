@@ -74,7 +74,7 @@ export type ModuleGroup = {
 
 export const MODULE_GROUPS: readonly ModuleGroup[] = [
   {
-    // MASTER §6: the first group has no heading; Tables shows only while dine-in is on.
+    // MASTER §6: the first group has no heading. Tables is always listed (Table Management §A).
     key: 'main',
     label: '',
     modules: [
@@ -118,15 +118,14 @@ export const MODULE_GROUPS: readonly ModuleGroup[] = [
         permission: PERMISSIONS.reportZread,
       },
       {
-        // Dine-in Tables & Tabs §I: the tables, only while dine-in is on (Settings → Tables reaches them before).
+        // Table Management §A: always in the menu (dine-in on or off) for managers and the board.
         key: 'tables',
         label: 'Tables',
         icon: 'restaurant-outline',
         activeIcon: 'restaurant',
         status: 'ready',
         route: ROUTES.tables,
-        permission: PERMISSIONS.settingsManage,
-        requires: 'dine_in',
+        permission: [PERMISSIONS.settingsManage, PERMISSIONS.reportView],
       },
     ],
   },

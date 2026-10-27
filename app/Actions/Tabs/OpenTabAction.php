@@ -4,10 +4,13 @@ namespace App\Actions\Tabs;
 
 use App\Actions\Audit\RecordAuditLog;
 use App\Actions\Idempotency\ClaimIdempotencyKey;
+use App\Actions\Reservations\EnsureTableNotHeld;
+use App\Actions\Reservations\LockBookedReservation;
 use App\Exceptions\ConflictException;
 use App\Models\Device;
 use App\Models\DiningTable;
 use App\Models\Tab;
+use App\Models\TableReservation;
 use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +25,13 @@ use Illuminate\Validation\ValidationException;
  * backstop under concurrency (a violation is the same `409`). `guests` defaults to the
  * table's seats. Audit: `tab.opened`.
  *
+ * Table Management → E (TM2):
+ * - with `reservation_ulid`, the reservation (locked after the table) must still be `booked`
+ *   (`409`) and be for this table (`422` on `table_id`: `This reservation is for Table 5.`);
+ *   `guests` then defaults to its `party_size`, and on success it becomes `seated` with the
+ *   tab's id (audit `reservation.seated`);
+ * - without it, a table held by a booked reservation is a `409` (EnsureTableNotHeld).
+ *
  * A ULID that is already recorded (a key released after the commit) returns that tab; one of
  * another branch is a `409`, as for sales.
  */
@@ -29,7 +39,13 @@ class OpenTabAction
 {
     public const MESSAGE_OCCUPIED = 'Table %s already has an open bill.';
 
-    public function __construct(private readonly RecordAuditLog $recordAuditLog) {}
+    public const MESSAGE_OTHER_TABLE = 'This reservation is for Table %s.';
+
+    public function __construct(
+        private readonly RecordAuditLog $recordAuditLog,
+        private readonly LockBookedReservation $lockBookedReservation,
+        private readonly EnsureTableNotHeld $ensureTableNotHeld,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $input  Validated OpenTabRequest input
@@ -75,8 +91,14 @@ class OpenTabAction
             ->first()
             ?? throw ValidationException::withMessages(['table_id' => trans('validation.exists', ['attribute' => 'table id'])]);
 
+        $reservation = $this->reservation($actor, $table, $input['reservation_ulid'] ?? null);
+
         if ($table->hasOpenTab()) {
             throw new ConflictException(sprintf(self::MESSAGE_OCCUPIED, $table->name));
+        }
+
+        if ($reservation === null) {
+            $this->ensureTableNotHeld->execute($table);
         }
 
         $tab = new Tab;
@@ -86,7 +108,7 @@ class OpenTabAction
             'table_id' => $table->id,
             'open_table_id' => $table->id,
             'status' => Tab::STATUS_OPEN,
-            'guests' => (int) ($input['guests'] ?? $table->seats),
+            'guests' => (int) ($input['guests'] ?? $reservation?->party_size ?? $table->seats),
             'customer_id' => $input['customer_id'] ?? null,
             'notes' => $input['notes'] ?? null,
             'rounds_count' => 0,
@@ -103,7 +125,56 @@ class OpenTabAction
             ip: $ip,
         );
 
+        if ($reservation !== null) {
+            $now = now()->startOfSecond();
+
+            $reservation->forceFill([
+                'status' => TableReservation::STATUS_SEATED,
+                'tab_id' => $tab->id,
+                'status_changed_by' => $actor->id,
+                'status_changed_at' => $now,
+                'updated_by' => $actor->id,
+            ])->save();
+
+            $this->recordAuditLog->execute(
+                action: 'reservation.seated',
+                actor: $actor,
+                subject: $reservation,
+                changes: ['ulid' => $reservation->ulid, 'tab_ulid' => $tab->ulid, 'table' => $table->name],
+                ip: $ip,
+            );
+        }
+
         return $tab->refresh()->load(Tab::RESOURCE_RELATIONS);
+    }
+
+    /**
+     * The booked reservation being seated (locked), or null without `reservation_ulid`.
+     *
+     * @throws ConflictException when it is no longer booked
+     * @throws ValidationException when it is for another table
+     */
+    private function reservation(User $actor, DiningTable $table, ?string $ulid): ?TableReservation
+    {
+        if ($ulid === null) {
+            return null;
+        }
+
+        $found = TableReservation::query()
+            ->where('branch_id', $actor->branch_id)
+            ->where('ulid', strtoupper($ulid))
+            ->first()
+            ?? throw ValidationException::withMessages(['reservation_ulid' => trans('validation.exists', ['attribute' => 'reservation ulid'])]);
+
+        $reservation = $this->lockBookedReservation->execute($found);
+
+        if ($reservation->table_id !== $table->id) {
+            $name = DiningTable::withTrashed()->whereKey($reservation->table_id)->value('name');
+
+            throw ValidationException::withMessages(['table_id' => sprintf(self::MESSAGE_OTHER_TABLE, $name)]);
+        }
+
+        return $reservation;
     }
 
     /**

@@ -13,7 +13,7 @@ import { useLatestCallback } from '@/components/shared/useLatestCallback';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Screen } from '@/components/ui/Screen';
-import { ROUTES } from '@/constants/routes';
+import { ROUTES, tablesRoute } from '@/constants/routes';
 import { layout } from '@/constants/theme';
 import { useLogout } from '@/hooks/useLogout';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -106,7 +106,7 @@ export function SettingsScreen() {
         setSelected(key);
         setPaneOpen(true);
       } else router.push(key === 'printers' ? ROUTES.printers : sectionHref(key));
-    } else if (key === 'tables') router.push(ROUTES.tables);
+    } else if (key === 'tables') router.push(tablesRoute('list'));
     else if (key === 'staff') router.push(ROUTES.staff);
     else if (key === 'customers') router.push(ROUTES.customers);
     else logout.requestLogout();

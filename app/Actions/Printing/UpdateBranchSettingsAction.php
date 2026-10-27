@@ -101,7 +101,7 @@ class UpdateBranchSettingsAction
         return match ($key) {
             BranchSettings::RECEIPT_HEADER_LINES, BranchSettings::RECEIPT_FOOTER_LINES => array_values(array_map('strval', $value)),
             BranchSettings::AUTO_PRINT_RECEIPT, BranchSettings::PRINT_KITCHEN_TICKETS, BranchSettings::DINE_IN_ENABLED => filter_var($value, FILTER_VALIDATE_BOOLEAN),
-            BranchSettings::RECEIPT_COPIES, BranchSettings::SERVICE_CHARGE_BPS => (int) $value,
+            BranchSettings::RECEIPT_COPIES, BranchSettings::SERVICE_CHARGE_BPS, BranchSettings::RESERVATION_HOLD_MINUTES => (int) $value,
             default => $value,
         };
     }

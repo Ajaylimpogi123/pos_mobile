@@ -94,11 +94,18 @@ describe('labels and grouping', () => {
 });
 
 describe('sidebar', () => {
-  const manager = { permissions: ['settings.manage'] } as unknown as AuthUser;
-  const keys = (dineIn: boolean) => visibleModuleGroups(manager, { dineIn }).flatMap((group) => group.modules.map((module) => module.key));
+  const userWith = (permissions: string[]) => ({ permissions }) as unknown as AuthUser;
+  const keys = (user: AuthUser, dineIn: boolean) =>
+    visibleModuleGroups(user, { dineIn }).flatMap((group) => group.modules.map((module) => module.key));
 
-  it('shows Tables only while dine-in is on', () => {
-    expect(keys(false)).not.toContain('tables');
-    expect(keys(true)).toContain('tables');
+  it('shows Tables whether dine-in is on or off (Table Management §A)', () => {
+    const manager = userWith(['settings.manage']);
+    expect(keys(manager, false)).toContain('tables');
+    expect(keys(manager, true)).toContain('tables');
+  });
+
+  it('shows Tables for settings.manage or report.view, not for sale.create alone', () => {
+    expect(keys(userWith(['report.view']), false)).toContain('tables');
+    expect(keys(userWith(['sale.create']), true)).not.toContain('tables');
   });
 });

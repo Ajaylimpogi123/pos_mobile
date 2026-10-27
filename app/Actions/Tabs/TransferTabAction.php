@@ -3,6 +3,7 @@
 namespace App\Actions\Tabs;
 
 use App\Actions\Audit\RecordAuditLog;
+use App\Actions\Reservations\EnsureTableNotHeld;
 use App\Exceptions\ConflictException;
 use App\Models\DiningTable;
 use App\Models\Tab;
@@ -15,8 +16,9 @@ use Illuminate\Validation\ValidationException;
  * Moves an open tab to another active, free table (POST /api/v1/tabs/{ulid}/transfer, T2,
  * Dine-in Tables & Tabs → D.8). Under the tab's and the target table's locks: an occupied
  * target is a `409 "Table 7 is occupied. Merge the bills instead."` (the UNIQUE
- * `open_table_id` is the backstop). Audit: `tab.transferred` (`{from, to}`: the tables'
- * names).
+ * `open_table_id` is the backstop). A target held by a booked reservation is a `409`
+ * (Table Management → E, EnsureTableNotHeld). Audit: `tab.transferred` (`{from, to}`: the
+ * tables' names).
  */
 class TransferTabAction
 {
@@ -25,6 +27,7 @@ class TransferTabAction
     public function __construct(
         private readonly LockOpenTab $lockOpenTab,
         private readonly RecordAuditLog $recordAuditLog,
+        private readonly EnsureTableNotHeld $ensureTableNotHeld,
     ) {}
 
     /**
@@ -55,6 +58,8 @@ class TransferTabAction
         if ($target->hasOpenTab()) {
             throw new ConflictException(sprintf(self::MESSAGE_OCCUPIED, $target->name));
         }
+
+        $this->ensureTableNotHeld->execute($target);
 
         $from = DiningTable::withTrashed()->whereKey($locked->table_id)->value('name');
 

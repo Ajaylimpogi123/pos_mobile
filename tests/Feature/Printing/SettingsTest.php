@@ -69,6 +69,7 @@ describe('show', function () {
             'print_kitchen_tickets' => true,
             'dine_in_enabled' => false,
             'service_charge_bps' => 0,
+            'reservation_hold_minutes' => 60,
             'updated_at' => null,
         ]]);
     });
@@ -102,6 +103,7 @@ describe('update', function () {
             'print_kitchen_tickets' => true,
             'dine_in_enabled' => false,
             'service_charge_bps' => 0,
+            'reservation_hold_minutes' => 60,
             'updated_at' => '2026-09-25T03:00:00Z',
         ]]);
 
@@ -142,6 +144,7 @@ describe('update', function () {
             'print_kitchen_tickets' => false,
             'dine_in_enabled' => false,
             'service_charge_bps' => 0,
+            'reservation_hold_minutes' => 60,
             'updated_at' => '2026-09-25T04:00:00Z',
         ]]);
 
@@ -219,6 +222,7 @@ describe('branch isolation', function () {
             'print_kitchen_tickets' => true,
             'dine_in_enabled' => false,
             'service_charge_bps' => 0,
+            'reservation_hold_minutes' => 60,
             'updated_at' => null,
         ]]);
 

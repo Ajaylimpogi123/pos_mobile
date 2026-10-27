@@ -30,6 +30,8 @@ class BranchSettingsResource extends JsonResource
             // Dine-in Tables & Tabs → A.
             'dine_in_enabled' => $settings->dineInEnabled(),
             'service_charge_bps' => $settings->serviceChargeBps(),
+            // Table Management → A (TM2).
+            'reservation_hold_minutes' => $settings->reservationHoldMinutes(),
             'updated_at' => $settings->updatedAt()?->toIso8601ZuluString(),
         ];
     }

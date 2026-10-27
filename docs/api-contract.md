@@ -3318,7 +3318,7 @@ The APK is installed on the pilot tablets directly from the EAS internal-distrib
   - `printers`: the terminal's receipt printer plus the kitchen printers. Each one's `ok` is its latest print job's status (`printed` means ok, `failed` means not ok, none means omitted).
 - No outbox fields. Failures are silent.
 
-**"This terminal" page:** route `/device`, under Settings, for every signed-in user. It has the same layout as the tablet's §E, without the outbox and version items.
+**"This terminal" page:** route `/device`, under Settings, for every signed-in user. It has the same layout as the tablet's §E, without the outbox and version items. *(Removed from the web on 2026-10-26 at the user's request: no menu item or route. The error capture, the error flush and the heartbeat still run in the background, and the receipt printer is still chosen on Printers and on Sell.)*
 - **Checklist:**
   1. Server reachable;
   2. Terminal registered;
@@ -4064,6 +4064,269 @@ Comparison with the previous period (the trend badge, Q-041), custom date ranges
 
 ---
 
+## Feature: Table Management — APPROVED (v1.29)
+Status: **APPROVED** (2026-10-26, as drafted, with the defaults below). Builds on Dine-in Tables & Tabs (v1.26) and changes none of its rules unless stated here.
+
+**Goal:** give managers one place to run the dining room: a live status board with the pending payments, a floor plan, and reservations. Tables stay manageable while dine-in is off.
+
+**Choices made (user, 2026-10-26):** all four: a live status board, a floor plan, reservations that hold a table, and Tables always in the menu.
+
+**Defaults (approved as drafted):**
+- **Floor plan grid:**
+  - each area is a grid of **24 × 16** cells;
+  - a table is a rectangle or a circle, **1–6 cells** wide and high, and new tables start at 2 × 2;
+  - the plan is edited on a tablet or a computer; on a phone the plan is view-only.
+- **Reservation slot:** a reservation takes its table for **120 minutes**.
+- **Reservation hold:**
+  - a reservation holds a free table from **60 minutes** before its time; the 60 is a branch setting, `reservation_hold_minutes`;
+  - the hold ends when the slot ends, so a forgotten reservation never blocks a table for good;
+  - while a table is held, nobody can open a bill on it until the reservation is **seated**, **cancelled** or marked **no-show**.
+- **Status board access:** it needs `report.view`, the managers' permission. Reservations need `sale.create`, so cashiers and waiters can take bookings.
+
+**Not in this feature:**
+- online or self-service booking;
+- deposits;
+- SMS or email reminders;
+- a waitlist;
+- reservations not tied to a table;
+- several floors drawn as one plan (an **area** is one plan);
+- rotated tables and decorative shapes (walls, bar counter).
+
+**Rounds:**
+- **TM1:** Tables always in the menu, the floor plan and the status board.
+- **TM2:** reservations.
+
+### A. Permissions, menu and settings
+- **The Tables page is always in the sidebar.**
+  - It no longer depends on dine-in being on.
+  - It shows for `settings.manage` **or** `report.view`.
+- **The page has up to four tabs**, each shown by permission:
+
+| Tab | Needs | While dine-in is off |
+|---|---|---|
+| **Board** (§D) | `report.view` | `Turn on dine-in in Settings to use the board.` |
+| **Reservations** (§E, TM2) | `sale.create` | `Turn on dine-in in Settings to take reservations.` |
+| **Floor plan** (§B) | `settings.manage` | works |
+| **List** (today's admin screen, §B of v1.26) | `settings.manage` | works |
+
+- **`GET /tables` permission:** it now needs `sale.create` **or** `report.view`, so the Board can read it.
+- **`BranchSettings` gains** one field (TM2), in `GET/PATCH /admin/settings` and in `GET /print-config`'s `settings`:
+
+| Field | Type | Default | PATCH rule |
+|---|---|---|---|
+| `reservation_hold_minutes` | integer | `60` | `integer`, `min:0`, `max:240` |
+
+- **Turning dine-in off** while reservations are booked is allowed. The reservations stay booked but do nothing until dine-in is on again. Turning it off while bills are open is still blocked (`409`, v1.26 §A).
+
+### B. Floor plan (TM1; `settings.manage`)
+**`DiningTable` gains** five fields, after `seats`:
+```json
+{ "id": 5, "name": "5", "area": "Patio", "seats": 4,
+  "pos_x": 3, "pos_y": 2, "width": 2, "height": 2, "shape": "rect",
+  "sort_order": 0, "is_active": true, "updated_at": "…" }
+```
+- `pos_x` and `pos_y` are both `null` when the table isn't placed on the plan yet. New tables and existing tables start unplaced.
+- `width` and `height` are `1–6` (default `2`). `shape` is `rect` or `round` (default `rect`).
+- `POST` and `PATCH /admin/tables` don't take these fields; only the layout endpoint below sets them.
+- **Changing a table's `area`** (PATCH) unplaces it: `pos_x` and `pos_y` become `null`.
+
+**`PUT /api/v1/admin/tables/layout`** (`v1.admin.tables.layout`) saves a whole area's plan in one go.
+- **Body:** `area` (`present`, `nullable`, `string`, `max:30`) and `tables` (`array`, `1–100`). Each entry has:
+  - `id`: required, a non-deleted table of the branch **in that area**; otherwise `422` on `tables.{i}.id`: `Table 5 isn't in this area.`;
+  - `pos_x` and `pos_y`: both `null`, or both integers ≥ 0; otherwise `422` on `tables.{i}.pos_x`: `Place the table or leave it off the plan.`;
+  - `width` and `height`: `1–6`;
+  - `shape`: `rect` or `round`.
+- **Checks** run on the area's final layout, so tables not in the body count where they already are:
+  - inside the grid: `pos_x + width ≤ 24` and `pos_y + height ≤ 16`; otherwise `422` on `tables.{i}.pos_x`: `Table 5 doesn't fit on the plan.`;
+  - no two placed tables of the area overlap, judged by their rectangles (a circle counts as its square); otherwise `422` on `tables.{i}.pos_x`: `Table 5 overlaps Table 6.`
+- **The save is atomic:** all of it is saved or none of it.
+- **Response:** 200 `{data: DiningTable[]}`, the area's tables in the admin order.
+- **Audit:** one `table.layout_updated` entry with `{area, count}`.
+
+**`GET /tables` items gain** the same five fields after `seats` (TM1).
+
+### C. Tables view on Sell (TM1)
+- **Each area** shows its **floor plan** when at least one of its tables is placed, and the grid of v1.26 otherwise.
+  - A **Floor | Grid** switch changes the view; each device remembers the choice.
+  - Unplaced tables appear as cards below the plan.
+- **The plan scales** to the width of the screen. Tables are drawn at their position and size, with the same colours and contents as today's cards: name, status, guests, the remaining amount and the elapsed time.
+- **A shared status helper in `@pos/core`** decides a table's status:
+  - `occupied`: the table has a tab;
+  - `reserved` (TM2): no tab, and `reservation.is_held`;
+  - `free`: neither.
+  - An occupied table with a held reservation also shows a `Reserved 7:00 PM` badge.
+
+### D. Status board (TM1; `report.view`)
+**`GET /api/v1/tables/summary`** (`v1.tables.summary`; `report.view`; `409` while dine-in is off):
+```json
+{ "data": {
+  "tables_total": 18, "tables_occupied": 7, "tables_reserved": 2, "tables_free": 9,
+  "guests_seated": 23,
+  "pending_bills": 7, "pending_cents": 1245000,
+  "oldest_open": { "tab_ulid": "01K…", "table_name": "5", "opened_at": "…" },
+  "reservations_today": { "booked": 6, "seated": 3, "no_show": 1, "cancelled": 0 },
+  "generated_at": "…" } }
+```
+- It counts **active** tables only.
+- `tables_reserved` counts free tables held by a reservation. It is `0` before TM2, and so is every `reservations_today` count.
+- `pending_cents` is Σ `remaining_cents` over the open tabs: before discounts and service charge, the same as each card.
+- `oldest_open` is `null` when no bill is open.
+- `reservations_today` counts by the reservation's business day.
+
+**`TabSummary`** (on `GET /tables`) **gains `last_round_at`**: the time of the newest round sent, or `null` before the first one.
+
+**Board screen** (polls every 15 seconds, like the Tables view):
+- **Stat cards:**
+  - Occupied `7 / 18`;
+  - Guests seated;
+  - **Pending payments** `₱12,450.00 · 7 bills`, with the note `Before discounts and service charge`;
+  - Oldest bill, as `Table 5 · 2 h 10 min`.
+- **A table list** with these columns:
+  - table and area;
+  - status;
+  - guests;
+  - opened by;
+  - time open, amber after 90 minutes as on the cards;
+  - time since the last round;
+  - unpaid amount.
+
+  It sorts by any column, starts sorted by **time open, oldest first**, and has an **Unpaid only** filter. With `sale.create`, tapping a row opens the bill.
+- **Upcoming reservations** (TM2): today's booked reservations by time.
+- **Phones:** the stat cards stack, and the list becomes rows.
+
+### E. Reservations (TM2; `sale.create`; online only)
+Every endpoint returns `409 "Dine-in tables are turned off in Settings."` while dine-in is off. Every mutation takes `Idempotency-Key`, as tabs do.
+
+**Shared object `Reservation`:**
+```json
+{
+  "ulid": "01K…", "status": "booked",
+  "table": { "id": 5, "name": "5", "area": "Patio" },
+  "guest_name": "Santos", "phone": "0917 123 4567", "party_size": 4,
+  "reserved_for": "…", "business_date": "2026-10-26", "notes": null,
+  "is_held": false, "is_late": false,
+  "tab_ulid": null,
+  "created_by": { "id": 3, "name": "Cara" }, "updated_at": "…"
+}
+```
+- `status` is `booked`, `seated`, `cancelled` or `no_show`.
+- `is_held`: `status = booked` and `reserved_for − reservation_hold_minutes ≤ now < reserved_for + 120 min`.
+- `is_late`: `status = booked` and `now > reserved_for + 15 min`. It is for display only.
+
+| # | Method | URI | Route name |
+|---|---|---|---|
+| 1 | GET | `/api/v1/reservations` | `v1.reservations.index` |
+| 2 | POST | `/api/v1/reservations` | `v1.reservations.store` |
+| 3 | PATCH | `/api/v1/reservations/{ulid}` | `v1.reservations.update` |
+| 4 | POST | `/api/v1/reservations/{ulid}/cancel` | `v1.reservations.cancel` |
+| 5 | POST | `/api/v1/reservations/{ulid}/no-show` | `v1.reservations.no_show` |
+
+A reservation in another branch, or one that doesn't exist, returns `404`.
+
+**1. List:** needs `sale.create` **or** `report.view` (read-only, for the Board; Q-051). Every other endpoint here needs `sale.create`.
+- **Query:**
+  - `date`: a business day, default today;
+  - `status`: optional, one of the four;
+  - `table_id`: optional.
+- **Response:** the cursor envelope, ordered by `reserved_for`, then `id` (`per_page` 1–100, default 100).
+
+**2. Create:** body `ulid` (= the key), plus:
+- `table_id`: required, an active table of the branch;
+- `guest_name`: required, `max:60`, trimmed;
+- `phone`: `nullable`, `max:20`, `regex:/^[0-9+ ()-]+$/`;
+- `party_size`: required, `1–99`. It may exceed the table's `seats`; the client only warns;
+- `reserved_for`: required, ISO date-time. It must be **no earlier than 15 minutes ago** and **at most 90 days ahead**; otherwise `422` on `reserved_for`: `Pick a time from now up to 90 days ahead.`;
+- `notes`: `nullable`, `max:255`.
+
+**Clash rule:** another `booked` reservation on the same table less than 120 minutes before or after this one returns `422` on `reserved_for`: `Table 5 is already reserved at 7:00 PM.` A row lock on the table stops two devices booking it at once.
+
+**Response:** 201 `{data: Reservation}`. **Audit:** `reservation.created`.
+
+**3. Update:** the same fields, all partial, with the same rules and clash check. It only works while `booked`; otherwise `409 "This reservation is no longer booked."`. Response: 200 `{data: Reservation}` (Q-052). Audit: `reservation.updated` (`{from, to}`).
+
+**4. Cancel:** body `reason` (`nullable`, `max:255`). It only works while `booked`, and gives the same `409` otherwise. Response: 200 `{data: Reservation}`. Audit: `reservation.cancelled`.
+
+**5. No-show:** only while `booked`, and only once `now ≥ reserved_for`; earlier returns `409 "It isn't 7:00 PM yet."`. Response: 200 `{data: Reservation}`. Audit: `reservation.no_show`.
+
+**Seating** happens through the existing **`POST /tabs`** (v1.26 §D.1), which gains **`reservation_ulid`** (`nullable`):
+- The reservation must be `booked`, or the response is `409 "This reservation is no longer booked."`.
+- `table_id` must be the reservation's table; otherwise `422` on `table_id`: `This reservation is for Table 5.`
+- `guests` defaults to `party_size`.
+- **On success:** the reservation becomes `seated` and stores `tab_id`. Audit: `reservation.seated`.
+- The tab opens in the same transaction, under the same table lock.
+
+**The hold, enforced by the server:**
+- `POST /tabs` **without** `reservation_ulid` on a table held by another booked reservation returns `409 "Table 5 is reserved for Santos at 7:00 PM."`
+- `POST /tabs/{ulid}/transfer` (v1.26 §D.8) onto a held table returns the same `409`.
+- Merging is unaffected.
+
+**Tables:**
+- Deleting or deactivating a table that has future `booked` reservations returns `409 "Table 5 has 2 upcoming reservations. Move or cancel them first."`
+- **`GET /tables` items gain `reservation`:** the table's earliest `booked` reservation whose slot hasn't ended and whose time is within the next 24 hours, as `{ ulid, guest_name, party_size, reserved_for, is_held, is_late }`, or `null`.
+
+### F. Clients (tablet and web; the same behaviour)
+- **Tables page** (§A): the tabs **Board · Reservations · Floor plan · List**, shown by permission. It opens on the first tab the user can see.
+- **Floor plan editor** (TM1):
+  - an area picker, the grid canvas, and an **Unplaced** tray;
+  - drag a table onto the grid or across it. It snaps to cells, and the client runs the same fit and overlap check (shared helper in `@pos/core`) before saving;
+  - selecting a table shows width, height and shape, plus **Remove from plan**;
+  - **Save** and **Discard**; leaving the page with unsaved changes asks first;
+  - on a phone, the plan is view-only, with the note `Edit the floor plan on a tablet or computer.`
+- **Sell → Tables** (§C) gets the floor plan and, in TM2:
+  - a **Reservations** button that opens today's list;
+  - tapping a **reserved** table opens a sheet: `Reserved for Santos · 4 guests · 7:00 PM`, with **Seat now** (opens the bill with `reservation_ulid`), **Cancel** and **No-show**.
+- **Reservations tab** (TM2):
+  - a date picker (the existing date field), with the day's reservations by time, showing status chips and **Late** in amber;
+  - **New reservation** asks for the table, guest name, phone, party size, date, time and notes;
+    - the table picker marks tables that clash;
+    - the form warns, without blocking, when the party is larger than the table's seats;
+  - row actions: **Edit**, **Seat now** (today only), **Cancel**, **No-show**.
+- **Board** (TM1): §D.
+- **Settings → Dine-in** (TM2): a **Hold reserved tables from** field in minutes, with the help text `How long before the booking time the table is kept free.`
+- **Offline:** Board, Reservations and Sell → Tables show `Tables need a connection.` The Floor plan and List tabs need a connection to save, as admin screens do today.
+- **Errors:** `401` signs out. `409` shows in a dialog and reloads. `422` shows on its field; layout errors also highlight the table on the plan.
+- **No new packages:**
+  - the tablet uses the gesture-handler, reanimated and SVG packages already installed, so no new Dev Client build is needed;
+  - the web uses pointer events.
+
+### G. Data model (backend)
+- **`dining_tables`** gains:
+  - `pos_x` and `pos_y` (tinyint unsigned, null);
+  - `width` and `height` (tinyint unsigned, default 2);
+  - `shape` (string 10, default `rect`).
+- **`table_reservations`** (TM2):
+  - `id`, `ulid` (unique), `branch_id`, `table_id`;
+  - `guest_name`, `phone`, `party_size`, `reserved_for`, `business_date`, `notes`;
+  - `status`, `tab_id` (null), `cancel_reason`;
+  - `created_by`, `updated_by`, `status_changed_by`, `status_changed_at`, timestamps.
+  - Indexes: `(branch_id, business_date, reserved_for)` and `(table_id, status, reserved_for)`.
+- **Settings key:** `reservation_hold_minutes`.
+
+### H. Build
+- **packages/pos-core** (owned by **frontend-agent**):
+  - contract types (the main session writes them at approval);
+  - the floor plan grid constants and the fit and overlap check;
+  - the table status helper (§C) and the reservation clash, hold and late helpers.
+- **backend-agent:**
+  - the migrations;
+  - the layout endpoint, the summary endpoint and `last_round_at`;
+  - the reservations endpoints, policies and actions;
+  - the hold checks in open and transfer;
+  - the table delete and deactivate guard;
+  - the setting.
+  - **Tests:**
+    - layout: fit, overlap with tables not in the body, atomicity, and an area change that unplaces;
+    - summary: the figures, and `409` while off;
+    - permissions: `report.view` vs `sale.create`;
+    - reservations: CRUD, the clash in both directions, a concurrent booking, the 90-day and past limits, status transitions, and the no-show time rule;
+    - seating: through `POST /tabs` with the table mismatch and the guests default;
+    - the hold: it blocks open and transfer, and the hold window and its end are honoured;
+    - the table delete guard;
+    - branch isolation.
+- **frontend-agent** (`mobile/`) and **web-agent** (`web/`): §F.
+
+---
+
 
 ## Open Questions
 
@@ -4696,6 +4959,35 @@ Tags: `[FRONTEND→BACKEND]`, `[BACKEND→FRONTEND]`, `[FRONTEND→MAIN]`, `[BAC
 - Built meanwhile (web, provisional): they follow the period label from the response (`Today` · `Tue, 14 Oct 2026` · `This month` · `October 2026` · `This year` · `2026`): Top products "{label}, by quantity sold.", Payment methods "{label}, takings net of change." (the stacked bar's row label is the period label), the figures card "Today's figures" on the running day and "Sales figures" / "{label}, sales that are not voided." otherwise. Their empty states keep "No sales yet today." / "No payments yet today." on the running day and use §D's `No sales on this day` · `in this month` · `in this year` otherwise. Day chart's description: "The 7 business days ending {today | Tue, 14 Oct 2026}, in pesos."
 - Proposal: confirm this wording (or give another) so the tablet uses the same captions. No API change.
 - **Resolution (main, 2026-10-14):** the web's provisional wording is adopted for **both** clients. On the running day the empty states keep `No sales yet today.` / `No payments yet today.` (this overrides §D's `No sales on this day` for the current day only); past days, months and years use §D's wording. Top products `{label}, by quantity sold.`, Payment methods `{label}, takings net of change.`, the Day chart description `The 7 business days ending {Today | date}, in pesos.` No API change.
+
+### Q-051 [WEB→MAIN] Status board: "Upcoming reservations" needs `GET /reservations`, which `report.view` alone can't read — RESOLVED
+- Raised by: web-agent · Feature: Table Management (v1.29) §D (Board) and §E · Endpoints: GET /api/v1/tables/summary, GET /api/v1/reservations
+- Problem: the Board needs only `report.view` (§A), and §D asks it to list **today's booked reservations by time**. The only endpoint that returns them, `GET /reservations`, needs `sale.create` (§E). `TablesSummary` carries counts only (`reservations_today`). A manager with `report.view` but not `sale.create` would get a `403` there.
+- Built meanwhile (web): the Upcoming reservations card shows only when the user also has `sale.create`; otherwise it is left out (MASTER: sections the user's permissions hide are left out, never shown empty). The stat cards and the table list are unaffected.
+- Proposal: either let `GET /reservations` accept `sale.create` **or** `report.view` (read-only), or add today's booked reservations to `GET /tables/summary` (e.g. `upcoming: [{ ulid, guest_name, party_size, reserved_for, table: { id, name, area }, is_late }]`).
+- **Resolution (main, 2026-10-26):** `GET /reservations` (list only) accepts `sale.create` **or** `report.view`. Every reservation mutation still needs `sale.create`. §E updated. Clients show the Board's Upcoming reservations card for `report.view`.
+
+### Q-052 [WEB→BACKEND] Reservations: response body of update, cancel and no-show — RESOLVED
+- Raised by: web-agent · Feature: Table Management (v1.29) §E.3–§E.5 · Endpoints: PATCH /api/v1/reservations/{ulid}, POST /api/v1/reservations/{ulid}/cancel, POST /api/v1/reservations/{ulid}/no-show
+- Problem: §E gives create's response (`201 {data: Reservation}`) but not the status and body of update, cancel and no-show.
+- Built meanwhile (web): the client assumes `200 {data: Reservation}` for all three (as the tab actions do) and only uses the reply to say the action worked; it then reloads the list, so another 2xx body would still work.
+- Proposal: confirm `200 {data: Reservation}` (the updated reservation) for all three.
+- **Resolution (main, 2026-10-26):** confirmed: update, cancel and no-show return `200 {data: Reservation}`, the updated reservation. §E updated.
+
+### Q-053 [BACKEND→MAIN] Table Management (TM1/TM2): cases §B and §E leave open — RESOLVED
+- Raised by: backend-agent · Feature: Table Management (v1.29) §B, §E · Endpoints: PUT /api/v1/admin/tables/layout, POST /api/v1/tabs, PATCH /api/v1/reservations/{ulid}, POST /api/v1/reservations/{ulid}/cancel, POST /api/v1/reservations/{ulid}/no-show, PATCH/DELETE /api/v1/admin/tables/{id}
+- Built meanwhile (backend, provisional; none changes a documented shape):
+  1. **Update, cancel and no-show responses** (same as Q-052): `200 {data: Reservation}`, the updated reservation.
+  2. **`POST /tabs` with a `reservation_ulid` that isn't a reservation of the branch:** `422` on `reservation_ulid` (Laravel's `exists` message). A ULID that isn't well formed is also a `422` there.
+  3. **Seating skips the hold check:** with `reservation_ulid`, the hold of *another* booked reservation on the same table is not checked (§E says the `409` applies "without `reservation_ulid`"). The occupied check (`Table 5 already has an open bill.`) still runs.
+  4. **"Future booked reservations" in the table delete/deactivate guard:** booked reservations whose slot hasn't ended (`reserved_for + 120 min > now`), so a late guest still blocks, matching `GET /tables`' `reservation`. With one reservation the message is singular: `Table 5 has 1 upcoming reservation. Move or cancel it first.` (as `Close the 1 open bill first.`).
+  5. **Layout `Table 5 isn't in this area.` for a table that isn't in the branch** (another branch's, deleted or unknown): the id sent is used as the name (`Table 123 isn't in this area.`), so another branch's table names never leak. Duplicate ids in `tables` get Laravel's `distinct` message on `tables.{i}.id`.
+  6. **Layout overlap message:** each failing entry gets its own error; the other table named is the first overlapping one in the admin order (so two body tables that overlap each other get one error each).
+  7. **Times in messages** (`7:00 PM`): the reservation time in the branch timezone, format `g:i A`, with no date.
+  8. **Update clash check** runs on the final table and time on every update (excluding the reservation itself); the 15-minute/90-day window applies only when `reserved_for` is sent.
+- Proposal: confirm 1–8 (or change any); no shape change is needed for any of them.
+- **Resolution (main, 2026-10-26):** 1–8 confirmed as built. No shape change.
+
 ---
 
 ## Changelog
@@ -4768,3 +5060,6 @@ Tags: `[FRONTEND→BACKEND]`, `[BACKEND→FRONTEND]`, `[FRONTEND→MAIN]`, `[BAC
 | 1.28 | 2026-10-14 | Drafted Dashboard Period Filter: `GET /dashboard` takes `period` (day/month/year) and `date`; the `sales` section is computed over the period and gains `period`, `date_from`, `date_to` and `trend` (day or month buckets); `last_7_days` kept for older builds; Day · Month · Year filter with a date stepper on both clients. |
 | 1.28.1 | 2026-10-14 | Dashboard Period Filter **approved** by the user as drafted. |
 | 1.28.2 | 2026-10-14 | Q-050 resolved: period wording of the other dashboard sales cards (web wording adopted on both clients; running day keeps "No sales yet today."). No API change. |
+| 1.29 | 2026-10-26 | Table Management **approved** by the user as drafted: Tables page always in the menu (Board, Reservations, Floor plan, List); `DiningTable`/`TableView` gain the plan fields; `PUT /admin/tables/layout`; `GET /tables/summary`; `TabSummary.last_round_at`; reservations with a table hold (`reservation_hold_minutes`) and seating through `POST /tabs` `reservation_ulid`. |
+| 1.29.1 | 2026-10-26 | Q-051–Q-053 resolved: `GET /reservations` also readable with `report.view`; update/cancel/no-show return `200 {data: Reservation}`; backend edge cases confirmed. |
+| 1.29.2 | 2026-10-26 | Web "This terminal" page (Hardening §I) removed at the user's request. The heartbeat, error capture and receipt printer choice are unchanged. No API change. |

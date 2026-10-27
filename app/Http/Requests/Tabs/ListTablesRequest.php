@@ -9,8 +9,8 @@ use App\Models\User;
 use App\Support\DineIn;
 
 /**
- * GET /api/v1/tables (`sale.create`; `per_page` 1–100, default 100). `403` without
- * `sale.create`, then `409` while dine-in is off.
+ * GET /api/v1/tables (`sale.create` or `report.view`, Table Management → A; `per_page` 1–100,
+ * default 100). `403` without either, then `409` while dine-in is off.
  */
 class ListTablesRequest extends CursorListRequest
 {
@@ -23,7 +23,7 @@ class ListTablesRequest extends CursorListRequest
     {
         $user = $this->user();
 
-        if (! $user instanceof User || ! $user->can('viewAny', Tab::class)) {
+        if (! $user instanceof User || ! $user->can('viewTables', Tab::class)) {
             return false;
         }
 

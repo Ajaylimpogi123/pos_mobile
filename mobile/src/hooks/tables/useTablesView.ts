@@ -6,12 +6,14 @@ import { create } from 'zustand';
 import { groupByArea } from '@/components/tables/tableLabels';
 import { tabRoute } from '@/constants/routes';
 import { tableKeys } from '@/hooks/tables/queryKeys';
+import { useReservationActions } from '@/hooks/tables/useReservationActions';
 import { useIsOnline } from '@/hooks/useIsOnline';
 import { getErrorMessage, isApiError, isApiValidationError } from '@/services/api';
 import { listTables, openTab } from '@/services/tables';
 import type { TableView } from '@/services/types';
 import { requestPrintConfigSync } from '@/sync/printConfigSync';
 import { ulid as makeUlid } from '@/utils/ulid';
+import { tableStatus } from '@pos/core/tables/status';
 
 /** §C: the clients poll every 15 seconds while the view is open. */
 export const TABLES_POLL_MS = 15_000;
@@ -64,6 +66,9 @@ export type OpenTabDraft = {
  * view is on screen and online, and the **Open bill** dialog (guests) for a
  * free table. An occupied table opens its tab. Offline: `Tables need a
  * connection.`, and nothing can be opened.
+ *
+ * Table Management (TM2): a **reserved** table (no tab, its reservation held)
+ * opens the reserved sheet instead: Seat now, Cancel, No-show.
  */
 export function useTablesView(active: boolean) {
   const client = useQueryClient();
@@ -92,6 +97,13 @@ export function useTablesView(active: boolean) {
   }, [dineInOff]);
 
   const [draft, setDraft] = useState<OpenTabDraft | null>(null);
+  const [reservedId, setReservedId] = useState<number | null>(null);
+  const reservations = useReservationActions();
+  // The sheet follows the polled table, and closes when it is no longer reserved.
+  const reserved = useMemo(() => {
+    const table = reservedId === null ? null : (tables.find((row) => row.id === reservedId) ?? null);
+    return table && tableStatus(table) === 'reserved' ? table : null;
+  }, [reservedId, tables]);
   const [opening, setOpening] = useState(false);
   const inFlight = useRef(false);
 
@@ -133,11 +145,20 @@ export function useTablesView(active: boolean) {
     refetch: () => query.refetch(),
     draft,
     opening,
-    /** A table card was tapped: a free table asks for guests; an occupied one opens its tab. */
+    reserved,
+    reservations,
+    closeReserved: () => {
+      setReservedId(null);
+      reservations.clearSeatError();
+    },
+    /** A table card was tapped: a free table asks for guests; an occupied one opens its tab; a reserved one opens its sheet. */
     press: (table: TableView) => {
       if (!online) return;
       if (table.tab) router.push(tabRoute(table.tab.ulid));
-      else setDraft({ table, guests: Math.min(GUESTS_LIMITS.max, Math.max(GUESTS_LIMITS.min, table.seats)), key: makeUlid(), error: null });
+      else if (tableStatus(table) === 'reserved') {
+        reservations.clearSeatError();
+        setReservedId(table.id);
+      } else setDraft({ table, guests: Math.min(GUESTS_LIMITS.max, Math.max(GUESTS_LIMITS.min, table.seats)), key: makeUlid(), error: null });
     },
     setGuests: (guests: number) => setDraft((current) => (current ? { ...current, guests, error: null } : current)),
     confirmOpen: () => void open(),

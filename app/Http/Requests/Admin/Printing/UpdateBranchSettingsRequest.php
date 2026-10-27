@@ -46,6 +46,10 @@ class UpdateBranchSettingsRequest extends FormRequest
             BranchSettings::SERVICE_CHARGE_BPS => [
                 'sometimes', 'required', 'integer', 'min:0', 'max:'.BranchSettings::MAX_SERVICE_CHARGE_BPS,
             ],
+            // Table Management → A (TM2).
+            BranchSettings::RESERVATION_HOLD_MINUTES => [
+                'sometimes', 'required', 'integer', 'min:0', 'max:'.BranchSettings::MAX_RESERVATION_HOLD_MINUTES,
+            ],
         ];
     }
 }

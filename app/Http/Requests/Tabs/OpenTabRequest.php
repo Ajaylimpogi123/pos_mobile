@@ -10,6 +10,7 @@ use App\Support\DineIn;
 use App\Support\Ulid;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * POST /api/v1/tabs (`sale.create`; idempotent: `Idempotency-Key` = the body's `ulid`).
@@ -17,6 +18,10 @@ use Illuminate\Foundation\Http\FormRequest;
  * `403` without `sale.create`, then `409` while dine-in is off, then the field rules:
  * `ulid`, `table_id` (an active table of the caller's branch), `guests` (1–99, default the
  * table's `seats`), `customer_id` (nullable, an existing customer) and `notes` (max 255).
+ *
+ * Table Management → E (TM2): `reservation_ulid` (nullable) seats a reservation of the
+ * caller's branch; whether it is still booked and for this table is checked by
+ * App\Actions\Tabs\OpenTabAction under the locks.
  */
 class OpenTabRequest extends FormRequest
 {
@@ -53,6 +58,10 @@ class OpenTabRequest extends FormRequest
             'guests' => ['sometimes', 'integer', 'min:1', 'max:'.TabRules::MAX_GUESTS],
             'customer_id' => ['sometimes', 'nullable', 'integer', TabRules::customer()],
             'notes' => ['sometimes', 'nullable', 'string', 'max:'.TabRules::MAX_NOTES],
+            'reservation_ulid' => [
+                'bail', 'sometimes', 'nullable', 'string', 'regex:'.Ulid::PATTERN,
+                Rule::exists('table_reservations', 'ulid')->where('branch_id', (int) $user->branch_id),
+            ],
         ];
     }
 }

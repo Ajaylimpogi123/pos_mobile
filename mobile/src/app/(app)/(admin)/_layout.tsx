@@ -14,7 +14,8 @@ import { hasAnyPermission, hasPermission, PERMISSIONS, PURCHASING_READ_PERMISSIO
  * - `staff/…` needs `user.manage`
  * - `printers/…` needs `sale.create` or `settings.manage` (its layout gates `new` and `[id]` on `settings.manage`)
  * - `settings/index` needs `settings.manage`
- * - `tables/index` needs `settings.manage` (Dine-in Tables & Tabs §B; it works while dine-in is off)
+ * - `tables/index` needs `settings.manage`, `report.view` or `sale.create` (Table Management §A: its tabs are
+ *   each gated by permission; a cashier reaches Reservations from Sell → Tables)
  * - `shifts/…` needs `report.zread` (Phase 6)
  * - `reports/index` needs `report.view` (Phase 6), or `purchase.approve` (its Purchasing view)
  * - `inventory/…` needs `inventory.adjust` or `report.view` (Inventory, v1 completion)
@@ -30,6 +31,9 @@ export default function AdminLayout() {
     hasAnyPermission(state.user, [PERMISSIONS.saleCreate, PERMISSIONS.settingsManage]),
   );
   const canManageSettings = useSessionStore((state) => hasPermission(state.user, PERMISSIONS.settingsManage));
+  const canViewTables = useSessionStore((state) =>
+    hasAnyPermission(state.user, [PERMISSIONS.settingsManage, PERMISSIONS.reportView, PERMISSIONS.saleCreate]),
+  );
   const canViewShifts = useSessionStore((state) => hasPermission(state.user, PERMISSIONS.reportZread));
   const canViewReports = useSessionStore((state) =>
     hasAnyPermission(state.user, [PERMISSIONS.reportView, PERMISSIONS.purchaseApprove]),
@@ -54,6 +58,8 @@ export default function AdminLayout() {
       </Stack.Protected>
       <Stack.Protected guard={canManageSettings}>
         <Stack.Screen name="settings/index" />
+      </Stack.Protected>
+      <Stack.Protected guard={canViewTables}>
         <Stack.Screen name="tables/index" />
       </Stack.Protected>
       <Stack.Protected guard={canViewShifts}>

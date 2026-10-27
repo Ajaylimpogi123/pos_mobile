@@ -63,7 +63,11 @@ describe('dine-in gate, auth and permissions', function () {
         $viewer->forceFill(['role_id' => customRole('viewer', ['report.view'])->id])->save();
         $tab = openTabAt($this->carla, $this->table5->id);
 
-        $this->withToken(tokenFor($viewer))->getJson('/api/v1/tables')->assertForbidden()->assertExactJson(['message' => 'This action is unauthorized.']);
+        // Table Management → A: GET /tables also allows report.view (the Board reads it).
+        $this->withToken(tokenFor($viewer))->getJson('/api/v1/tables')->assertOk();
+        $nobody = userWithRole('cashier');
+        $nobody->forceFill(['role_id' => customRole('nobody', [])->id])->save();
+        $this->withToken(tokenFor($nobody))->getJson('/api/v1/tables')->assertForbidden()->assertExactJson(['message' => 'This action is unauthorized.']);
         tabRequest($viewer, 'POST', '/api/v1/tabs', ['ulid' => newUlid(), 'table_id' => $this->table7->id])->assertForbidden();
         tabRequest($viewer, 'POST', "/api/v1/tabs/{$tab['ulid']}/rounds", ['ulid' => newUlid(), 'items' => []])->assertForbidden();
         tabRequest($viewer, 'POST', "/api/v1/tabs/{$tab['ulid']}/settle", settleBody(0))->assertForbidden();
@@ -85,7 +89,7 @@ describe('GET /tables', function () {
 
         expect($response->json('data'))->toHaveCount(2)
             ->and($response->json('meta.per_page'))->toBe(100)
-            ->and(array_keys($response->json('data.0')))->toBe(['id', 'name', 'area', 'seats', 'tab'])
+            ->and(array_keys($response->json('data.0')))->toBe(['id', 'name', 'area', 'seats', 'pos_x', 'pos_y', 'width', 'height', 'shape', 'tab', 'reservation'])
             ->and($response->json('data.0.tab'))->toBe([
                 'ulid' => $tab['ulid'],
                 'guests' => 3,
@@ -94,9 +98,14 @@ describe('GET /tables', function () {
                 'item_count' => 6,
                 'remaining_cents' => 3 * 22500 + 3 * 2500,
                 'rounds_count' => 2,
+                'last_round_at' => '2026-10-13T04:00:00Z',
                 'updated_at' => '2026-10-13T04:00:00Z',
             ])
-            ->and($response->json('data.1'))->toBe(['id' => $this->table7->id, 'name' => '7', 'area' => 'Patio', 'seats' => 2, 'tab' => null]);
+            ->and($response->json('data.1'))->toBe([
+                'id' => $this->table7->id, 'name' => '7', 'area' => 'Patio', 'seats' => 2,
+                'pos_x' => null, 'pos_y' => null, 'width' => 2, 'height' => 2, 'shape' => 'rect',
+                'tab' => null, 'reservation' => null,
+            ]);
     });
 });
 

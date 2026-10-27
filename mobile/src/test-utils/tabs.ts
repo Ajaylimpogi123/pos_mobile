@@ -62,9 +62,36 @@ export function makeTab(overrides: Partial<Tab> = {}): Tab {
 }
 
 export function makeDiningTable(overrides: Partial<DiningTable> = {}): DiningTable {
-  return { id: 5, name: '5', area: 'Patio', seats: 4, sort_order: 0, is_active: true, updated_at: '2026-10-13T09:00:00Z', ...overrides };
+  return {
+    id: 5,
+    name: '5',
+    area: 'Patio',
+    seats: 4,
+    pos_x: null,
+    pos_y: null,
+    width: 2,
+    height: 2,
+    shape: 'rect',
+    sort_order: 0,
+    is_active: true,
+    updated_at: '2026-10-13T09:00:00Z',
+    ...overrides,
+  };
 }
 
 export function makeTableView(overrides: Partial<TableView> = {}): TableView {
-  return { id: 5, name: '5', area: 'Patio', seats: 4, tab: null, ...overrides };
+  return {
+    id: 5,
+    name: '5',
+    area: 'Patio',
+    seats: 4,
+    pos_x: null,
+    pos_y: null,
+    width: 2,
+    height: 2,
+    shape: 'rect',
+    tab: null,
+    reservation: null,
+    ...overrides,
+  };
 }

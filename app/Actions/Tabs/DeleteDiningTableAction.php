@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * Soft-deletes a dine-in table (Dine-in Tables & Tabs → B) and writes the `table.deleted`
  * audit entry. A table with an open tab is a `409 "Table 5 has an open bill."`, checked
- * under the table's row lock.
+ * under the table's row lock. So is one with upcoming booked reservations (Table Management →
+ * E: `409 "Table 5 has 2 upcoming reservations. Move or cancel them first."`).
  */
 class DeleteDiningTableAction
 {
@@ -29,6 +30,8 @@ class DeleteDiningTableAction
             if ($locked->hasOpenTab()) {
                 throw new ConflictException(sprintf(UpdateDiningTableAction::MESSAGE_OPEN_BILL, $locked->name));
             }
+
+            UpdateDiningTableAction::ensureNoUpcomingReservations($locked, $locked->name);
 
             $locked->forceFill(['updated_by' => $actor->id])->save();
             $locked->delete();

@@ -1299,6 +1299,8 @@ export type BranchSettings = {
   dine_in_enabled: boolean;
   /** Dine-in: service charge on tab settlements, 0–2000 basis points (0 = none, the default). */
   service_charge_bps: BasisPoints;
+  /** Table Management (TM2): a booked reservation holds its free table from this many minutes before its time (0–240, default 60). */
+  reservation_hold_minutes: number;
   /** `null` until the settings are first saved. */
   updated_at: IsoDateTime | null;
 };
@@ -1314,6 +1316,8 @@ export type BranchSettingsUpdateRequest = {
   dine_in_enabled?: boolean;
   /** 0–2000. */
   service_charge_bps?: BasisPoints;
+  /** 0–240. */
+  reservation_hold_minutes?: number;
 };
 
 /** `print-config.branch`. */
@@ -2769,6 +2773,15 @@ export type DiningTable = {
   area: string | null;
   /** 1–50. */
   seats: number;
+  /** Table Management §B: grid cell (0–23); `null` with `pos_y` = not placed on the plan. */
+  pos_x: number | null;
+  /** Grid cell (0–15); `null` with `pos_x` = not placed on the plan. */
+  pos_y: number | null;
+  /** 1–6 cells (default 2). */
+  width: number;
+  /** 1–6 cells (default 2). */
+  height: number;
+  shape: TableShape;
   /** 0–9999. */
   sort_order: number;
   is_active: boolean;
@@ -2803,16 +2816,29 @@ export type TabSummary = {
   /** Σ `unit_price_cents × remaining_qty`: before discounts and service charge, display only. */
   remaining_cents: number;
   rounds_count: number;
+  /** Table Management §D: the newest round's send time; `null` before the first round. */
+  last_round_at: IsoDateTime | null;
   updated_at: IsoDateTime;
 };
 
-/** GET /api/v1/tables item: an active table and its open tab (`null` = free). */
+/**
+ * GET /api/v1/tables item: an active table and its open tab (`null` = free).
+ * Needs `sale.create` or `report.view`.
+ */
 export type TableView = {
   id: number;
   name: string;
   area: string | null;
   seats: number;
+  /** Table Management §B: the plan position and size (see `DiningTable`). */
+  pos_x: number | null;
+  pos_y: number | null;
+  width: number;
+  height: number;
+  shape: TableShape;
   tab: TabSummary | null;
+  /** Table Management §E (TM2): the next booked reservation (slot not ended, within 24 h), or `null`. */
+  reservation: TableReservationSummary | null;
 };
 
 /** GET /api/v1/tables query (`per_page` 1–100, default 100). */
@@ -2883,6 +2909,11 @@ export type TabOpenRequest = {
   customer_id?: number | null;
   /** Max 255. */
   notes?: string | null;
+  /**
+   * Table Management §E (TM2): seat this booked reservation. `table_id` must be its
+   * table; `guests` defaults to its `party_size`.
+   */
+  reservation_ulid?: string | null;
 };
 
 /** PATCH /api/v1/tabs/{ulid} body: partial. */
@@ -2975,4 +3006,141 @@ export type TabTransferRequest = {
 export type TabMergeRequest = {
   /** Another open tab in the branch: the one that remains. */
   into_ulid: string;
+};
+
+// ---------------------------------------------------------------------------
+// Feature: Table Management (v1.29)
+// ---------------------------------------------------------------------------
+
+/** §B: a table's shape on the floor plan (a `round` table counts as its square for overlaps). */
+export type TableShape = 'rect' | 'round';
+
+/** PUT /api/v1/admin/tables/layout → `tables[]`. */
+export type TableLayoutEntry = {
+  /** A non-deleted table of the branch in the body's `area`. */
+  id: number;
+  /** Both `null` (off the plan) or both set; `pos_x + width ≤ 24`, `pos_y + height ≤ 16`. */
+  pos_x: number | null;
+  pos_y: number | null;
+  /** 1–6. */
+  width: number;
+  /** 1–6. */
+  height: number;
+  shape: TableShape;
+};
+
+/**
+ * PUT /api/v1/admin/tables/layout body (`settings.manage`): one area's plan, saved
+ * atomically. Fit and overlap are checked on the area's final layout.
+ */
+export type TableLayoutRequest = {
+  /** `null` = the tables with no area. */
+  area: string | null;
+  /** 1–100 entries. */
+  tables: TableLayoutEntry[];
+};
+
+/** PUT /api/v1/admin/tables/layout 200: the area's tables in the admin order. */
+export type TableLayoutResponse = {
+  data: DiningTable[];
+};
+
+/** §D: `TablesSummary.oldest_open`. */
+export type TablesSummaryOldestOpen = {
+  tab_ulid: string;
+  table_name: string;
+  opened_at: IsoDateTime;
+};
+
+/** §D: today's reservations by status (all `0` before TM2). */
+export type TablesSummaryReservations = {
+  booked: number;
+  seated: number;
+  no_show: number;
+  cancelled: number;
+};
+
+/** GET /api/v1/tables/summary `data` (`report.view`; `409` while dine-in is off). Active tables only. */
+export type TablesSummary = {
+  tables_total: number;
+  tables_occupied: number;
+  /** Free tables held by a reservation. */
+  tables_reserved: number;
+  tables_free: number;
+  guests_seated: number;
+  pending_bills: number;
+  /** Σ open tabs' `remaining_cents`: before discounts and service charge. */
+  pending_cents: number;
+  /** `null` when no bill is open. */
+  oldest_open: TablesSummaryOldestOpen | null;
+  /** By the reservation's business day. */
+  reservations_today: TablesSummaryReservations;
+  generated_at: IsoDateTime;
+};
+
+export type ReservationStatus = 'booked' | 'seated' | 'cancelled' | 'no_show';
+
+/** `TableView.reservation` (TM2). */
+export type TableReservationSummary = {
+  ulid: string;
+  guest_name: string;
+  party_size: number;
+  reserved_for: IsoDateTime;
+  /** Booked and `reserved_for − reservation_hold_minutes ≤ now < reserved_for + 120 min`. */
+  is_held: boolean;
+  /** Booked and `now > reserved_for + 15 min` (display only). */
+  is_late: boolean;
+};
+
+/** Shared object `Reservation` (TM2; `sale.create`; online only). */
+export type Reservation = {
+  ulid: string;
+  status: ReservationStatus;
+  table: TabTable;
+  /** Max 60. */
+  guest_name: string;
+  /** Max 20, `^[0-9+ ()-]+$`. */
+  phone: string | null;
+  /** 1–99 (may exceed the table's seats). */
+  party_size: number;
+  reserved_for: IsoDateTime;
+  business_date: BusinessDate;
+  /** Max 255. */
+  notes: string | null;
+  is_held: boolean;
+  is_late: boolean;
+  /** The tab it was seated into; `null` unless `seated`. */
+  tab_ulid: string | null;
+  created_by: UserRef;
+  updated_at: IsoDateTime;
+};
+
+/** GET /api/v1/reservations query: by `reserved_for`, then `id` (`per_page` 1–100, default 100). */
+export type ReservationListParams = CursorParams & {
+  /** Business day; default today. */
+  date?: BusinessDate;
+  status?: ReservationStatus;
+  table_id?: number;
+};
+
+/** POST /api/v1/reservations body (Idempotent: `Idempotency-Key` = `ulid`). */
+export type ReservationCreateRequest = {
+  ulid: string;
+  /** An active table of the branch. */
+  table_id: number;
+  guest_name: string;
+  phone?: string | null;
+  party_size: number;
+  /** From 15 minutes ago up to 90 days ahead; no other booked reservation on the table within 120 minutes. */
+  reserved_for: IsoDateTime;
+  notes?: string | null;
+};
+
+/** PATCH /api/v1/reservations/{ulid} body: partial; only while `booked` (else `409`). */
+export type ReservationUpdateRequest = Partial<Omit<ReservationCreateRequest, 'ulid'>>;
+
+/** POST /api/v1/reservations/{ulid}/cancel body (Idempotency-Key: a ULID made when the dialog opens). */
+export type ReservationCancelRequest = {
+  /** Max 255. */
+  reason?: string | null;
 };

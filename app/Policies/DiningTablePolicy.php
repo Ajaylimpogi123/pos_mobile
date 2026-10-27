@@ -23,6 +23,14 @@ class DiningTablePolicy
         return $user->hasPermission('settings.manage');
     }
 
+    /**
+     * PUT /api/v1/admin/tables/layout (Table Management → B).
+     */
+    public function updateLayout(User $user): bool
+    {
+        return $user->hasPermission('settings.manage');
+    }
+
     public function update(User $user, DiningTable $table): bool
     {
         return $user->hasPermission('settings.manage') && $table->branch_id === $user->branch_id;
